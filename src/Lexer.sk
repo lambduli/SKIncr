@@ -1,0 +1,54 @@
+module Lexer;
+
+fun isLetter(c: Char): Bool {
+  Chars.isUpperCaseLetter(c) || Chars.isLowerCaseLetter(c) || c == '_'
+}
+
+fun isLetterOrDigit(c: Char): Bool {
+  isLetter(c) || Chars.isDigit(c)
+}
+
+fun isSpace(c: Char): Bool {
+  c == ' ' || c == '\t' || c == '\n'
+}
+
+class .Lexer private (content: Vector<Char>) {
+  static fun create(text: String): this {
+    static(text.chars())
+  }
+
+  fun token(posBegin: Int): (Int, ?String) {
+    while (posBegin < this.content.size() && isSpace(this.content[posBegin])) {
+      !posBegin = posBegin + 1;
+    };
+
+    if (posBegin >= this.content.size()) {
+      return (posBegin, None());
+    };
+
+    pos = posBegin;
+
+    if (Chars.isDigit(this.content[posBegin])) {
+      while (pos < this.content.size() && Chars.isDigit(this.content[pos])) {
+        !pos = pos + 1
+      }
+    } else if (isLetter(this.content[posBegin])) {
+      while (pos < this.content.size() && isLetterOrDigit(this.content[pos])) {
+        !pos = pos + 1
+      }
+    } else {
+      c = this.content[pos];
+      !pos = pos + 1;
+      if (
+        (c == '=' || c == '!') &&
+        pos < this.content.size() &&
+        this.content[pos] == '='
+      ) {
+        !pos = pos + 1;
+      }
+    };
+    (pos, Some(String::fromChars(this.content.slice(posBegin, pos).toArray())))
+  }
+}
+
+module end;

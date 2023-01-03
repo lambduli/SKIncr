@@ -1,0 +1,90 @@
+base class AExpr {
+  children =
+  | Num(Int)
+  | Minus(AExpr, AExpr)
+  | Plus(AExpr, AExpr)
+}
+
+class Variable(name: String) extends AExpr uses Orderable, Show {
+  fun toString(): String {
+    this.name
+  }
+}
+
+base class BExpr {
+  children =
+  | Lt(AExpr, AExpr)
+  | Eq(AExpr, AExpr)
+  | Neq(AExpr, AExpr)
+  | Gt(AExpr, AExpr)
+  | Nand(BExpr, BExpr)
+}
+
+base class Tree<+T> {
+  children =
+  | Prog(List<Tree<T>>, T)
+  | Assign(Variable, AExpr, T)
+  | EmptyStmt(T)
+  | If(BExpr, Tree<T>, T)
+  | IfElse(BExpr, Tree<T>, Tree<T>, T)
+  | While(BExpr, Tree<T>, T)
+  | Break(T)
+  | StmtList(List<Tree<T>>, T)
+}
+
+fun varsa(a: AExpr): List<Variable> {
+  a match {
+  | Num(_) -> List[]
+  | x @ Variable _ -> List[x]
+  | Minus(a1, a2)
+  | Plus(a1, a2) ->
+    varsa(a1).concat(varsa(a2))
+  }
+}
+
+fun varsb(b: BExpr): List<Variable> {
+  b match {
+  | Lt(a1, a2)
+  | Eq(a1, a2)
+  | Neq(a1, a2)
+  | Gt(a1, a2) ->
+    varsa(a1).concat(varsa(a2))
+  | Nand(b1, b2) -> varsb(b1).concat(varsb(b2))
+  }
+}
+
+fun collect<T>(s: Tree<T>): List<Variable> {
+  s match {
+  | Prog(sl, _) -> collect_stmt_list(sl)
+  | Assign(v, a, _) -> List.Cons(v, (varsa(a)))
+  | EmptyStmt _ -> List[]
+  | If(b, st, _) -> varsb(b).concat(collect(st))
+  | IfElse(b, st, se, _) -> varsb(b).concat(collect(st)).concat(collect(se))
+  | While(b, sb, _) -> varsb(b).concat(collect(sb))
+  | Break _ -> List[]
+  | StmtList(sl, _) -> collect_stmt_list(sl)
+  }
+}
+
+fun collect_stmt_list<T>(sl: List<Tree<T>>): List<Variable> {
+  sl match {
+  | List.Nil() -> List.Nil()
+  | List.Cons(s_, sl_) -> collect(s_).concat(collect_stmt_list(sl_))
+  }
+}
+
+/* build the list of variables of program component s */
+fun vars<T>(s: Tree<T>): List<Variable> {
+  collect(s).sorted().unique()
+}
+
+/* print list of variables l */
+fun print_vars(l: List<String>): void {
+  l match {
+  | List.Nil() -> void
+  | List.Cons(v, List.Nil()) -> print_string(v)
+  | List.Cons(v, l_) ->
+    print_string(v + "; ");
+    print_vars(l_)
+  }
+}

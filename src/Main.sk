@@ -1,0 +1,16 @@
+fun main(): void {
+  text = "";
+  loop {
+    read_line() match {
+    | None() -> break void
+    | Some(line) -> !text = text + line
+    }
+  };
+  lexer = Lexer::create(text);
+  p_ = Parser.program(lexer);
+  (env, p__) = built_abstract_syntax(p_);
+  p___ = p__.abstractInterpreter(env, env.initialP());
+  margin = 0;
+  /* print_labelled_node p___ margin; */
+  print_invariant_node(p___, margin)
+}

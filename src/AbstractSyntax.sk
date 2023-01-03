@@ -1,0 +1,358 @@
+extension base class Tree {
+  private fun getState(): T {
+    this match {
+    | Prog(_sl, ais) -> ais
+    | Assign(_v, _a, ais) -> ais
+    | EmptyStmt(ais) -> ais
+    | If(_b, _st, ais) -> ais
+    | IfElse(_b, _st, _se, ais) -> ais
+    | While(_b, _sb, ais) -> ais
+    | Break(ais) -> ais
+    | StmtList(_sl, ais) -> ais
+    }
+  }
+  fun at_stmt<AP: AbstractProperty, AD: AbstractDomain<AP>>[
+    T: AbstractState<AP, AD>,
+  ](): Label {
+    this.getState().at
+  }
+
+  fun property_at<AP: AbstractProperty, AD: AbstractDomain<AP>>[
+    T: AbstractState<AP, AD>,
+  ](): AD {
+    this.getState().atP
+  }
+
+  fun after_stmt<AP: AbstractProperty, AD: AbstractDomain<AP>>[
+    T: AbstractState<AP, AD>,
+  ](): Label {
+    this.getState().af
+  }
+
+  fun property_after<AP: AbstractProperty, AD: AbstractDomain<AP>>[
+    T: AbstractState<AP, AD>,
+  ](): AD {
+    this.getState().afP
+  }
+
+  fun escape_stmt<AP: AbstractProperty, AD: AbstractDomain<AP>>[
+    T: AbstractState<AP, AD>,
+  ](): Bool {
+    this.getState().es
+  }
+
+  fun break_stmt<AP: AbstractProperty, AD: AbstractDomain<AP>>[
+    T: AbstractState<AP, AD>,
+  ](): Label {
+    this.getState().br
+  }
+
+  fun property_break<AP: AbstractProperty, AD: AbstractDomain<AP>>[
+    T: AbstractState<AP, AD>,
+  ](): AD {
+    this.getState().brP
+  }
+
+  fun is_in_stmt<AP: AbstractProperty, AD: AbstractDomain<AP>>[
+    T: AbstractState<AP, AD>,
+  ](
+    l: Label,
+  ): Bool {
+    this match {
+    | Prog(sl, AbstractState(at, _atP, af, _afP, _es, _br, _brP)) ->
+      (l == at || l == af || static::is_in_stmt_list(l, sl))
+    | Assign(_v, _a, AbstractState(at, _atP, _af, _afP, _es, _br, _brP)) ->
+      (l == at)
+    | EmptyStmt(AbstractState(at, _atP, _af, _afP, _es, _br, _brP)) -> (l == at)
+    | If(_b, st, AbstractState(at, _atP, _af, _afP, _es, _br, _brP)) ->
+      (l == at || st.is_in_stmt(l))
+    | IfElse(_b, st, se, AbstractState(at, _atP, _af, _afP, _es, _br, _brP)) ->
+      (l == at || st.is_in_stmt(l) || se.is_in_stmt(l))
+    | While(_b, sb, AbstractState(at, _atP, _af, _afP, _es, _br, _brP)) ->
+      (l == at || sb.is_in_stmt(l))
+    | Break(AbstractState(at, _atP, _af, _afP, _es, _br, _brP)) -> (l == at)
+    | StmtList(sl, AbstractState(at, _atP, _af, _afP, _es, _br, _brP)) ->
+      (l == at || static::is_in_stmt_list(l, sl))
+    }
+  }
+
+  static private fun is_in_stmt_list<
+    AP: AbstractProperty,
+    AD: AbstractDomain<AP>,
+    T: AbstractState<AP, AD>,
+  >(
+    l: Label,
+    sl: List<Tree<T>>,
+  ): Bool {
+    sl match {
+    | List.Nil() -> false
+    | List.Cons(s_, sl_) -> s_.is_in_stmt(l) || static::is_in_stmt_list(l, sl_)
+    }
+  }
+
+  const void_label: Label = Label(0);
+
+  fun void_label_tree<AP: AbstractProperty, AD: AbstractDomain<AP>>[T: Void](
+    initial_abstract_environment: AD,
+  ): Tree<AbstractState<AP, AD>> {
+    s = this;
+    void_labelling = AbstractState(
+      static::void_label,
+      initial_abstract_environment,
+      static::void_label,
+      initial_abstract_environment,
+      false,
+      static::void_label,
+      initial_abstract_environment,
+    );
+    s match {
+    | Prog(sl, _) ->
+      Prog(
+        static::void_label_tree_list(sl, initial_abstract_environment),
+        void_labelling,
+      )
+    | Assign(v, a, _) -> Assign(v, a, void_labelling)
+    | EmptyStmt _ -> EmptyStmt(void_labelling)
+    | If(b, st, _) ->
+      If(b, st.void_label_tree(initial_abstract_environment), void_labelling)
+    | IfElse(b, st, se, _) ->
+      IfElse(
+        b,
+        st.void_label_tree(initial_abstract_environment),
+        se.void_label_tree(initial_abstract_environment),
+        void_labelling,
+      )
+    | While(b, sb, _) ->
+      While(b, sb.void_label_tree(initial_abstract_environment), void_labelling)
+    | Break _ -> Break(void_labelling)
+    | StmtList(sl, _) ->
+      StmtList(
+        static::void_label_tree_list(sl, initial_abstract_environment),
+        void_labelling,
+      )
+    }
+  }
+
+  static fun void_label_tree_list<
+    AP: AbstractProperty,
+    AD: AbstractDomain<AP>,
+    T: Void,
+  >(
+    sl: List<Tree<T>>,
+    initial_abstract_environment: AD,
+  ): List<Tree<AbstractState<AP, AD>>> {
+    sl match {
+    | List.Nil() -> List.Nil()
+    | List.Cons(s_, List.Nil()) ->
+      List[s_.void_label_tree(initial_abstract_environment)]
+    | List.Cons(s_, sl_) -> /* trees in inverse order */
+      List.Cons(
+        s_.void_label_tree(initial_abstract_environment),
+        static::void_label_tree_list(sl_, initial_abstract_environment),
+      )
+    }
+  }
+
+  /* set the at label in the void_labeld parse tree statement s, from l */
+  fun set_at_tree<AP: AbstractProperty, AD: AbstractDomain<AP>>[
+    T: AbstractState<AP, AD>,
+  ](
+    l: Label,
+  ): (Tree<AbstractState<AP, AD>>, Label) {
+    (this : Tree<AbstractState<AP, AD>>) match { /* l is the last label set */
+    | Prog(sl, ai) ->
+      !ai.at = l;
+      (sl_, next) = static::set_at_tree_list(sl, l);
+      (Prog(sl_, ai), next)
+    | Assign(v, a, ai) ->
+      !ai.at = l;
+      (Assign(v, a, ai), l.incr())
+    | EmptyStmt(ai) ->
+      !ai.at = l;
+      (EmptyStmt(ai), l.incr())
+    | If(b, st, ai) ->
+      !ai.at = l;
+      (st_, next) = st.set_at_tree((l.incr()));
+      (If(b, st_, ai), next)
+    | IfElse(b, st, se, ai) ->
+      !ai.at = l;
+      (st_, next) = st.set_at_tree((l.incr()));
+      (se_, next_) = se.set_at_tree(next);
+      (IfElse(b, st_, se_, ai), next_)
+    | While(b, sb, ai) ->
+      !ai.at = l;
+      (sb_, next) = sb.set_at_tree((l.incr()));
+      (While(b, sb_, ai), next)
+    | Break(ai) ->
+      !ai.at = l;
+      (Break(ai), l.incr())
+    | StmtList(sl, ai) ->
+      !ai.at = l;
+      (sl_, next) = static::set_at_tree_list(sl, l);
+      (StmtList(sl_, ai), next)
+    }
+  }
+
+  static private fun set_at_tree_list<
+    AP: AbstractProperty,
+    AD: AbstractDomain<AP>,
+  >(
+    sl: List<Tree<AbstractState<AP, AD>>>,
+    l: Label,
+  ): (List<Tree<AbstractState<AP, AD>>>, Label) {
+    sl match {
+    | List.Nil() -> (List[], l)
+    | List.Cons(s_, List.Nil()) ->
+      (s__, next) = s_.set_at_tree(l);
+      (List[s__], next)
+    | List.Cons(s_, sl_) -> /* trees in inverse order */
+      (sl__, next) = static::set_at_tree_list(sl_, l);
+      (s__, next_) = s_.set_at_tree(next);
+      (List.Cons(s__, sl__), next_)
+    }
+  }
+
+  /* set the after, escape, and break label in the void_labeld parse tree statement s, from after break */
+  fun set_labelling_tree<AP: AbstractProperty, AD: AbstractDomain<AP>>[
+    T: AbstractState<AP, AD>,
+  ](
+    after: Label,
+    break_: Label,
+  ): (
+    Tree<AbstractState<AP, AD>>,
+    Bool,
+  ) { /* set the af, es, and br attributes */
+    (this : Tree<AbstractState<AP, AD>>) match {
+    | Prog(sl, AbstractState(at, atP, _af, afP, _es, _br, brP)) ->
+      (sl_, es_) = static::set_labelling_tree_list(sl, after, break_);
+      if (es_) print_string("Error: no break allowed out of a program\n");
+      (
+        Prog(
+          sl_,
+          AbstractState(at, atP, after, afP, false, Tree::void_label, brP),
+        ),
+        false,
+      )
+    | Assign(v, a, AbstractState(at, atP, _af, afP, _es, _br, brP)) ->
+      (
+        Assign(
+          v,
+          a,
+          AbstractState(at, atP, after, afP, false, Tree::void_label, brP),
+        ),
+        false,
+      )
+    | EmptyStmt(AbstractState(at, atP, _af, afP, _es, _br, brP)) ->
+      (
+        EmptyStmt(
+          AbstractState(at, atP, after, afP, false, Tree::void_label, brP),
+        ),
+        false,
+      )
+    | If(b, st, AbstractState(at, atP, _af, afP, _es, _br, brP)) ->
+      (st_, es_) = st.set_labelling_tree(after, break_);
+      if (es_) {
+        (If(b, st_, AbstractState(at, atP, after, afP, es_, break_, brP)), es_)
+      } else {
+        (
+          If(
+            b,
+            st_,
+            AbstractState(at, atP, after, afP, es_, Tree::void_label, brP),
+          ),
+          es_,
+        )
+      }
+    | IfElse(b, st, se, AbstractState(at, atP, _af, afP, _es, _br, brP)) ->
+      (st_, es_) = st.set_labelling_tree(after, break_);
+      (se_, es__) = se.set_labelling_tree(after, break_);
+      es___ = es_ || es__;
+      if (es___) {
+        (
+          IfElse(
+            b,
+            st_,
+            se_,
+            AbstractState(at, atP, after, afP, es___, break_, brP),
+          ),
+          es___,
+        )
+      } else {
+        (
+          IfElse(
+            b,
+            st_,
+            se_,
+            AbstractState(at, atP, after, afP, es___, Tree::void_label, brP),
+          ),
+          es___,
+        )
+      }
+    | While(b, sb, AbstractState(at, atP, _af, afP, _es, _br, brP)) ->
+      (sb_, _es_) = sb.set_labelling_tree(at, after);
+      (
+        While(
+          b,
+          sb_,
+          AbstractState(at, atP, after, afP, false, Tree::void_label, brP),
+        ),
+        false,
+      )
+    | Break(AbstractState(at, atP, _af, afP, _es, _br, brP)) ->
+      (Break(AbstractState(at, atP, after, afP, true, break_, brP)), true)
+    | StmtList(sl, AbstractState(at, atP, _af, afP, _es, _br, brP)) ->
+      (sl_, es_) = static::set_labelling_tree_list(sl, after, break_);
+      if (es_) {
+        (
+          StmtList(sl_, AbstractState(at, atP, after, afP, es_, break_, brP)),
+          es_,
+        )
+      } else {
+        (
+          StmtList(
+            sl_,
+            AbstractState(at, atP, after, afP, es_, Tree::void_label, brP),
+          ),
+          es_,
+        )
+      }
+    }
+  }
+
+  static private fun set_labelling_tree_list<
+    AP: AbstractProperty,
+    AD: AbstractDomain<AP>,
+    T: AbstractState<AP, AD>,
+  >(
+    sl: List<Tree<T>>,
+    after: Label,
+    break_: Label,
+  ): (List<Tree<AbstractState<AP, AD>>>, Bool) {
+    sl match {
+    | List.Nil() -> (List[], false)
+    | List.Cons(s_, List.Nil()) ->
+      (s__, es_) = s_.set_labelling_tree(after, break_);
+      (List[s__], es_)
+    | List.Cons(s_, sl_) ->
+      (sl__, es_) = static::set_labelling_tree_list(sl_, s_.at_stmt(), break_);
+      (s__, es__) = s_.set_labelling_tree(after, break_);
+      es___ = es_ || es__;
+      (List.Cons(s__, sl__), es___)
+    }
+  }
+}
+
+fun built_abstract_syntax(
+  p: Tree<Void>,
+): (
+  Env<CartesianDomain, ListDomain<CartesianDomain>>,
+  Tree<AbstractState<CartesianDomain, ListDomain<CartesianDomain>>>,
+) {
+  initial_abstract_environment = Env(CartesianDomain, ListDomain, List[]).bot();
+  env = Env(CartesianDomain, ListDomain, vars(p));
+  p_ = p.void_label_tree(initial_abstract_environment);
+  first_label = Label(1);
+  (p__, next) = p_.set_at_tree(first_label);
+  (p___, _b) = p__.set_labelling_tree(next, next);
+  (env, p___)
+}

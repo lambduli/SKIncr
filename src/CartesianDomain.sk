@@ -1,0 +1,390 @@
+trait ToInt {
+  readonly fun toInt(): Int;
+}
+
+extension class Int uses ToInt
+
+value class SaturatedInt(value: Int) uses ToInt, Orderable, Show {
+  const infty: this = SaturatedInt(Int::max);
+  const minfty: this = SaturatedInt(Int::min);
+  const stringofint_bound: Int = 10000;
+  const max: this = SaturatedInt(Int::max);
+  const min: this = SaturatedInt(Int::min);
+
+  fun toInt(): Int {
+    this.value
+  }
+
+  static fun truncate(x: Int): this {
+    SaturatedInt(x)
+  }
+
+  fun <=<T: ToInt>(y: T): Bool {
+    this.value <= y.toInt()
+  }
+
+  fun +<T: ToInt>(bObj: T): this {
+    a: Int = this.value;
+    b: Int = bObj.toInt();
+    r = a + b;
+    SaturatedInt(
+      if ((a < 0) && (b < 0) && (r >= 0)) {
+        Int::min /* underflow: a & b negative, sum positive */
+      } else if ((a > 0) && (b > 0) && (r <= 0)) {
+        Int::max /* overflow: a & b positive, sum negative */
+      } else {
+        r
+      },
+    )
+  }
+
+  fun -<T: ToInt>(bObj: T): this {
+    a: Int = this.value;
+    b: Int = bObj.toInt();
+    r = if (b == Int::min) a + Int::max else a - b;
+    SaturatedInt(
+      if ((a < 0) && (b > 0) && (r >= 0)) {
+        Int::min /* underflow: a negative, b positive, sum positive */
+      } else if ((a >= 0) && (b < 0) && (r <= 0)) {
+        Int::max /* overflow: a positive, b negative, sum negative */
+      } else {
+        r
+      },
+    )
+  }
+
+  fun toString(): String {
+    i = this.value.toInt();
+    if (i == SaturatedInt::infty.toInt()) {
+      "oo"
+    } else if (
+      (i >= 0) &&
+      (SaturatedInt::infty.toInt() - i) < SaturatedInt::stringofint_bound
+    ) {
+      "oo-" + (SaturatedInt::infty.toInt() - i)
+    } else if (i == SaturatedInt::minfty.toInt()) "-oo" else if (
+      (i < 0) &&
+      (i - SaturatedInt::minfty.toInt()) <
+        SaturatedInt::stringofint_bound.toInt()
+    ) "-oo+" + (i - SaturatedInt::minfty.toInt()) else {
+      i.toString()
+    }
+  }
+}
+
+value class CartesianDomain(
+  v: (SaturatedInt, SaturatedInt),
+) uses Show, AbstractProperty {
+  const infimum: CartesianDomain = CartesianDomain(
+    (SaturatedInt::infty, SaturatedInt::minfty),
+  );
+
+  const supremum: CartesianDomain = CartesianDomain(
+    (SaturatedInt::minfty, SaturatedInt::infty),
+  );
+
+  fun toString(): String {
+    v = this;
+    if (v.isNativeEq(CartesianDomain::infimum)) {
+      "_|_"
+    } else if (v.isNativeEq(CartesianDomain::supremum)) "T" else {
+      (lv, hv) = v.toPair();
+      "[" + lv.toString() + ", " + hv.toString() + "]"
+    };
+  }
+
+  fun isLe(a2: CartesianDomain): Bool {
+    a1: CartesianDomain = this;
+    if (a1.isNativeEq(CartesianDomain::infimum)) {
+      true
+    } else if (a2.isNativeEq(CartesianDomain::infimum)) {
+      false
+    } else if (a2.isNativeEq(CartesianDomain::supremum)) {
+      true
+    } else if (a1.isNativeEq(CartesianDomain::supremum)) {
+      false
+    } else {
+      ((lx, hx), (ly, hy)) = (a1.toPair(), a2.toPair());
+      (ly <= lx) && (hx <= hy)
+    };
+  }
+
+  private fun isNativeEq(y: CartesianDomain): Bool {
+    this.v == y.v
+  }
+
+  fun isEq(b: CartesianDomain): Bool {
+    a: CartesianDomain = this;
+    (a.isLe(b)) && (b.isLe(a))
+  }
+
+  static fun bot(): CartesianDomain {
+    CartesianDomain::infimum
+  }
+
+  static fun top(): CartesianDomain {
+    CartesianDomain::supremum
+  }
+
+  fun join(a2: CartesianDomain): CartesianDomain {
+    a1: CartesianDomain = this;
+    if (a1.isNativeEq(CartesianDomain::infimum)) {
+      a2
+    } else if (a2.isNativeEq(CartesianDomain::infimum)) {
+      a1
+    } else if (a2.isNativeEq(CartesianDomain::supremum)) {
+      CartesianDomain::supremum
+    } else if (a1.isNativeEq(CartesianDomain::supremum)) {
+      CartesianDomain::supremum
+    } else {
+      ((lx, hx), (ly, hy)) = (a1.toPair(), a2.toPair());
+      CartesianDomain((min(lx, ly), max(hx, hy)))
+    }
+  }
+
+  fun meet(a2: CartesianDomain): CartesianDomain {
+    a1: CartesianDomain = this;
+    if (a1.isNativeEq(CartesianDomain::infimum)) {
+      CartesianDomain::infimum
+    } else if (a2.isNativeEq(CartesianDomain::infimum)) {
+      CartesianDomain::infimum
+    } else if (a2.isNativeEq(CartesianDomain::supremum)) {
+      a1
+    } else if (a1.isNativeEq(CartesianDomain::supremum)) {
+      a2
+    } else {
+      ((lx, hx), (ly, hy)) = (a1.toPair(), a2.toPair());
+      if ((hx < ly) || (hy < lx)) {
+        CartesianDomain::infimum
+      } else {
+        CartesianDomain((max(lx, ly), min(hx, hy)))
+      }
+    }
+  }
+
+  static fun initialP(): CartesianDomain {
+    CartesianDomain(
+      (SaturatedInt::minfty, SaturatedInt::infty),
+    ) /* (0,0), (minfty,infty) */
+  }
+
+  static fun propertyofinteger(i: Int): CartesianDomain {
+    CartesianDomain((SaturatedInt(i), SaturatedInt(i)))
+  }
+
+  fun -(a2: CartesianDomain): CartesianDomain {
+    a1: CartesianDomain = this;
+    if (a1.isNativeEq(CartesianDomain::infimum)) {
+      CartesianDomain::infimum
+    } else if (a2.isNativeEq(CartesianDomain::infimum)) {
+      CartesianDomain::infimum
+    } else {
+      ((lx, hx), (ly, hy)) = (a1.toPair(), a2.toPair());
+      CartesianDomain(((lx - (hy)), (hx - (ly))))
+    }
+  }
+
+  fun minusm1(
+    x: CartesianDomain,
+    y: CartesianDomain,
+  ): (CartesianDomain, CartesianDomain) {
+    a: CartesianDomain = this;
+    ((lx, hx), (ly, hy)) = (x.toPair(), y.toPair());
+    (la, ha) = a.toPair();
+    lx_ = max(lx, (la + (ly)));
+    hx_ = min(hx, (ha + (hy)));
+    ly_ = max(ly, (lx - (ha)));
+    hy_ = min(hy, (hx - (la)));
+    (
+      (if (lx_ <= hx_) CartesianDomain((lx_, hx_)) else {
+        CartesianDomain::infimum
+      }),
+      (if (ly_ <= hy_) CartesianDomain((ly_, hy_)) else {
+        CartesianDomain::infimum
+      }),
+    )
+  }
+
+  fun +(a2: CartesianDomain): CartesianDomain {
+    a1: CartesianDomain = this;
+    if (a1.isNativeEq(CartesianDomain::infimum)) {
+      CartesianDomain::infimum
+    } else if (a2.isNativeEq(CartesianDomain::infimum)) {
+      CartesianDomain::infimum
+    } else {
+      ((lx, hx), (ly, hy)) = (a1.toPair(), a2.toPair());
+      CartesianDomain(((lx + (ly)), (hx + (hy))))
+    }
+  }
+
+  fun plusm1(
+    x: CartesianDomain,
+    y: CartesianDomain,
+  ): (CartesianDomain, CartesianDomain) {
+    a: CartesianDomain = this;
+    ((lx, hx), (ly, hy)) = (x.toPair(), y.toPair());
+    (la, ha) = a.toPair();
+    lx_ = max(lx, (la - (hy)));
+    hx_ = min(hx, (ha - (ly)));
+    ly_ = max(ly, (la - (hx)));
+    hy_ = min(hy, (ha - (lx)));
+    (
+      (if (lx_ <= hx_) CartesianDomain((lx_, hx_)) else {
+        CartesianDomain::infimum
+      }),
+      (if (ly_ <= hy_) CartesianDomain((ly_, hy_)) else {
+        CartesianDomain::infimum
+      }),
+    )
+  }
+
+  fun <=(a2: CartesianDomain): (CartesianDomain, CartesianDomain) {
+    a1: CartesianDomain = this;
+    (a_1, a_2) = (a1 < a2);
+    (a__1, a__2) = (a1 == a2);
+    (a_1.join(a__1), a_2.join(a__2))
+  }
+
+  fun >=(a2: CartesianDomain): (CartesianDomain, CartesianDomain) {
+    a1: CartesianDomain = this;
+    (a_1, a_2) = (a1 > a2);
+    (a__1, a__2) = (a1 == a2);
+    (a_1.join(a__1), a_2.join(a__2))
+  }
+
+  fun <(ly_hy: CartesianDomain): (CartesianDomain, CartesianDomain) {
+    lx_hx: CartesianDomain = this;
+    (lx, hx) = lx_hx.toPair();
+    (ly, hy) = ly_hy.toPair();
+    if (lx >= hy) (CartesianDomain::infimum, CartesianDomain::infimum) else {
+      (
+        CartesianDomain((lx, min(hx, (hy - (1))))),
+        CartesianDomain((max((lx + (1)), ly), hy)),
+      )
+    }
+  }
+
+  fun >(ly_hy: CartesianDomain): (CartesianDomain, CartesianDomain) {
+    lx_hx: CartesianDomain = this;
+    (lx, hx) = lx_hx.toPair();
+    (ly, hy) = ly_hy.toPair();
+    if (hx <= ly) (CartesianDomain::infimum, CartesianDomain::infimum) else {
+      (
+        CartesianDomain((max(lx, ly + 1), hx)),
+        CartesianDomain((ly, min((hx - (1)), hy))),
+      )
+    }
+  }
+
+  fun ==(a2: CartesianDomain): (CartesianDomain, CartesianDomain) {
+    a1: CartesianDomain = this;
+    m = a1.meet(a2);
+    (m, m)
+  }
+
+  fun !=(ly_hy: CartesianDomain): (CartesianDomain, CartesianDomain) {
+    lx_hx: CartesianDomain = this;
+    (lx, hx) = lx_hx.toPair();
+    (ly, hy) = ly_hy.toPair();
+
+    (a, b) = {
+      if ((lx == hx) && (lx == ly) && (ly == hy)) {
+        (
+          CartesianDomain::infimum,
+          CartesianDomain::infimum,
+        ) /* equal constants not different */
+      } else if ((lx == hx) && (hx == ly) && (ly < hy)) {
+        (CartesianDomain((lx, hx)), CartesianDomain((ly + 1, hy)))
+      } else if ((lx == hx) && (lx == hy) && (ly < hy)) {
+        (CartesianDomain((lx, hx)), CartesianDomain((ly, hy - 1)))
+      } else if ((lx < hx) && (hx == ly) && (ly == hy)) {
+        (CartesianDomain((lx, hx - 1)), CartesianDomain((ly, hy)))
+      } else if ((lx < hx) && (hy == lx) && (ly == hy)) {
+        (CartesianDomain((lx + 1, hx)), CartesianDomain((ly, hy)))
+      } else {
+        (CartesianDomain((lx, hx)), CartesianDomain((ly, hy)))
+      }
+    };
+    /* print_string ("neq: "+(stringofaP (lx,hx))+" != "+(stringofaP (ly,hy))+" = "+(stringofaP a)+" x "+(stringofaP b)+"\n");*/
+    (a, b)
+  }
+
+  fun widen(a2: CartesianDomain): CartesianDomain {
+    a1: CartesianDomain = this;
+    if (a1.isNativeEq(CartesianDomain::infimum)) {
+      a2
+    } else if (a2.isNativeEq(CartesianDomain::infimum)) {
+      a1
+    } else if (a2.isNativeEq(CartesianDomain::supremum)) {
+      CartesianDomain::supremum
+    } else if (a1.isNativeEq(CartesianDomain::supremum)) {
+      CartesianDomain::supremum
+    } else {
+      ((lx, hx), (ly, hy)) = (a1.toPair(), a2.toPair());
+      CartesianDomain(
+        (
+          (if (ly < lx) SaturatedInt::minfty else lx),
+          (if (hy > hx) SaturatedInt::infty else hx),
+        ),
+      )
+    }
+  }
+
+  fun narrow(a2: CartesianDomain): CartesianDomain {
+    a1: CartesianDomain = this;
+    if (a1.isNativeEq(CartesianDomain::infimum)) {
+      CartesianDomain::infimum
+    } else if (a2.isNativeEq(CartesianDomain::infimum)) {
+      CartesianDomain::infimum
+    } else if (a2.isNativeEq(CartesianDomain::supremum)) {
+      a1
+    } else if (a1.isNativeEq(CartesianDomain::supremum)) {
+      a2
+    } else {
+      ((lx, hx), (ly, hy)) = (a1.toPair(), a2.toPair());
+      CartesianDomain(
+        (
+          (if (lx == SaturatedInt::minfty) ly else lx),
+          (if (hx == SaturatedInt::infty) hy else hx),
+        ),
+      )
+    }
+  }
+
+  fun toPair(): (SaturatedInt, SaturatedInt) {
+    this.v
+  }
+}
+
+/*
+value class CartesianDomain(v: (SaturatedInt, SaturatedInt)) uses Show {
+  fun toString(): String;
+  fun isLe(a2: CartesianDomain): Bool;
+  fun isEq(b: CartesianDomain): Bool;
+  static fun bot(): CartesianDomain;
+  static fun top(): CartesianDomain;
+  fun join(a2: CartesianDomain): CartesianDomain;
+  fun meet(a2: CartesianDomain): CartesianDomain;
+  static fun initialP(): CartesianDomain;
+  static fun propertyofinteger(i: Int): CartesianDomain;
+  fun -(a2: CartesianDomain): CartesianDomain;
+  fun minusm1(
+    x: CartesianDomain,
+    y: CartesianDomain,
+  ): (CartesianDomain, CartesianDomain);
+  fun +(a2: CartesianDomain): CartesianDomain;
+  fun plusm1(
+    x: CartesianDomain,
+    y: CartesianDomain,
+  ): (CartesianDomain, CartesianDomain);
+  fun <=(a2: CartesianDomain): (CartesianDomain, CartesianDomain);
+  fun >=(a2: CartesianDomain): (CartesianDomain, CartesianDomain);
+  fun <(ly_hy: CartesianDomain): (CartesianDomain, CartesianDomain);
+  fun >(ly_hy: CartesianDomain): (CartesianDomain, CartesianDomain);
+  fun ==(a2: CartesianDomain): (CartesianDomain, CartesianDomain);
+  fun !=(ly_hy: CartesianDomain): (CartesianDomain, CartesianDomain);
+  fun widen(a2: CartesianDomain): CartesianDomain;
+  fun narrow(a2: CartesianDomain): CartesianDomain;
+}
+
+*/

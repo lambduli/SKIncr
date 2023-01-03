@@ -1,0 +1,138 @@
+module Parser;
+
+fun program(lexer: Lexer): Tree<Void> {
+  stmtList: List<Tree<Void>> = List[];
+  pos = 0;
+  loop {
+    (!pos, stmt) = parseStmt(lexer, pos);
+    !stmtList = List.Cons(stmt, stmtList);
+    if (lexer.token(pos).i1 == None()) return Prog(stmtList, void)
+  }
+}
+
+fun expect(lexer: Lexer, pos: Int, str: String): Int {
+  (!pos, tok) = lexer.token(pos);
+  invariant(tok == Some(str));
+  pos
+}
+
+fun parseStmt(lexer: Lexer, pos: Int): (Int, Tree<Void>) {
+  (!pos, tokOpt) = lexer.token(pos);
+  tok = tokOpt match {
+  | None() -> invariant_violation("Unexpected end of statement")
+  | Some(x) -> x
+  };
+  tok match {
+  | ";" -> (pos, EmptyStmt(void))
+  | "if" ->
+    !pos = expect(lexer, pos, "(");
+    (!pos, b) = parseBExpr(lexer, pos);
+    !pos = expect(lexer, pos, ")");
+    (!pos, st1) = parseStmt(lexer, pos);
+    lexer.token(pos).i1 match {
+    | Some("else") ->
+      !pos = expect(lexer, pos, "else");
+      (!pos, st2) = parseStmt(lexer, pos);
+      (pos, IfElse(b, st1, st2, void))
+    | _ -> (pos, If(b, st1, void))
+    }
+  | "while" ->
+    !pos = expect(lexer, pos, "(");
+    (!pos, b) = parseBExpr(lexer, pos);
+    !pos = expect(lexer, pos, ")");
+    (!pos, st) = parseStmt(lexer, pos);
+    (pos, While(b, st, void))
+  | "break" ->
+    !pos = expect(lexer, pos, ";");
+    (pos, Break(void))
+  | "{" ->
+    stmtList: List<Tree<Void>> = List[];
+    loop {
+      if (lexer.token(pos).i1 == Some("}")) {
+        !pos = expect(lexer, pos, "}");
+        break (pos, StmtList(stmtList, void));
+      };
+      (!pos, stmt) = parseStmt(lexer, pos);
+      !stmtList = List.Cons(stmt, stmtList);
+    }
+  | x if (!Lexer.isLetter(x.getIter().next().fromSome())) ->
+    invariant_violation("Unexpected token: " + x)
+  | var ->
+    !pos = expect(lexer, pos, "=");
+    (!pos, ae) = parseAExpr(lexer, pos);
+    if (lexer.token(pos).i1 == Some(";")) {
+      !pos = expect(lexer, pos, ";");
+    };
+    (pos, Assign(Variable(var), ae, void))
+  }
+}
+
+fun parseAExpr(lexer: Lexer, pos: Int): (Int, AExpr) {
+  if (lexer.token(pos).i1 is Some("(")) {
+    !pos = expect(lexer, pos, "(");
+    (!pos, ae) = parseAExpr(lexer, pos);
+    !pos = expect(lexer, pos, ")");
+    return (pos, ae);
+  };
+  (!pos, tokOpt) = lexer.token(pos);
+  tok = tokOpt match {
+  | None() -> invariant_violation("Unexpected end of statement")
+  | Some(x) -> x
+  };
+  tok match {
+  | "-" ->
+    (!pos, ae) = parseAExpr(lexer, pos);
+    (pos, Minus(Num(0), ae))
+  | _ ->
+    isInt = Chars.isDigit(tok.getIter().next().fromSome());
+    ae = if (isInt) Num(tok.toInt()) else Variable(tok);
+    lexer.token(pos).i1 match {
+    | Some("+")
+    | Some("-") ->
+      (!pos, op) = lexer.token(pos);
+      op match {
+      | Some("+") ->
+        (!pos, ae2) = parseAExpr(lexer, pos);
+        (pos, Plus(ae, ae2))
+      | Some("-") ->
+        (!pos, ae2) = parseAExpr(lexer, pos);
+        (pos, Minus(ae, ae2))
+      | _ -> (pos, ae)
+      }
+    | _ -> (pos, ae)
+    }
+  }
+}
+
+fun parseBExpr(lexer: Lexer, pos: Int): (Int, BExpr) {
+  (!pos, b1) = parseSimpleBExpr(lexer, pos);
+  if (lexer.token(pos).i1 is Some("nand")) {
+    !pos = expect(lexer, pos, "nand");
+    (!pos, b2) = parseBExpr(lexer, pos);
+    (pos, Nand(b1, b2))
+  } else {
+    (pos, b1)
+  }
+}
+
+fun parseSimpleBExpr(lexer: Lexer, pos: Int): (Int, BExpr) {
+  if (lexer.token(pos).i1 is Some("(")) {
+    !pos = expect(lexer, pos, "(");
+    (!pos, be) = parseBExpr(lexer, pos);
+    !pos = expect(lexer, pos, ")");
+    return (pos, be);
+  };
+  (!pos, a1) = parseAExpr(lexer, pos);
+  (!pos, op) = lexer.token(pos);
+  (!pos, a2) = parseAExpr(lexer, pos);
+  op match {
+  | Some("<") -> (pos, Lt(a1, a2))
+  | Some("==") -> (pos, Eq(a1, a2))
+  | Some("!=") -> (pos, Neq(a1, a2))
+  | Some(">") -> (pos, Gt(a1, a2))
+  | None() -> invariant_violation("Unexpected end of boolean expression: ")
+  | Some(bop) -> invariant_violation("Unknown operation: " + bop)
+  };
+}
+
+module end;
