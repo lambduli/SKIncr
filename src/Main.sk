@@ -1,4 +1,7 @@
 fun main(): void {
+  print_raw("Hello world!");
+  
+  /*
   text = "";
   loop {
     read_line() match {
@@ -10,7 +13,7 @@ fun main(): void {
   p_ = Parser.program(lexer);
   (env, p__) = built_abstract_syntax(p_);
   p___ = p__.abstractInterpreter(env, env.initialP());
-  margin = 0;
+  margin = 0; */
   /* print_labelled_node p___ margin; */
-  print_invariant_node(p___, margin)
+  /* print_invariant_node(p___, margin) */
 }

@@ -1,0 +1,31 @@
+base class Expr {
+  children =
+  | ENum(Int)
+  | EList(List<Expr>)
+  | EOp(Op)
+  | ECall(EVar, List<Expr>)
+  | EIf(Expr, Expr, Expr)
+  | ELet(EVar, Expr)
+  | EConst(EVar, Expr)
+  | EBlock(List<Expr>)
+  | EWhile(Expr, Expr)
+}
+
+
+class EVar(name: String) extends Expr uses Orderable, Show {
+  fun toString(): String {
+    this.name
+  }
+}
+
+
+base class Op {
+  children =
+  | OAdd(Expr, Expr)
+  | OSub(Expr, Expr)
+  | OEq(Expr, Expr)
+  | OLeT(Expr, Expr)
+  | OWrite(Expr)
+  | ORead(EVar)
+  | OSet(EVar, Expr)
+}

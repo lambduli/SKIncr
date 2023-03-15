@@ -1,0 +1,9 @@
+base class Val {
+  children =
+  | VNum(Int)
+  | VBool(Bool)
+  | VList(List<Val>)
+  | VClosure(List<EVar>, Expr, Env) // a list of parameters, a code, and an environment
+}
+
+// TODO: implement show() for all Values

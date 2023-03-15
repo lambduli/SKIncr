@@ -1,0 +1,143 @@
+// This file handles the top-level responsibility of eval function.
+
+// We need to put all the modules together into a single evaluation context.
+// For that to happen, we need to first transform each module into its own partial-evaluation context.
+
+// The partial-evaluation context consists of a list of closures - for function declarations from that module
+// it also contains a list of global mutable variables - the expressions get evaluated within the specific module context.
+
+// Because of imports, the creating of partial-evaluation contexts is done in a sequence.
+// Each module is handled only after all the modules from which it imports are already handled.
+// At that point, just adding the current functions and mutable-variables into the shared evaluation context
+// is enough.
+// This means that every consecutive module will be handled within an environment containing all the bindings from all the
+// previously handled modules.
+// It is not the best strategy, but it should do.
+
+
+// evalProgram needs to 
+fun evalProgram(program : Program) : (Env, Mem, Value) {
+  // TODO: implement
+
+  // first do a non-total top-sort ordering of the list of Modules within the Program
+  modules : List<Modules> = program match { | Program(ms, _) -> ms }
+  topSorted : List<Module> = sortModules(modules)
+
+  // then build the evaluation context (A lot of small Environments and one big shared Memory)
+  // TODO: figure out what and how
+
+  // then evaluate the "main" function in the Main module
+  // evaluate a call like "main()" or "main(...args)", depending on whether I have some arguments for "main"
+}
+
+
+
+
+  //////////////////////////
+ //    TOP SORT STUFF    //
+//////////////////////////
+fun sortModules(modules : List<Module>) : List<Module> {
+  m2i : Map<Module, Int> = makeM2I(modules);
+  i2m : Map<Int, Module> = Map.mapItems((m, i) ~> (i, m));
+  graph : Map<Int, Set<Int>> = buildGraph(modules, m2i);
+  // now when I've build a graph, I can start the algorithm
+
+
+  l : List<Int> = List.Nil();
+  s : Set<Int> = Set.createFromItems(graph.filter((i, is) ~> is.isEmpty()).map((i, _is) ~> i));
+
+  while (! s.isEmpty()) {
+    n : Int = getFirst(s);
+    // remove a node N from S
+    s.remove(n);
+
+    // add N to L
+    l = List.Cons(n, l)
+
+    // for every node M depending on N:
+    for (m in dependants(graph, n))
+      // remove the dependency on N from M
+      graph.set(m, graph.get(m).remove(n));
+      // if M has no more dependencies -> add it to S
+      if (graph.get(m).isEmpty()) s.add(m)
+  }
+
+  // if graph has edges -> error (a cycle)
+  if (! graph.isEmpty()) invariant_violation("Module Cycle!");
+
+  // return L
+  l.map((i) ~> i2m.get(i)).reversed()
+}
+
+fun makeM2I(modules : List<Module>) : Map<Module, Int> {
+  items = modules.mapWithIndex((i, m) ~> (m, i))
+  Map.createFromItems(items)
+}
+
+fun buildGraph(ms : List<Module>, m2i : Map<Module, Int>) : Map<Int, Set<Int>> {
+  items = modules.map((m) ~> (m2i.get(m), dependencies(m, ms).map((m) ~> m2i.get(m))));
+  Map.createFromItems(items)
+}
+
+fun dependencies(m : Module, ms : List<Module>) : Set<Module> {
+  m match {
+    | Module(name, imports, _, _) -> {
+      names : Set<String> = Set.createFromItems(import.map(moduleName));
+      Set.createFromItems(ms.filter((m) ~> names.contains(moduleName(m))))
+    }
+  }
+}
+
+fun moduleName(m : Module) : String {
+  m match {
+    | Module(n, _, _, _) -> n
+  }
+}
+
+fun getFirst<T>(s : Set<T>) : T {
+  s.values().next() match {
+    | Some(t) -> t
+  }
+}
+
+fun dependants(graph : Map<Int, Set<Int>>, node : Int) : Set<Int> {
+  Set.createFromIterator(graph.filter((i, is) ~> is.contains(node)).mapItems((i, _is) ~> i).keys())
+}
+/////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////
+
+
+  //////////////////////////////////////
+ //    PROGRAM EVALUATION CONTEXT    //
+//////////////////////////////////////
+// I need a function that takes a List<Module> in topological order
+// and starts with an empty Memory and Empty Environment (that is not really important)
+// then it goes one module at a time and adds stuff into both Memory and Environment
+// the point is - I have one big environment that grows with each module
+// every local function is transformed into a closure that contains this big environment
+// this is so that every local function can access all the stuff from its current module as well as
+// things from modules that it imports
+// obviously it's not ideal that those closures contain the whole environment
+// but optimizing those should be a straightforward task - compute a transitive closure and throw away everything else
+//
+// so for every module, we already have some Memory and Environment
+// we need to collect all the top-level declarations in the module
+// when we have their names (at this point we assume there are no cyclic dependencies between them - that's a work for the type analysis or something)
+//
+// so we have a list of names of functions and variables
+// we create the partial-environment with all those variables and functions pointing to new slots in the Memory
+// we evaluate all those expressions associated with those variables and functions within the environment + partial-environment
+// evaluating a function declarations just produces a closure that captures the environment it was given
+// evaluating a global variable evaluates the expression on the RHS - this might take a while and it might not terminate if the expression diverges
+// assuming it terninates, we end up with all the values stored in the Memory and a bigger Environment
+//
+// a note about the order - we first "evaluate" all the functions into closures and put them in the Memory
+// then in the order of declarations we go one global variable by one, evaluate them and store the value produced to the corresponding place at Memory
+// this ensures that if there is well-ordering between global variables, we will always have evaluated a variable's RHS before it gets used by some other expression
+//
+// eventually we end up with the final Environment, we can throw it away soon
+// we also obtain the final Memory, that one is for keeping
+//
+// we then need to go and look up a function called "main" in the final environment (then we can throw the Env away)
+// we then call "main" with no arguments (or some arguments, idk)
+// the eval call ^^^ will require the Memory and nothing else (beside maybe those arguments)

@@ -1,0 +1,10 @@
+value class Module(String, List<Import>, List<VarDecl>, List<FunDecl>) // module name, all imports, all global mutable variable declarations, all function declarations
+
+
+value class Import(String) // name of the module to import
+
+
+value class VarDecl(String, Expr) // name of the variable, expression that initializes it
+
+
+value class FunDecl(String, List<EVar>, Expr) // name, list of parameters, body

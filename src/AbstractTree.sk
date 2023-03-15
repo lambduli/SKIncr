@@ -20,9 +20,16 @@ base class BExpr {
   | Nand(BExpr, BExpr)
 }
 
+// why do we separate AExpr and BExpr?
+// 
+
 base class Tree<+T> {
   children =
-  | Prog(List<Tree<T>>, T)
+  | Prog(List<Tree<T>>, T) // program<T> is a list of trees<T> and a T
+  // so I suppose a program is a list of expressions and statements? and a statement is a Tree as is expression, so that would check out
+  // what is the second argument then???
+  // so since it's a list, is it a child of the current node?
+  // meaning - the next statement/expression in the execution to happen
   | Assign(Variable, AExpr, T)
   | EmptyStmt(T)
   | If(BExpr, Tree<T>, T)

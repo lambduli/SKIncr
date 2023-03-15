@@ -1,0 +1,9 @@
+// value class MachineState(env : Map<EVar, Val>)
+
+type Env = Map<EVar, Int> ;
+
+type Mem = Map<Int, Val> ;
+
+
+// value class State(env : Env, mem : Mem) ; // idk if I want to do this, since there is no pattern matching at the function argument level
+// I would have to decompose it each time and do nesting
