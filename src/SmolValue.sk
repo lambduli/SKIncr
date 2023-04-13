@@ -1,9 +1,10 @@
 base class Val {
   children =
+  | VUnit()
   | VNum(Int)
   | VBool(Bool)
   | VList(List<Val>)
-  | VClosure(List<EVar>, Expr, Env) // a list of parameters, a code, and an environment
+  | VClosure(List<EVar>, Expr, Env, String) // a list of parameters, a code, and an environment
 }
 
 // TODO: implement show() for all Values

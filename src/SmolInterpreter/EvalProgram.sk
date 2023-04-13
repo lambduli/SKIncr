@@ -16,18 +16,22 @@
 
 
 // evalProgram needs to 
-fun evalProgram(program : Program) : (Env, Mem, Value) {
-  // TODO: implement
-
+fun evalProgram(program : Program) : (Env, Value) {
   // first do a non-total top-sort ordering of the list of Modules within the Program
-  modules : List<Modules> = program match { | Program(ms, _) -> ms }
-  topSorted : List<Module> = sortModules(modules)
+  modules : List<Modules> = program match { | Program(ms, _) -> ms } ;
+  topSorted : List<Module> = sortModules(modules) ;
 
-  // then build the evaluation context (A lot of small Environments and one big shared Memory)
-  // TODO: figure out what and how
+  // then build the evaluation context
+  // that is, an environment containing all the bindings in the whole program
+  context : Env = programToContext(topSorted) ;
 
   // then evaluate the "main" function in the Main module
   // evaluate a call like "main()" or "main(...args)", depending on whether I have some arguments for "main"
+  theCall : ECall(EVar("main"), List.Nil()) ;
+
+  exitVal = evalExpr(context, theCall) ;
+
+  (context, exitVal)
 }
 
 
@@ -36,6 +40,7 @@ fun evalProgram(program : Program) : (Env, Mem, Value) {
   //////////////////////////
  //    TOP SORT STUFF    //
 //////////////////////////
+
 fun sortModules(modules : List<Module>) : List<Module> {
   m2i : Map<Module, Int> = makeM2I(modules);
   i2m : Map<Int, Module> = Map.mapItems((m, i) ~> (i, m));
@@ -110,34 +115,84 @@ fun dependants(graph : Map<Int, Set<Int>>, node : Int) : Set<Int> {
   //////////////////////////////////////
  //    PROGRAM EVALUATION CONTEXT    //
 //////////////////////////////////////
-// I need a function that takes a List<Module> in topological order
-// and starts with an empty Memory and Empty Environment (that is not really important)
-// then it goes one module at a time and adds stuff into both Memory and Environment
-// the point is - I have one big environment that grows with each module
-// every local function is transformed into a closure that contains this big environment
-// this is so that every local function can access all the stuff from its current module as well as
-// things from modules that it imports
-// obviously it's not ideal that those closures contain the whole environment
-// but optimizing those should be a straightforward task - compute a transitive closure and throw away everything else
-//
-// so for every module, we already have some Memory and Environment
-// we need to collect all the top-level declarations in the module
-// when we have their names (at this point we assume there are no cyclic dependencies between them - that's a work for the type analysis or something)
-//
-// so we have a list of names of functions and variables
-// we create the partial-environment with all those variables and functions pointing to new slots in the Memory
-// we evaluate all those expressions associated with those variables and functions within the environment + partial-environment
-// evaluating a function declarations just produces a closure that captures the environment it was given
-// evaluating a global variable evaluates the expression on the RHS - this might take a while and it might not terminate if the expression diverges
-// assuming it terninates, we end up with all the values stored in the Memory and a bigger Environment
-//
-// a note about the order - we first "evaluate" all the functions into closures and put them in the Memory
-// then in the order of declarations we go one global variable by one, evaluate them and store the value produced to the corresponding place at Memory
-// this ensures that if there is well-ordering between global variables, we will always have evaluated a variable's RHS before it gets used by some other expression
-//
-// eventually we end up with the final Environment, we can throw it away soon
-// we also obtain the final Memory, that one is for keeping
-//
-// we then need to go and look up a function called "main" in the final environment (then we can throw the Env away)
-// we then call "main" with no arguments (or some arguments, idk)
-// the eval call ^^^ will require the Memory and nothing else (beside maybe those arguments)
+
+fun programToContext(sorted : List<Module>) : Env {
+  initScopeChain : Env = List.Nil() ; // an empty chain
+
+  finalEnv = sorted.foldl((env : Env, module : Module) ~> {
+    moduleName = module match {
+      | Module(name, _, _, _) -> name
+    } ;
+
+    declCnt = module match {
+      | Module(_, _, vars, funs) -> vars.size() + funs.size()
+    } ;
+
+    thisModuleScope : Scope = ModuleScope(Map.mcreate(declCnt), moduleName) ;
+    currentEnv : Env = List.Cons(thisModuleScope, env) ;
+
+    moduleToContext(currentEnv, module) ;
+
+    currentEnv // explicitly returning the current stack/scope chain/environment
+  }, initScopeChain) ;
+  
+  finalEnv
+}
+
+
+fun moduleToContext(env : Env, module : Module) : void {
+  // This function does not add anything to the Env stack
+  // it only mutates the top-most Scope's mapping using Map.set() function.
+  // 
+  // This function iterates over all the variable declarations and function declarations.
+  // Functions go first - those variables might need them.
+  // Variables are expected to be in topological ordering with no cyclic dependencies between them.
+
+  currentModuleScope : Scope = env.getHead() ;  // this is the scope I will add stuff into
+
+  currentScopeMapping : Map<EVar, Val> = currentModuleScope match {
+    | ModuleScope(mapping, _) -> mapping
+  } ;
+
+  funDecls = module match {
+      | Module(_, _, _, funDecls) -> funDecls
+    } ;
+
+  varDecls = module match {
+      | Module(_, _, varDecls, _) -> varDecls
+    } ;
+
+  // let's iterate over all the functions now
+  funDecls.each((funDecl : FunDecl) ->
+    funDecl match {
+      | FunDecl(funName, params, body) -> {
+        // I need to create a closure from this function
+        closure : Val = VClosure(params, body, env, funName) ;
+        // the env is an immutable List
+        // that means that this closure's Scope Chain starts with the current module's scope
+        // the mapping within that first scope will get mutated, but the chain as a whole will always start with the current module's scope
+        // that should be exactly what I need
+        
+        // now I put it into the currentScopeMapping
+        currentScopeMapping.set(EVar(funName), closure) ;
+        // doing this, should also mutate the mapping within the closure itself
+      }
+    }) ;
+
+  // all the functions should be turned into closures now
+  // let's iterate over all the variables now
+
+  varDecls.each((varDecl : VarDecl) ->
+    varDecl match {
+      | VarDecl(name, expr) -> {
+        // evaluate the expr in the current env (a chain starting with the current module's scope)
+        // all the local functions are there
+        // all the previous variables are there
+        val = evalExpr(expr, env) ;
+        // put it into the currentScopeMapping
+        currentScopeMapping.set(EVar(name), val) ;
+      }
+    }) ;
+
+  // this completes the work on the current module
+}

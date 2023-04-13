@@ -1,14 +1,8 @@
-// evalExpr takes an environment and a memory together with an expression to evaluate
-// the environment represents a scope and is treated as such - changes only propagate INTO subexpressions
-// the memory represents and actual memory and is treated as a global state - changes propagate sequentially through the whole evaluation
-//
-// the evaluation semantics of the LET expression are somewhat an exception to these rules
-// therefore whenever we enter a new scope, we hoist all the declarations within it
-// this trick makes LET expressions work in the simple evaluation model
-//
-fun evalExpr(env : Env, mem : Mem, expr : Expr) : (Mem, Val) {
+fun evalExpr(env : Env, expr : Expr) : Val {
   expr match {
     | ENum(int) -> VNum(int)
+
+    | var@EVar(_) -> lookup(var, env)
 
     | EList(exprs) -> {
       exprs.mapAcc((newState, expr) ~> evalExpr(env, newState,expr), state) match {
@@ -16,173 +10,122 @@ fun evalExpr(env : Env, mem : Mem, expr : Expr) : (Mem, Val) {
       }
     }
 
-    | EOp(op) -> evalOp(env, state, op)
+    | EOp(op, args) -> evalOpCall(env, op, args)
 
     | ECall(fname, args) -> {
-      closure = lookup(env, mem, fname);
-      args.mapAcc((mem, expr) ~> evalExpr(env, mem, expr), mem) match {
-        | (newMem, argVals) -> {
-          evalFnCall(mem, closure, argVals)
-        }
-      }
+      closure = lookup(fname, env) ;
+      argVals = args.map((expr) ~> evalExpr(env, expr)) ;
+      evalFnCall(closure, argVals)
     }
 
     | EIf(cond, thenB, elseB) ->  {
-      evalExpr(env, mem, cond) match {
-        | (newMem, VBool(true)) -> {
-          evalExpr(env, newMem, thenB)
+      evalExpr(env, cond) match {
+        | VBool(true) -> {
+          evalExpr(env, thenB)
         }
-        | (newMem, VBool(false)) -> {
-          evalExpr(env, newMem, elseB)
-        }
-      }
-    }
-
-    | ELet(var@EVar(_), expr) -> {
-      evalExpr(env, mem, expr) match {
-        | (newMem, val) -> {
-          // extend the current environment with the binding
-
-          // so globals might be "hoisted" as well
-          // there must be no recursive dependencies going on, however
-          // 
-          
-          // return the value and the state
-          (_, val)
+        | VBool(false) -> {
+          evalExpr(env, elseB)
         }
       }
     }
 
-    | EConst(var@EVar(_), expr) -> {
-      // evaluate the expr
-      evalExpr(state, expr) match {
-        | (newState, val) -> {
-          // extend the current environment with the binding
-
-          // so instead of me threading environment through the evaluation too
-          // I can do local-hoisting
-          // every local variable (within a function) will be hoisted and before a function
-          // is executed it will also register local variables together with arguments
-          // that way a let expression is just an assignment into an already existing slot
-
-          // the issue: all variables are now function-scoped (or there needs to be renaming)
-          // possible solution - I can hoist at the level of blocks as well (I think)
-
-
-          // return the value and the state
-          (_, val)
-        }
-      }
+    | EConst(var, expr) -> {
+      val = evalExpr(env, expr) ;
+      putIntoLocalScope(var, val, env) ;
+      val
     }
 
     | EBlock(exprs) -> {
-      // TODO: hoist all the LET-declared constants  into the environment and memory
-      // the memory slot will contain some empty-like value
-      //
+      blockScope : Scope = BlockScope(Map.mcreate(10)) // magic number for no reason at all ... ¯\_(O.o)_/¯
+      
+      scopeChain: Env = List.Cons(blockScope, env) ;
 
-      assignments = hoistAssignments(exprs) // : List<ELet>
-
-      // TODO: Just add those variables into the environment and memory
-
-      hoistedEnv = env // fix
-      hoistedMem = mem // fix
-
-      // evaluate all the expressions within the newly created environment and state
-      exprs.mapAcc((newState, expr) ~> evalExpr(hoistedEnv, newState, expr), hoistedState) match {
-        (newState, vals) -> {
-          // I return just the last value
-          (newState, vals.pop())
-        }
-      }
+      vals = exprs.map((expr) ~> evalExpr(scopeChain, expr)) ;
+      vals.last()
     }
 
     | EWhile(cond, body) -> {
-      // run some aux function that takes the state, condition-expr, and an expression
-      // I will run the loop using recursion
-      evalLoop(env, mem, cond, body)
+      // run some aux function that takes the env, condition-expr, and an expression
+      evalLoop(env, cond, body) ;
+      VUnit // loops do not evaluate to a value I guess ... ¯\_(Ô.ō)_/¯
     }
   }
 }
 
 
-fun hoistAssignments(exprs : List<Expression>) : (List<ELet>) {
-  exprs.filter((expr) ~> expr match {
-    | ELet(_, _)  -> true
-    | _           -> false
-  })
+fun evalLoop(env : Env, cond : Expr, body : Expr) : void {
+  condVal : Val = evalExpr(env, cond) ;
+
+  condVal match {
+    | VBool(true) -> {
+      evalExpr(env, body) ;
+      evalLoop(env, cond, body)
+    }
+
+    | VBool(false) -> void
+  }
 }
 
 
-fun evalLoop(env : Env, mem : Mem, cond : Expr, body : Expr) : (Mem, Val) {
-  // run the condition expr
-  
-  // match on condition value
-  // if it's a true bool -> run the body, produce a new state
-  // call itself again
+fun evalFnCall(closure: VClosure, args : List<Val>) : Val {
+  params = closure.params ;
+  body = closure.body ;
+  env = closure.env ;
+  funName = closure.name ;
 
-  // if it's a false bool -> return something like void or something and the current state
-  void 0
+  items = List.map2((param, arg) ~> (param, arg), params, args) ;
+  mapping = Map.mcreateFromItems(items) ;
+  funScope : Scope = FunctionScope(mapping, funName) ;
+
+  scopeChain : Env = List.Cons(funScope, env) ;
+
+  evalExpr(scopeChain, body)
 }
 
 
-fun evalFnCall(mem : Mem, closure: VClosure, args : List<Val>) : (Mem, Val) {
-  // TODO: add stuff into the environment (the arguments)
-  // evaluate the function code within that environment
-  void 0
-}
-
-
-fun evalOpCall(env : Env, mem : Mem, op : Op) : (Mem, Val) {
-  // so I need to get the operation (probably a match)
-  // I also need to evaluate all the arguments
-  // depending on the operation - I do some work and return some result
-
+fun evalOpCall(env : Env, op : Op, args : List<EVar>) : Val {
   op match {
-    | OAdd(lexpr, rexpr)  -> doBinOp(env, mem, lexpr, rexpr, (lVal, rVal) ~> VNum(asNum(lVal) + asNum(rVal)))
-    | OSub(lexpr, rexpr)  -> doBinOp(env, mem, lexpr, rexpr, (lVal, rVal) ~> VNum(asNum(lVal) - asNum(rVal)))
-    | OEq(lexpr, rexpr)   -> doBinOp(env, mem, lexpr, rexpr, (lVal, rVal) ~> VBool(asNum(lVal) == asNum(rVal)))
-    | OLeT(lexpr, rexpr)  -> doBinOp(env, mem, lexpr, rexpr, (lVal, rVal) ~> VBool(asNum(lVal) < asNum(rVal)))
+    | OAdd(lexpr, rexpr)  -> doBinOp(env, lexpr, rexpr, (lVal, rVal) ~> VNum(lVal.i + rVal.i))
+    | OSub(lexpr, rexpr)  -> doBinOp(env, lexpr, rexpr, (lVal, rVal) ~> VNum(lVal.i - rVal.i))
+    | OEq(lexpr, rexpr)   -> doBinOp(env, lexpr, rexpr, (lVal, rVal) ~> VBool(lVal.i == rVal.i))
+    | OLeT(lexpr, rexpr)  -> doBinOp(env, lexpr, rexpr, (lVal, rVal) ~> VBool(lVal.i < rVal.i))
 
     | OWrite(expr) -> {
-      evalExpr(env, mem, expr) match {
-        | (mem1, val) -> {
-          str = val.show();
-          // TODO: print the string on the standard output or something
-          (mem1, val)
-        }
-      }
+      val = evalExpr(env, expr) ;
+      str = val.show() ;
+      val
     }
+
     | ORead(EVar(name)) -> {
       // TODO: read a number from the std in and update the environment
       // also return the value that was stored
-      void
+      read_line match {
+        None -> void // TODO: do something
+      } ;
+
+      VUnit()
     }
-    | OSet(Evar(name), expr) -> {
-      evalExpr(expr) match {
-        | (mem1, val) -> {
-          // TODO: update the value associated with "name" within the environment
-          // also return the value that was stored
-          (mem1, val)
-        }
-      }
+
+    | OSet(var@EVar(_), expr) -> {
+      val = evalExpr(env, expr) ;
+      updateSlot(env, var, val) ;
+      val
     }
   }
 }
 
 
 
-fun doBinOp(env : Env, mem0 : Mem, left : Expr, right : Expr, fn : (Expr, Expr) ~> Val) : (Mem, Val) {
-  evalExpr(env, mem0, left) match {
-    | (mem1, lVal) -> evalExpr(env, mem1, right) match {
-      | (mem2, rVal) -> (mem2, fn(lVal, rVal))
-    }
-  }
+fun doBinOp(env : Env, left : Expr, right : Expr, fn : (Expr, Expr) ~> Val) : Val {
+  valLeft = evalExpr(env, left) ;
+    
+  valRight = evalExpr(env, right) ;
+  
+  fn(valLeft, valRight)
 }
 
 fun asNum(num : VNum) : Int {
-  num match {
-    | VNum(i) -> i
-  }
+  num.i
 }
 
 

@@ -1,12 +1,11 @@
 base class Expr {
   children =
   | ENum(Int)
-  | EList(List<Expr>)
+  | EList(List<Expr>) // Expr or EVar?
   | EOp(Op)
-  | ECall(EVar, List<Expr>)
-  | EIf(Expr, Expr, Expr)
-  | ELet(EVar, Expr)
-  | EConst(EVar, Expr)
+  | ECall(EVar, List<EVar>)
+  | EIf(EVar, Expr, Expr)
+  | EConst(EVar, Expr) // we only have local constants
   | EBlock(List<Expr>)
   | EWhile(Expr, Expr)
 }
@@ -21,11 +20,11 @@ class EVar(name: String) extends Expr uses Orderable, Show {
 
 base class Op {
   children =
-  | OAdd(Expr, Expr)
-  | OSub(Expr, Expr)
-  | OEq(Expr, Expr)
-  | OLeT(Expr, Expr)
-  | OWrite(Expr)
+  | OAdd(EVar, EVar)
+  | OSub(EVar, EVar)
+  | OEq(EVar, EVar)
+  | OLeT(EVar, EVar)
+  | OWrite(EVar)
   | ORead(EVar)
   | OSet(EVar, Expr)
 }

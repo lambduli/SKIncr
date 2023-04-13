@@ -1,9 +1,56 @@
-// value class MachineState(env : Map<EVar, Val>)
-
-type Env = Map<EVar, Int> ;
-
-type Mem = Map<Int, Val> ;
+type Env = List<Scope> ;
 
 
-// value class State(env : Env, mem : Mem) ; // idk if I want to do this, since there is no pattern matching at the function argument level
-// I would have to decompose it each time and do nesting
+base class Scope {
+  children =
+    | ModuleScope(mapping : Map<EVar, Val>, name : String) // module-name
+    | FunctionScope(mapping : Map<EVar, Val>, name : String) // function-name + a position (later)
+    | BlockScope(mapping : Map<EVar, Val>) // a position (later)
+}
+
+
+fun lookup(var : EVar, env : Env) : Val {
+  optVal = None() ;
+  
+  maybeFound = env.find((scope : Scope) ->
+    scope match {
+      | ModuleScope(mapping, _)
+      | FunctionScope(mapping, _)
+      | BlockScope(mapping) ->
+        // try to find it in the mapping
+        mapping.maybeGet(var) match {
+          | None() -> false
+          | Some(val) -> {
+            optVal = Some(val) ;
+            true
+          }
+        }
+    }) ;
+
+  optVal.fromSome(`Error: Didn't find a variable ${var.toString()}`)
+}
+
+
+fun putIntoLocalScope(var, val, env) : void {
+  // TODO: implement
+}
+
+
+fun updateSlot(var : EVar, env : Env, val : Val) : Val {
+  maybeFound = env.find((scope : Scope) ->
+    scope match {
+      | ModuleScope(mapping, _)
+      | FunctionScope(mapping, _)
+      | BlockScope(mapping) ->
+        // try to find it in the mapping
+        mapping.maybeGet(var) match {
+          | None() -> false
+          | Some(val) -> {
+            optVal = Some(val) ;
+            true
+          }
+        }
+    }) ;
+
+  val
+}

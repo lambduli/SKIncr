@@ -1,1 +1,1 @@
-value class Program(List<Module>, Module) // the complete list of modules and the Main module (again)
+value class Program(List<Module>) // the complete list of modules
