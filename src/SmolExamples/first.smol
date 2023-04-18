@@ -1,0 +1,31 @@
+(module Main imports ())
+
+
+(vars (
+  (let x (+ 23 42))
+))
+
+
+(functions (
+  (function main ()
+    (begin
+      (const a 23)
+      (const b (foo a 42))
+      (+ a b)
+    )
+  )
+
+
+  (function foo (x y)
+    (begin
+      (const z 0)
+      (while (< x y)
+        (begin
+          (set! z (+ y z))
+          (set! x (+ x 1))
+        )
+      )
+      z
+    )
+  )
+))

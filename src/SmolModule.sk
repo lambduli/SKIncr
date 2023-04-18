@@ -11,5 +11,4 @@ value class Import(String) // name of the module to import
 
 value class VarDecl(String, Expr) // name of the variable, expression that initializes it
 
-
 value class FunDecl(String, List<EVar>, Expr) // name, list of parameters, body

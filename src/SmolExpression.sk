@@ -20,11 +20,11 @@ class EVar(name: String) extends Expr uses Orderable, Show {
 
 base class Op {
   children =
-  | OAdd(EVar, EVar)
-  | OSub(EVar, EVar)
-  | OEq(EVar, EVar)
-  | OLeT(EVar, EVar)
-  | OWrite(EVar)
-  | ORead(EVar)
-  | OSet(EVar, Expr)
+  | OAdd(EVar, EVar)    // +
+  | OSub(EVar, EVar)    // -
+  | OEq(EVar, EVar)     // =
+  | OLeT(EVar, EVar)    // <
+  | OWrite(EVar)        // write!
+  | ORead(EVar)         // read!
+  | OSet(EVar, Expr)    // set!
 }

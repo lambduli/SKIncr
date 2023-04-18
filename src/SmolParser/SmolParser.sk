@@ -1,0 +1,239 @@
+module SmolContext ;
+class Context(mutable whats : List<What>) {
+  mutable fun addCtxt(what : What) : mutable this {
+    !whats = List.Cons(what, whats) ;
+    this
+  }
+
+  mutable fun popCtxt() : mutable this {
+    whats match {
+      List.Nil() -> invariant_violation(`Huh? What are you doing? Popping Empty Contexts?`)
+      List.Cons(_, tail) -> {
+        !whats = tail;
+        this
+      }
+    }
+  }
+
+  static fun mcreate() : mutable this {
+    mutable Context(List[])
+  }
+}
+
+base class What {
+  children  = Operation(Int)
+            | If(Int) // if expression
+            | List(Int) // a list expression
+            | Call(Int) // a function call
+            | Vars(Int) // the vars clause
+            | Functions(Int) // the functions clause
+            | Function(Int) // a function declaration
+            | Var(Int) // a variable declaration
+            | Module(Int) // the module clause together with imports
+            | ModuleName(Int) // the name of the module
+            | ImportName(Int) // the name of imported module
+}
+
+module end ;
+
+module SmolParser ;
+
+class SyntaxError(ctxt : List<SmolContext.What>, msg : String) extends Exception {}
+
+
+class Parser(lexer : Lexer, mutable pos : Int, mutable ctxt : SmolContext.Context) {
+  static mcreate(lexer : Lexer) : mutable this {
+    mutable Parser(lexer, 0)
+  }
+
+  mutable fun parsing<T>(what : SmolContext.What, fn : () -> T) : T {
+    try {
+      fn()
+    }
+    catch {
+      | SyntaxError(whats, msg) -> {
+        throw SyntaxError(List.Cons(what, whats), msg)
+      }
+    }
+  }
+
+  fun expect(str : String) : void {
+    (!pos, tok) = lexer.token(pos) ;
+    tok match {
+      None() -> throw SyntaxError(List[], `Not what I was expecting! I wanted to read "${str}" but there was nothing to read.`)
+      Some(actual) -> {
+        if (actual != str) {
+          throw SyntaxError(List[], `Not what I was expecting! I wanted to read "${str}" but I saw "${actual}".`)
+        }
+      }
+    }
+  }
+
+  mutable fun parseModule() : Module {
+    declList : List<Decl> = List[] ;
+
+    (name, imports) = parseModuleHeader() ; // (module <string> imports (..))
+
+    varDecls = parseVarDecls() ;
+
+    funDecls = parseFunDecls() ;
+
+    Module(name, imports, varDecls, funDecls)
+  }
+
+
+  mutable fun parseModuleHeader() : (String, List<Import>) {
+    // (module <string>)
+    expect("(")
+    expect("module") ;
+    name = parseWord ;
+
+    if ( ! isIdent(name)) {
+      invariant_violation(`Illegal module name "${name}".`)
+    }
+
+    imports : List<Import> = List[]
+    // imports (...)
+    expect("imports") ;
+    expect("(") ;
+    // now I read the (possibly empty) list of modules to import
+    loop {
+      if (lexer.token(pos).i1 == None()) {
+        invariant_violation(`Unexpected end of input in module header.`)
+      }
+      // ( I do this just because of the code higlighting breaking otherwise
+      else if (lexer.token(pos) == Some(")")) {
+        break
+      }
+      else {
+        name = parseWord() ;
+        if ( ! isIdent(name)) {
+          invariant_violation(`Illegal module name "${name}" in the imports clause.`)
+        }
+        !imports = List.Cons(Import(name), imports) ;
+      }
+    }
+
+    expect(")") ; // closing the list of imports
+
+    expect(")") ;
+    (name, imports)
+  }
+
+
+  mutable fun parseVarDecls() : List<VarDecl> {
+    // parse the variable declarations
+    varDecls : List<VarDecl> = List[] ;
+    // parse the "( vars (..))"
+    expect("(") ;                                // )
+    expect("vars") ;
+    expect("(") ;                                // )
+    loop {
+      if (lexer.token(pos).i1 == None()) {
+        invariant_violation(`Unexpected end of input in vars clause.`)
+      }
+                                                                    // (
+      else if (lexer.token(pos) == Some(")")) {
+        break
+      }
+      else {
+        varDecl = parseVarDecl() ;
+        !varDecls = List.Cons(decl, varDecls) ;
+      }
+    }
+                                                                    // (
+    expect(")") ;
+
+    varDecls
+  }
+
+
+  mutable fun parseFunDecls() : (List<FunDecl>) {
+    // parse the function declarations
+    funDecls : List<FunDecl> = List[] ;
+    // parse the "(functions ( ... ))" part
+    expect("(") ;                                // )
+    expect("functions") ;
+    expect("(") ;                                // )
+    
+    loop {
+      if (lexer.token(pos).i1 == None()) {
+        invariant_violation(`Unexpected end of input in function clause.`)
+      }
+                                                                    // (
+      else if (lexer.token(pos) == Some(")")) {
+        break
+      }
+      else {
+        decl = parseFunDecl() ;
+        !funDecls = List.Cons(decl, funDecls) ;
+      }
+    }
+                                                                    // (
+    expect(")") ;
+
+    funDecls
+  }
+
+
+  mutable fun parseWord() : String {
+    // parse a word
+    (!pos, tok) = lexer.token(pos) ;
+    
+    tok match {
+      Some(content) -> {
+        content
+      }
+      None() -> invariant_violation("I was expecting to see an identifier or a keyword.")
+    }
+  }
+
+
+  fun parseVarDecl() : VarDecl {
+    // TODO: implement.
+    // example
+    // (let x (+ 23 42))
+
+    expect("(") ; // )
+    expect("let") ;
+    varName = parseWord() ;
+    expr = parseExpr() ;
+    // (
+    expect(")") ;
+
+    VarDecl(varName, expr)
+  }
+
+
+  fun parseFunDecl(lexer : Lexer, pos : Int) : (Int, FunDecl) {
+    // TODO: implement
+  }
+
+}
+
+
+// TODO:  Try to make the Parser into an object.        CHECK
+// TODO:  First, implement the same thing.              CHECK
+//        Eliminate boilerplate.                        CHECK?
+//        Inject the context for errors.
+//        Have errors as a thing.
+
+module end ;
+
+
+
+So here's what I think I could do:
+
+Whenever I am calling a function like `parseModuleHeader` or `parseVarDecls` or `parseFunDecls` or `parseExpr` ...
+I will give it to a function `parsing` that also gets a context.
+
+The `parsing` function then calls its second argument - the function. Produces a result, gives it back.
+If the call raises an error, it can add some information to the error - like building a trace.
+
+Like if we are parsing a `vars` clause, then we are parsing one variable declaration,
+then we are parsing an expression, then we are parsing if.
+
+When we raise an error, at each `parsing` we can catch that error and raise a new one that contains more information.
+This way we can answer the question of - WHAT was I parsing and WHY.
+
+It feels overengineered tho.

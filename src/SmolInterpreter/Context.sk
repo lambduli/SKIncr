@@ -32,7 +32,12 @@ fun lookup(var : EVar, env : Env) : Val {
 
 
 fun putIntoLocalScope(var, val, env) : void {
-  // TODO: implement
+  env match {
+    | List.Cons(ModuleScope(mapping, _), _)
+    | List.Cons(FunctionScope(mapping, _), _)
+    | List.Cons(BlockScope(mapping), _) -> mapping.set(var, val)
+    | List.Nil() -> invariant_violation("Runtime Error: empty environment - should not happen!")
+  }
 }
 
 
