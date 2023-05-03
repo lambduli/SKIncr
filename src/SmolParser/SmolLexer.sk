@@ -1,6 +1,5 @@
 module SmolLexer;
 
-
 abstract class Token {
   children
     = TokNum(Int)
@@ -13,7 +12,6 @@ abstract class Token {
     | TokComma()
     | TokKeyword(String)
 }
-
 
 fun isLetter(c: Char): Bool {
   Chars.isUpperCaseLetter(c) || Chars.isLowerCaseLetter(c) || c == '_'
@@ -51,7 +49,6 @@ class .Lexer private (content: Vector<Char>) {
     else if (str = "write!") TokOper(str)
     else if (str = "read!") TokOper(str)
     else if (str = "set!") TokOper(str)
-
     else if (str = "module") TokKeyword(str)
     else if (str = "imports") TokKeyword(str)
     else if (str = "functions") TokKeyword(str)
@@ -62,7 +59,6 @@ class .Lexer private (content: Vector<Char>) {
     else if (str = "if") TokKeyword(str)
     else if (str = "begin") TokKeyword(str)
     else if (str = "while") TokKeyword(str)
-
     else TokIdent(str)
   }
 

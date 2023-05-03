@@ -41,7 +41,6 @@ module SmolParser ;
 
 class SyntaxError(ctxt : List<SmolContext.What>, msg : String) extends Exception {}
 
-
 class Parser(lexer : Lexer, mutable pos : Int, mutable ctxt : SmolContext.Context) {
   static mcreate(lexer : Lexer) : mutable this {
     mutable Parser(lexer, 0)
