@@ -32,6 +32,7 @@ base class What {
             | Module(Int) // the module clause together with imports
             | ModuleName(Int) // the name of the module
             | ImportName(Int) // the name of imported module
+            | Imports(Int) // the imports list
 }
 
 module end ;
@@ -57,14 +58,24 @@ class Parser(lexer : Lexer, mutable pos : Int, mutable ctxt : SmolContext.Contex
     }
   }
 
-  fun expect(str : String) : void {
+  mutable fun expect(tok : Token) : void {
     (!pos, tok) = lexer.token(pos) ;
     tok match {
       None() -> throw SyntaxError(List[], `Not what I was expecting! I wanted to read "${str}" but there was nothing to read.`)
       Some(actual) -> {
-        if (actual != str) {
+        if (actual != tok) {
           throw SyntaxError(List[], `Not what I was expecting! I wanted to read "${str}" but I saw "${actual}".`)
         }
+      }
+    }
+  }
+
+  mutable fun next() : ?Token {
+    lexer.token(pos) match {
+      | None() -> None()
+      | Some(p, tok) -> {
+        !pos = p ;
+        Some(tok)
       }
     }
   }
@@ -83,85 +94,87 @@ class Parser(lexer : Lexer, mutable pos : Int, mutable ctxt : SmolContext.Contex
 
 
   mutable fun parseModuleHeader() : (String, List<Import>) {
-    // (module <string>)
-    expect("(")
-    expect("module") ;
-    name = parseWord ;
+    here = pos ;
+    try {
+      // (module <string>)
+      expect(TokOpenParen())
+      expect(TokKeyword("module")) ;
+      name = parseIdentifier() ;
 
-    if ( ! isIdent(name)) {
-      invariant_violation(`Illegal module name "${name}".`)
-    }
-
-    imports : List<Import> = List[]
-    // imports (...)
-    expect("imports") ;
-    expect("(") ;
-    // now I read the (possibly empty) list of modules to import
-    loop {
-      if (lexer.token(pos).i1 == None()) {
-        invariant_violation(`Unexpected end of input in module header.`)
-      }
-      // ( I do this just because of the code higlighting breaking otherwise
-      else if (lexer.token(pos) == Some(")")) {
-        break
-      }
-      else {
-        name = parseWord() ;
-        if ( ! isIdent(name)) {
-          invariant_violation(`Illegal module name "${name}" in the imports clause.`)
+      imports : List<Import> = List[]
+      // imports (...)
+      expect(TokKeyword("imports")) ;
+      expect(TokOpenParen()) ;
+      // now I read the (possibly empty) list of modules to import
+      loop {
+        if (lexer.token(pos).i1 == None()) {
+          throw SyntaxError(SmolContext.Imports(pos), `I expected a possibly empty list of imports but the input ended unexpectedly.`)
         }
-        !imports = List.Cons(Import(name), imports) ;
+        // ( I do this just because of the code higlighting breaking otherwise
+        else if (lexer.token(pos) == Some(TokCloseParen())) {
+          break
+        }
+        else {
+          name = parseIdentifier() ;
+          !imports = List.Cons(Import(name), imports) ;
+        }
       }
+
+      expect(TokCloseParen()) ; // closing the list of imports
+
+      expect(TokCloseParen()) ;
+      (name, imports)
     }
-
-    expect(")") ; // closing the list of imports
-
-    expect(")") ;
-    (name, imports)
+    catch {
+      | SyntaxError(whats, msg) -> throw SyntaxError(List.Cons(SmolContext.Module(here)), msg)
+    }
   }
 
 
   mutable fun parseVarDecls() : List<VarDecl> {
-    // parse the variable declarations
-    varDecls : List<VarDecl> = List[] ;
-    // parse the "( vars (..))"
-    expect("(") ;                                // )
-    expect("vars") ;
-    expect("(") ;                                // )
-    loop {
-      if (lexer.token(pos).i1 == None()) {
-        invariant_violation(`Unexpected end of input in vars clause.`)
+    here = pos ;
+    try {
+      // parse the variable declarations
+      varDecls : List<VarDecl> = List[] ;
+      // parse the "( vars (..))"
+      expect(TokOpenParen()) ;
+      expect(TokKeyword("vars")) ;
+      expect(TokOpenParen()) ;
+      loop {
+        if (lexer.token(pos).i1 == None()) {
+          throw SyntaxError(SmolContext.Imports(pos), `I expected a possibly empty list of variable declarations but the input ended unexpectedly.`)
+        }
+        else if (lexer.token(pos) == Some(TokCloseParen())) {
+          break
+        }
+        else {
+          varDecl = parseVarDecl() ;
+          !varDecls = List.Cons(decl, varDecls) ;
+        }
       }
-                                                                    // (
-      else if (lexer.token(pos) == Some(")")) {
-        break
-      }
-      else {
-        varDecl = parseVarDecl() ;
-        !varDecls = List.Cons(decl, varDecls) ;
-      }
-    }
-                                                                    // (
-    expect(")") ;
+      expect(TokCloseParen()) ;
 
-    varDecls
+      varDecls
+    }
+    catch {
+      | SyntaxError(whats, msg) -> throw SyntaxError(List.Cons(SmolContext.Vars(here)), msg)
+    }
   }
 
 
-  mutable fun parseFunDecls() : (List<FunDecl>) {
+  mutable fun parseFunDecls() : List<FunDecl> {
     // parse the function declarations
     funDecls : List<FunDecl> = List[] ;
     // parse the "(functions ( ... ))" part
-    expect("(") ;                                // )
-    expect("functions") ;
-    expect("(") ;                                // )
+    expect(TokOpenParen()) ;
+    expect(TokKeyword("functions")) ;
+    expect(TokOpenParen()) ;
     
     loop {
       if (lexer.token(pos).i1 == None()) {
         invariant_violation(`Unexpected end of input in function clause.`)
       }
-                                                                    // (
-      else if (lexer.token(pos) == Some(")")) {
+      else if (lexer.token(pos) == Some(TokCloseParen())) {
         break
       }
       else {
@@ -169,44 +182,205 @@ class Parser(lexer : Lexer, mutable pos : Int, mutable ctxt : SmolContext.Contex
         !funDecls = List.Cons(decl, funDecls) ;
       }
     }
-                                                                    // (
-    expect(")") ;
+    expect(TokCloseParen()) ;
 
-    funDecls
+    funDecls.reversed()
   }
 
 
-  mutable fun parseWord() : String {
-    // parse a word
-    (!pos, tok) = lexer.token(pos) ;
-    
-    tok match {
-      Some(content) -> {
-        content
-      }
-      None() -> invariant_violation("I was expecting to see an identifier or a keyword.")
+  // mutable fun parseWord() : String {
+  //   // parse a word
+  //   (!pos, tok) = lexer.token(pos) ;
+  //   
+  //   tok match {
+  //     Some(content) -> {
+  //       content
+  //     }
+  //     None() -> invariant_violation("I was expecting to see an identifier or a keyword.")
+  //   }
+  // }
+
+  mutable fun parseIdentifier() : String {
+    lexer.token(pos) match {
+      | TokIdent(str) -> str
+      | _ -> throw SyntaxError(SmolContext.Identifier(here, `I expected to read identifier, but saw "${name}".`))
     }
   }
 
 
-  fun parseVarDecl() : VarDecl {
-    // TODO: implement.
+  mutable fun parseVarDecl() : VarDecl {
     // example
     // (let x (+ 23 42))
+    // (let y 65)
 
-    expect("(") ; // )
-    expect("let") ;
-    varName = parseWord() ;
+    expect(TokOpenParen()) ;
+    expect(TokKeyword("let")) ;
+    varName = parseIdentifier() ;
     expr = parseExpr() ;
-    // (
-    expect(")") ;
+    expect(TokCloseParen()) ;
 
     VarDecl(varName, expr)
   }
 
 
-  fun parseFunDecl(lexer : Lexer, pos : Int) : (Int, FunDecl) {
+  mutable fun parseFunDecl(lexer : Lexer, pos : Int) : (Int, FunDecl) {
     // TODO: implement
+    // example
+    // (function main ()
+    //   (begin
+    //     (const a 23)
+    //     (const b (foo a 42))
+    //     (+ a b)
+    //   )
+    // )
+
+    expect(TokOpenParen()) ;
+    expect(TokKeyword("function")) ;
+    funName = parseIdentifier() ;
+
+    // parse the possibly empty sequence of formal arguments
+    params : List<EVar> = parseParams() ;
+
+    funBody : Expr = parseExpr() ;
+
+    FunDecl(funName, params, funBody)
+  }
+
+  mutable fun parseParams() : List<EVar> {
+    // examples:
+    // ()
+    // (a b c)
+
+    params : List<EVar> 
+
+    expect(TokOpenParen()) ;
+    loop {
+      if (lexer.token(pos).i1 == None()) {
+        invariant_violation(`Unexpected end of input while reading function parameters.`)
+      }
+      else if (lexer.token(pos) == Some(TokCloseParen())) {
+        expect(TokCloseParen()) ;
+        break
+      }
+      else {
+        // read the identifier
+        name = parseIdentifier() ;
+        params = List.Cons(EVar(name), params) ;
+      }
+    }
+
+    params.reversed()
+  }
+
+
+  mutable fun parseExpr() : Expr {
+    // TODO: implement
+    //  ENum(Int)
+    //  EList(List<Expr>) // Expr or EVar?
+    //  EOp(Op)
+    //  ECall(EVar, List<EVar>)
+    //  EIf(EVar, Expr, Expr)
+    //  EConst(EVar, Expr) // we only have local constants
+    //  EBlock(List<Expr>)
+    //  EWhile(Expr, Expr)
+
+    next() match {
+      | None() -> invariant_violation(`Unexpected end of input while reading expression.`)
+      | Some(tok) -> {
+        tok match {
+          | TokNum(i) -> ENum(i)
+          | TokIdent(str) -> EVar(str)
+          | TokOper(str) -> invariant_violation(`Unexpected '${str}' while reading expression.`)
+          | TokOpenParen() -> {
+            expr = parseExpr1() ;
+            expect(TokCloseParen()) ;
+            expr
+          }
+          | TokCloseParen() -> invariant_violation(`Unexpected ')' while reading expression.`)
+          | TokOpenBracket() -> {
+            contents : List<Expr> = parseListContents() ;
+            expect(TokCloseBracket()) ;
+            EList(contents)
+          }
+          | TokCloseBracket() -> invariant_violation(`Unexpected ']' while reading expression.`)
+          | TokComma() -> invariant_violation(`Unexpected ',' while reading expression.`)
+          | TokKeyword(word) -> invariant_violation(`Unexpected keyword '${word}' while reading expression.`)
+        }
+      }
+    }
+
+  }
+
+  mutable fun parseExpr1() : Expr {
+    // TODO: implement
+    //  ENum(Int)
+    //  EList(List<Expr>) // Expr or EVar?
+    //  EOp(Op)
+    //  ECall(EVar, List<EVar>)
+    //  EIf(EVar, Expr, Expr)
+    //  EConst(EVar, Expr) // we only have local constants
+    //  EBlock(List<Expr>)
+    //  EWhile(Expr, Expr)
+
+    // this function can parse all the expressions, because we are in the context of open paren
+
+    next() match {
+      | None() -> invariant_violation(`Unexpected end of input while reading composite expression.`)
+      | Some((p, tok)) -> {
+        tok match {
+          | TokNum(i) -> invariant_violation(`Unexpected number literal while reading composite expression.`)
+          | TokIdent(str) -> {
+            app = parseApplication(str) ;
+            expect(TokCloseParen()) ;
+            app
+          }
+          | TokOper(str) -> {
+            op = parseOperation(str) ;
+            expect(TokCloseParen()) ;
+            op
+          }
+          | TokKeyword(word) -> {
+            stmt = parseStatement(word) ;
+            expect(TokCloseParen()) ;
+            stmt
+          }
+          | TokOpenParen() -> {
+            expr = parseExpr1() ;
+            expect(TokCloseParen()) ;
+            expr
+          }
+          | TokCloseParen() -> invariant_violation(`Unexpected ')' while reading composite expression.`)
+          | TokOpenBracket() -> invariant_violation(`Unexpected '[' while reading composite expression.`)
+          | TokCloseBracket() -> invariant_violation(`Unexpected ']' while reading composite expression.`)
+          | TokComma() -> invariant_violation(`Unexpected ',' while reading composite expression.`)
+        }
+      }
+    }
+  }
+
+  mutable fun parseOperation(opName : String) : Expr {
+    // the opName contains the name of the operator
+    // depending on the name we parse one or two identifiers
+    // then we check that there is a closing paren but leave it there
+    // TODO: implement
+  }
+
+  mutable fun parseApplication(funName : String) : Expr {
+    // parse the application
+    // zero or many identifiers
+    // check that there is `)' but keep it there
+    // TODO: implement
+  }
+
+  mutable fun parseStatement(keyword : String) : Expr {
+    // depending on the keyword parse a specific "statement"
+    // TODO: implement
+  }
+
+  mutable fun parseListContents() : List<Expr> {
+    // TODO: implement
+    // expressions separated by `,'
+    // check that there is `]' but keep it there
   }
 
 }
@@ -214,26 +388,8 @@ class Parser(lexer : Lexer, mutable pos : Int, mutable ctxt : SmolContext.Contex
 
 // TODO:  Try to make the Parser into an object.        CHECK
 // TODO:  First, implement the same thing.              CHECK
-//        Eliminate boilerplate.                        CHECK?
-//        Inject the context for errors.
-//        Have errors as a thing.
+//        Eliminate boilerplate.                        CHECK OR DID I?
+//        Inject the context for errors.                WORKING ON IT
+//        Have errors as a thing.                       WORKING ON IT
 
 module end ;
-
-
-
-So here's what I think I could do:
-
-Whenever I am calling a function like `parseModuleHeader` or `parseVarDecls` or `parseFunDecls` or `parseExpr` ...
-I will give it to a function `parsing` that also gets a context.
-
-The `parsing` function then calls its second argument - the function. Produces a result, gives it back.
-If the call raises an error, it can add some information to the error - like building a trace.
-
-Like if we are parsing a `vars` clause, then we are parsing one variable declaration,
-then we are parsing an expression, then we are parsing if.
-
-When we raise an error, at each `parsing` we can catch that error and raise a new one that contains more information.
-This way we can answer the question of - WHAT was I parsing and WHY.
-
-It feels overengineered tho.

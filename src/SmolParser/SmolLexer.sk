@@ -1,5 +1,20 @@
 module SmolLexer;
 
+
+abstract class Token {
+  children
+    = TokNum(Int)
+    | TokIdent(String)
+    | TokOper(String)
+    | TokOpenParen()
+    | TokCloseParen()
+    | TokOpenBracket()
+    | TokCloseBracket()
+    | TokComma()
+    | TokKeyword(String)
+}
+
+
 fun isLetter(c: Char): Bool {
   Chars.isUpperCaseLetter(c) || Chars.isLowerCaseLetter(c) || c == '_'
 }
@@ -18,7 +33,40 @@ class .Lexer private (content: Vector<Char>) {
     static(text.chars())
   }
 
-  fun token(posBegin: Int): (Int, ?String) {
+  fun isNumber(pos : Int) : Bool {
+    result = token(pos)
+    if result matches Some(str) {
+      // TODO: check that the string represents a valid number
+    }
+    else {
+      false
+    }
+  }
+
+  fun wordToTok(str : String) : Token {
+         if (str = "+") TokOper(str)
+    else if (str = "-") TokOper(str)
+    else if (str = "=") TokOper(str)
+    else if (str = "<") TokOper(str)
+    else if (str = "write!") TokOper(str)
+    else if (str = "read!") TokOper(str)
+    else if (str = "set!") TokOper(str)
+
+    else if (str = "module") TokKeyword(str)
+    else if (str = "imports") TokKeyword(str)
+    else if (str = "functions") TokKeyword(str)
+    else if (str = "vars") TokKeyword(str)
+    else if (str = "function") TokKeyword(str)
+    else if (str = "let") TokKeyword(str)
+    else if (str = "const") TokKeyword(str)
+    else if (str = "if") TokKeyword(str)
+    else if (str = "begin") TokKeyword(str)
+    else if (str = "while") TokKeyword(str)
+
+    else TokIdent(str)
+  }
+
+  fun token(posBegin: Int): (Int, ?Token) {
     // ignore white spaces
     while (posBegin < this.content.size() && isSpace(this.content[posBegin])) {
       !posBegin = posBegin + 1;
@@ -35,37 +83,54 @@ class .Lexer private (content: Vector<Char>) {
       while (pos < this.content.size() && Chars.isDigit(this.content[pos])) {
         !pos = pos + 1
       }
+      int : Int = Int::fromString(String::fromChars(this.content.slice(posBegin, pos).toArray())) ;
+      return (pos, Some(TokNum(int)))
     }
     // read the whole identifier or one of (read!, set!, write!) keywords
-    // the parser will have to figure out what it word represents
     else if (isLetter(this.content[posBegin])) {
       while (pos < this.content.size() && isLetterOrDigitOrBang(this.content[pos])) {
         !pos = pos + 1
       }
+      str = String::fromChars(this.content.slice(posBegin, pos).toArray()) ;
+      return (pos, Some(wordToTok(str)))
     }
     // read special characters
     else {
       c = this.content[pos];
       !pos = pos + 1;
-      if (
-          (c == '=' || c == '!') // we don't really have this
-            &&
-          pos < this.content.size()
-            &&
-          this.content[pos] == '='
-      ) {
+      if (c == '+' || c == '-' || c == '=' || c == '<') {
         !pos = pos + 1;
+        str = String::fromChars(this.content.slice(posBegin, pos).toArray()) ;
+        return (pos, Some(wordToTok(str)))
       }
-      else if (c == '(' || c == ')') {
+      else if (c == '(') // )
+      {
         // read the paren
         !pos = pos + 1 ;
+        return (pos, Some(TokOpenParen()))
       }
-      else if (c == '[' || c == ']' || c == ',') {
+      // (
+      else if (c == ')') {
         // read the paren
         !pos = pos + 1 ;
+        return (pos, Some(TokCloseParen()))
+      }
+      else if (c == '[') {
+        // read the paren
+        !pos = pos + 1 ;
+        return (pos, Some(TokOpenBracket()))
+      }
+      else if (c == ']') {
+        // read the paren
+        !pos = pos + 1 ;
+        return (pos, Some(TokCloseBracket()))
+      }
+      else if (c == ',') {
+        // read the paren
+        !pos = pos + 1 ;
+        return (pos, Some(TokComma()))
       }
     };
-    (pos, Some(String::fromChars(this.content.slice(posBegin, pos).toArray())))
   }
 }
 
