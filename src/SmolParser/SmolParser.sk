@@ -91,15 +91,25 @@ class Parser(lexer : Lexer, mutable pos : Int, mutable ctxt : SmolContext.Contex
     Module(name, imports, varDecls, funDecls)
   }
 
+  
+
+  mutable fun pMH() : (String, List<Import>) {
+    p = this.parser;
+    (!p,name) = p.open().key("module).identifier();
+    !p = p.key("imports").open();
+    (!p, imports) = p.parseIdentifiers().why("Import list");
+    p.close().close().checkOk();
+    (name, imports)
+  }
+
 
   mutable fun parseModuleHeader() : (String, List<Import>) {
     here = pos ;
     try {
       // (module <string>)
-      expect(TokOpenParen())
+      expect(TokOpenParen()) ;
       expect(TokKeyword("module")) ;
       name = parseIdentifier() ;
-
       imports : List<Import> = List[]
       // imports (...)
       expect(TokKeyword("imports")) ;
@@ -118,9 +128,7 @@ class Parser(lexer : Lexer, mutable pos : Int, mutable ctxt : SmolContext.Contex
           !imports = List.Cons(Import(name), imports) ;
         }
       }
-
       expect(TokCloseParen()) ; // closing the list of imports
-
       expect(TokCloseParen()) ;
       (name, imports)
     }
