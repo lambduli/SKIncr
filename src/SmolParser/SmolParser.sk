@@ -199,6 +199,7 @@ class Parser(lexer : Lexer, mutable pos : Int, mutable ctxt : SmolContext.Contex
   //   }
   // }
 
+  // TODO: make it return Token
   mutable fun parseIdentifier() : String {
     lexer.token(pos) match {
       | TokIdent(str) -> str
