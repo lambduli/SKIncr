@@ -40,8 +40,8 @@ class Parser<T>(result : T, lexer : Lexer, pos : Int, ctxt : What) {
   fun doLocally<R>(what: What, fn: this ~> Parser<R>) : Parser<R> {
     // `doLocally' runs the second functional argument after it calls `.for(...)' on `this'
     // that produces a parser
-    // `doLocally' just replaces the `what' for the original, keeping the `result' and `lexer' and `pos'
-    fn(this.for(what)).for(what)
+    // `doLocally' just replaces the `what' (of the new one) with the original one, keeping the `result' and `lexer' and `pos'
+    fn(this.for(what)).for(ctxt)
   }
 
   fun map<R>(fn: T ~> R) : Parser<R> {
@@ -124,56 +124,59 @@ class Parser<T>(result : T, lexer : Lexer, pos : Int, ctxt : What) {
     (name, imports)
   }
 
-  // here the parser is immutable
-  // the pHM3 is a method
-  // Parsers are immutable
-  // so I should start with a method called on `this.' and then chain everything until I return the Parser
-  mutable fun pHM3() : Parser<(String, List<Import>)> {
-    this.for("module header")
-        .open()
-        .kword("module)
-        .parseIdentifier()
-        .kword("imports")
-        .open()
-        .doLocally("import list", (parser) ~> {
-          name = parser.result;
-          parser.parseIdentifiers() // if this fails -> "... was parsing import list ..."
-                .map((imports) ~> {
-                  parser.return(name, imports)
-                })
-        })
-        .close() // if this fails -> "... was parsing module header ..."
-        .close()
+
+  // Parsers are always immutable
+  // so I start with a method called on `this.' and then chain everything until I return the final Parser
+  fun parserModHead() : Parser<(String, List<Import>)> {
+    doLocally("module header", (parser) ~> {
+      .open()
+      .kword("module)
+      .parseIdentifier()
+      .kword("imports")
+      .open()
+      .doLocally("import list", (parser) ~> {
+        name = parser.result;
+        parser.parseIdentifiers() // if this fails -> "... was parsing import list ..."
+              .map((imports) ~> {
+                parser.return(name, imports)
+              })
+      })
+      .close() // if this fails -> "... was parsing module header ..."
+      .close()
+    })
   }
 
+  // TODO: rewrite using the new design
+  fun parseVarDecls() : List<VarDecl> {
+    here = pos ;
+    try {
+      // parse the variable declarations
+      varDecls : List<VarDecl> = List[] ;
+      // parse the "( vars (..))"
+      expect(TokOpenParen()) ;
+      expect(TokKeyword("vars")) ;
+      expect(TokOpenParen()) ;
+      loop {
+        if (lexer.token(pos).i1 == None()) {
+          throw SyntaxError(SmolContext.Imports(pos), `I expected a possibly empty list of variable declarations but the input ended unexpectedly.`)
+        }
+        else if (lexer.token(pos) == Some(TokCloseParen())) {
+          break
+        }
+        else {
+          varDecl = parseVarDecl() ;
+          !varDecls = List.Cons(decl, varDecls) ;
+        }
+      }
+      expect(TokCloseParen()) ;
 
-  mutable fun parseModuleHeader() : (String, List<Import>) {
-    // (module <string>)
-    name = for("Module header").open().kword("module").parseIdentifier() ;
-
-    imports : List<Import> = List[]
-    // imports (...)
-    for("Module imports").kword("imports").open() ;
-    // now I read the (possibly empty) list of modules to import
-    
-    loop {
-      if (lexer.token(pos).i1 == None()) {
-        throw SyntaxError(SmolContext.Imports(pos), `I expected a possibly empty list of imports but the input ended unexpectedly.`)
-      }
-      // ( I do this just because of the code higlighting breaking otherwise
-      else if (lexer.token(pos) == Some(TokCloseParen())) {
-        break
-      }
-      else {
-        name = parseIdentifier() ;
-        !imports = List.Cons(Import(name), imports) ;
-      }
+      varDecls
     }
-
-    expect(TokCloseParen()) ; // closing the list of imports
-    expect(TokCloseParen()) ;
-    (name, imports)
+    catch {
+      | SyntaxError(whats, msg) -> throw SyntaxError(List.Cons(SmolContext.Vars(here)), msg)
+    }
   }
+
 
   // a backup
   mutable fun parseModuleHeader() : (String, List<Import>) {
