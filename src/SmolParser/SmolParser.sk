@@ -1,24 +1,4 @@
-module SmolContext ;
-class Context(mutable whats : List<What>) {
-  mutable fun addCtxt(what : What) : mutable this {
-    !whats = List.Cons(what, whats) ;
-    this
-  }
-
-  mutable fun popCtxt() : mutable this {
-    whats match {
-      List.Nil() -> invariant_violation(`Huh? What are you doing? Popping Empty Contexts?`)
-      List.Cons(_, tail) -> {
-        !whats = tail;
-        this
-      }
-    }
-  }
-
-  static fun mcreate() : mutable this {
-    mutable Context(List[])
-  }
-}
+module SmolParser ;
 
 base class What {
   children  = Operation(Int)
@@ -33,28 +13,41 @@ base class What {
             | ModuleName(Int) // the name of the module
             | ImportName(Int) // the name of imported module
             | Imports(Int) // the imports list
+            | File(Int) // the whole file
 }
 
-module end ;
+// class SyntaxError(ctxt : List<SmolContext.What>, msg : String) extends Exception {}
 
-module SmolParser ;
+class Parser<T>(result : T, lexer : Lexer, pos : Int, ctxt : What) {
+  // static mcreate(lexer : Lexer) : mutable this {
+  //   mutable Parser(lexer, 0, None())
+  // }
 
-class SyntaxError(ctxt : List<SmolContext.What>, msg : String) extends Exception {}
-
-class Parser(lexer : Lexer, mutable pos : Int, mutable ctxt : SmolContext.Context) {
-  static mcreate(lexer : Lexer) : mutable this {
-    mutable Parser(lexer, 0)
+  static create(lexer: Lexer) : this {
+    Parser(void, lexer, 0, File(0))
   }
 
-  mutable fun parsing<T>(what : SmolContext.What, fn : () -> T) : T {
-    try {
-      fn()
-    }
-    catch {
-      | SyntaxError(whats, msg) -> {
-        throw SyntaxError(List.Cons(what, whats), msg)
-      }
-    }
+  fun for(what : What) : this {
+    // only replaces the `ctxt'
+    Parser(result, lexer, pos, what)
+  }
+
+  fun return<R>(val : R) : Parser<R> {
+    // `return' just replaces the value, preserving the `pos', the `lexer' and the `what' (unnecessary)
+    Parser(val, lexer, pos, ctxt)
+  }
+
+  fun doLocally<R>(what: What, fn: this ~> Parser<R>) : Parser<R> {
+    // `doLocally' runs the second functional argument after it calls `.for(...)' on `this'
+    // that produces a parser
+    // `doLocally' just replaces the `what' for the original, keeping the `result' and `lexer' and `pos'
+    fn(this.for(what)).for(what)
+  }
+
+  fun map<R>(fn: T ~> R) : Parser<R> {
+    // the functional argument only deals with the value
+    // `map' preserves the current `lexer', `pos' and `ctxt'
+    return(fn(result))
   }
 
   mutable fun expect(tok : Token) : void {
@@ -102,39 +95,113 @@ class Parser(lexer : Lexer, mutable pos : Int, mutable ctxt : SmolContext.Contex
     (name, imports)
   }
 
+  mutable fun pMH0() : (String, List<Import>) {
+    p = this;
+    (!p,name) = p.for("Module header").open().key("module).identifier();
+    !p = p.key("imports").open();
+    (!p, imports) = p.for("Import list").parseIdentifiers();
+    p.close().close();
+    (name, imports)
+  }
+
+  // what if the Parser is mutable?
+  // we don't mention it explicitly
+  // every call to `for` records the current position (obv.)
+  // and here comes the question - do we always keep only the closest context?
+  // if we want to keep more, we would need to go with the approach in the pMH0 and we would need to find a way to remove the WHAT information
+  mutable fun pMH1() : (String, List<Import>) {
+    name = for("Module header").parseOpen().parseKeyword("module).parseIdentifier();
+    parseKeyword("imports").parseOpen();
+    imports = for("Import list").parseIdentifiers();
+    parseClose().parseClose();
+    (name, imports)
+  }
+
+  mutable fun pMH2() : (String, List<Import>) {
+    name = for("Module header").open().kword("module).parseIdentifier().kword("imports").open();
+    imports = for("Import list").parseIdentifiers();
+    parseClose().parseClose();
+    (name, imports)
+  }
+
+  // here the parser is immutable
+  // the pHM3 is a method
+  // Parsers are immutable
+  // so I should start with a method called on `this.' and then chain everything until I return the Parser
+  mutable fun pHM3() : Parser<(String, List<Import>)> {
+    this.for("module header")
+        .open()
+        .kword("module)
+        .parseIdentifier()
+        .kword("imports")
+        .open()
+        .doLocally("import list", (parser) ~> {
+          name = parser.result;
+          parser.parseIdentifiers() // if this fails -> "... was parsing import list ..."
+                .map((imports) ~> {
+                  parser.return(name, imports)
+                })
+        })
+        .close() // if this fails -> "... was parsing module header ..."
+        .close()
+  }
+
 
   mutable fun parseModuleHeader() : (String, List<Import>) {
-    here = pos ;
-    try {
-      // (module <string>)
-      expect(TokOpenParen()) ;
-      expect(TokKeyword("module")) ;
-      name = parseIdentifier() ;
-      imports : List<Import> = List[]
-      // imports (...)
-      expect(TokKeyword("imports")) ;
-      expect(TokOpenParen()) ;
-      // now I read the (possibly empty) list of modules to import
-      loop {
-        if (lexer.token(pos).i1 == None()) {
-          throw SyntaxError(SmolContext.Imports(pos), `I expected a possibly empty list of imports but the input ended unexpectedly.`)
-        }
-        // ( I do this just because of the code higlighting breaking otherwise
-        else if (lexer.token(pos) == Some(TokCloseParen())) {
-          break
-        }
-        else {
-          name = parseIdentifier() ;
-          !imports = List.Cons(Import(name), imports) ;
-        }
+    // (module <string>)
+    name = for("Module header").open().kword("module").parseIdentifier() ;
+
+    imports : List<Import> = List[]
+    // imports (...)
+    for("Module imports").kword("imports").open() ;
+    // now I read the (possibly empty) list of modules to import
+    
+    loop {
+      if (lexer.token(pos).i1 == None()) {
+        throw SyntaxError(SmolContext.Imports(pos), `I expected a possibly empty list of imports but the input ended unexpectedly.`)
       }
-      expect(TokCloseParen()) ; // closing the list of imports
-      expect(TokCloseParen()) ;
-      (name, imports)
+      // ( I do this just because of the code higlighting breaking otherwise
+      else if (lexer.token(pos) == Some(TokCloseParen())) {
+        break
+      }
+      else {
+        name = parseIdentifier() ;
+        !imports = List.Cons(Import(name), imports) ;
+      }
     }
-    catch {
-      | SyntaxError(whats, msg) -> throw SyntaxError(List.Cons(SmolContext.Module(here)), msg)
+
+    expect(TokCloseParen()) ; // closing the list of imports
+    expect(TokCloseParen()) ;
+    (name, imports)
+  }
+
+  // a backup
+  mutable fun parseModuleHeader() : (String, List<Import>) {
+    // (module <string>)
+    expect(TokOpenParen()) ;
+    expect(TokKeyword("module")) ;
+    name = parseIdentifier() ;
+    imports : List<Import> = List[]
+    // imports (...)
+    expect(TokKeyword("imports")) ;
+    expect(TokOpenParen()) ;
+    // now I read the (possibly empty) list of modules to import
+    loop {
+      if (lexer.token(pos).i1 == None()) {
+        throw SyntaxError(SmolContext.Imports(pos), `I expected a possibly empty list of imports but the input ended unexpectedly.`)
+      }
+      // ( I do this just because of the code higlighting breaking otherwise
+      else if (lexer.token(pos) == Some(TokCloseParen())) {
+        break
+      }
+      else {
+        name = parseIdentifier() ;
+        !imports = List.Cons(Import(name), imports) ;
+      }
     }
+    expect(TokCloseParen()) ; // closing the list of imports
+    expect(TokCloseParen()) ;
+    (name, imports)
   }
 
 
