@@ -77,7 +77,7 @@ class Parser<T>(result : T, lexer : Lexer, pos : Int, ctxt : What) {
       }
     }
 
-    Parser(varDecls, this.lexer, parser.pos, this.ctxt)
+    Parser(varDecls.reversed(), this.lexer, parser.pos, this.ctxt)
   }
 
   fun expect(tok : Token) : this {
@@ -140,17 +140,42 @@ class Parser<T>(result : T, lexer : Lexer, pos : Int, ctxt : What) {
     }
   }
 
-  mutable fun parseModule() : Module {
-    declList : List<Decl> = List[] ;
 
-    (name, imports) = parseModuleHeader() ; // (module <string> imports (..))
+  fun parseMod() : Parser<Module> {
+    p = this.parseModHead();
+    (name, imports) = p.result;
 
-    varDecls = parseVarDecls() ;
+    !p = p.parseVarDecls();
+    varDecls = p.result;
 
-    funDecls = parseFunDecls() ;
+    !p = p.parseFunDecls();
+    funDecls = p.result;
 
-    Module(name, imports, varDecls, funDecls)
+    p.return(Module(name, imports, varDecls, funDecls))
+    
+    // this more "composed" version does not look as nice
+//    this.parseModHead()
+//        .do((parser) ~> {
+//          (name, imports) = parser.result;
+//          parser.parseVarDecls()
+//                .do((parser) ~> {
+//                  varDecls = parser.result;
+//                  p = parser.parseFunDecls();
+//                  funDecls = p.result;
+//                  p.return(Module(name, imports, varDecls, funDecls))
+//                })
+//        })
   }
+
+  // mutable fun parseModule() : Module {
+  //   (name, imports) = parseModuleHeader() ; // (module <string> imports (..))
+  //
+  //   varDecls = parseVarDecls() ;
+  //
+  //   funDecls = parseFunDecls() ;
+  //
+  //   Module(name, imports, varDecls, funDecls)
+  // }
 
   
 
@@ -197,27 +222,26 @@ class Parser<T>(result : T, lexer : Lexer, pos : Int, ctxt : What) {
   // so I start with a method called on `this.' and then chain everything until I return the final Parser
   fun parseModHead() : Parser<(String, List<Import>)> {
     doLocally("module header", (parser) ~> {
-      .open()
-      .kword("module)
-      .parseIdentifier()
-      .kword("imports")
-      .open()
-      .doLocally("import list", (parser) ~> {
-        name = parser.result;
-        parser.parseIdentifiers() // if this fails -> "... was parsing import list ..."
-              .do((parser) ~> {
-                parser.return((name, parser.result))
-              })
-      })
-      .close() // if this fails -> "... was parsing module header ..."
-      .close()
+      parser
+        .open()
+        .kword("module)
+        .parseIdentifier()
+        .kword("imports")
+        .open()
+        .doLocally("import list", (parser) ~> {
+          name = parser.result;
+          p = parser.parseIdentifiers() // if this fails -> "... was parsing import list ..."
+          imports = p.result
+          p.return((name, imports))
+        })
+        .close() // if this fails -> "... was parsing module header ..."
+        .close()
     })
   }
 
-  // TODO: rewrite using the new design
+
   fun parseVarDecls() : Parser<List<VarDecl>> {
     doLocally("variable declarations", (parser) ~> {
-
       // parse the "( vars (..))"
       parser.open()
             .kword("vars")
@@ -317,18 +341,6 @@ class Parser<T>(result : T, lexer : Lexer, pos : Int, ctxt : What) {
   }
 
 
-  // mutable fun parseWord() : String {
-  //   // parse a word
-  //   (!pos, tok) = lexer.token(pos) ;
-  //   
-  //   tok match {
-  //     Some(content) -> {
-  //       content
-  //     }
-  //     None() -> invariant_violation("I was expecting to see an identifier or a keyword.")
-  //   }
-  // }
-
   // TODO: make it return Token
   mutable fun parseIdentifier() : String {
     lexer.token(pos) match {
@@ -357,6 +369,7 @@ class Parser<T>(result : T, lexer : Lexer, pos : Int, ctxt : What) {
         })
   }
 
+
   // mutable fun parseVarDecl() : VarDecl {
   //   // example
   //   // (let x (+ 23 42))
@@ -372,54 +385,76 @@ class Parser<T>(result : T, lexer : Lexer, pos : Int, ctxt : What) {
   // }
 
 
-  mutable fun parseFunDecl(lexer : Lexer, pos : Int) : (Int, FunDecl) {
-    // TODO: implement
-    // example
-    // (function main ()
-    //   (begin
-    //     (const a 23)
-    //     (const b (foo a 42))
-    //     (+ a b)
-    //   )
-    // )
+  fun parseFunDecl() : Parser<(Int, FunDecl)> {
+    p = this.open().kword("function").parseIdentifier();
+    funName = p.result;
 
-    expect(TokOpenParen()) ;
-    expect(TokKeyword("function")) ;
-    funName = parseIdentifier() ;
+    !p = p.doLocally(`formal arguments for the function '${funName}'`, (p) ~> p.parseParams());
+    params = p.result;
 
-    // parse the possibly empty sequence of formal arguments
-    params : List<EVar> = parseParams() ;
+    !p = p.doLocally(`function body of '${funName}'`, (p) ~> p.parseExpr());
+    funBody = p.result;
 
-    funBody : Expr = parseExpr() ;
-
-    FunDecl(funName, params, funBody)
+    p.return(FunDecl(funName, params, funBody))
   }
 
-  mutable fun parseParams() : List<EVar> {
-    // examples:
-    // ()
-    // (a b c)
+  // mutable fun parseFunDecl(lexer : Lexer, pos : Int) : (Int, FunDecl) {
+  //   // example
+  //   // (function main ()
+  //   //   (begin
+  //   //     (const a 23)
+  //   //     (const b (foo a 42))
+  //   //     (+ a b)
+  //   //   )
+  //   // )
+  //
+  //   expect(TokOpenParen()) ;
+  //   expect(TokKeyword("function")) ;
+  //   funName = parseIdentifier() ;
+  //
+  //   // parse the possibly empty sequence of formal arguments
+  //   params : List<EVar> = parseParams() ;
+  //
+  //   funBody : Expr = parseExpr() ;
+  //
+  //   FunDecl(funName, params, funBody)
+  // }
 
-    params : List<EVar> 
 
-    expect(TokOpenParen()) ;
-    loop {
-      if (lexer.token(pos).i1 == None()) {
-        invariant_violation(`Unexpected end of input while reading function parameters.`)
-      }
-      else if (lexer.token(pos) == Some(TokCloseParen())) {
-        expect(TokCloseParen()) ;
-        break
-      }
-      else {
-        // read the identifier
-        name = parseIdentifier() ;
-        params = List.Cons(EVar(name), params) ;
-      }
-    }
 
-    params.reversed()
+
+
+
+  fun parseParams() : Parser<List<EVar>> {
+    open().collectUntil(TokCloseParen(), (p) ~> p.parseIdentifier()).close()
   }
+
+
+//  mutable fun parseParams() : List<EVar> {
+//    // examples:
+//    // ()
+//    // (a b c)
+//
+//    params : List<EVar> 
+//
+//    expect(TokOpenParen()) ;
+//    loop {
+//      if (lexer.token(pos).i1 == None()) {
+//        invariant_violation(`Unexpected end of input while reading function parameters.`)
+//      }
+//      else if (lexer.token(pos) == Some(TokCloseParen())) {
+//        expect(TokCloseParen()) ;
+//        break
+//      }
+//      else {
+//        // read the identifier
+//        name = parseIdentifier() ;
+//        params = List.Cons(EVar(name), params) ;
+//      }
+//    }
+//
+//    params.reversed()
+//  }
 
 
   mutable fun parseExpr() : Expr {
