@@ -1,7 +1,7 @@
 base class Expr {
   children =
   | ENum(Int)
-  | EList(List<Expr>) // Expr or EVar?
+  | EList(List<EVar>) // Expr or EVar?
   | EOp(Op)
   | ECall(EVar, List<EVar>)
   | EIf(EVar, Expr, Expr)

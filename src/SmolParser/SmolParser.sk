@@ -16,7 +16,7 @@ base class What {
             | File(Int) // the whole file
 }
 
-// class SyntaxError(ctxt : List<SmolContext.What>, msg : String) extends Exception {}
+class SyntaxError(ctxt : What, msg : String) extends Exception {}
 
 class Parser<T>(result : T, lexer : Lexer, pos : Int, ctxt : What) {
   // static mcreate(lexer : Lexer) : mutable this {
@@ -130,15 +130,23 @@ class Parser<T>(result : T, lexer : Lexer, pos : Int, ctxt : What) {
     expect(TokOpenParen())
   }
 
-  mutable fun next() : ?Token {
-    lexer.token(pos) match {
-      | None() -> None()
-      | Some(p, tok) -> {
-        !pos = p ;
-        Some(tok)
-      }
-    }
+  fun close() : this {
+    expect(TokCloseParen())
   }
+
+  fun kword(str : String) : this {
+    expect(TokKeyword(str))
+  }
+
+//  mutable fun next() : ?Token {
+//    lexer.token(pos) match {
+//      | None() -> None()
+//      | Some(p, tok) -> {
+//        !pos = p ;
+//        Some(tok)
+//      }
+//    }
+//  }
 
 
   fun parseMod() : Parser<Module> {
@@ -230,7 +238,7 @@ class Parser<T>(result : T, lexer : Lexer, pos : Int, ctxt : What) {
         .open()
         .doLocally("import list", (parser) ~> {
           name = parser.result;
-          p = parser.parseIdentifiers() // if this fails -> "... was parsing import list ..."
+          p = parser.parseIdentifiers().map((strings) ~> strings.map((str) ~> Import(str))) // if this fails -> "... was parsing import list ..."
           imports = p.result
           p.return((name, imports))
         })
@@ -315,39 +323,68 @@ class Parser<T>(result : T, lexer : Lexer, pos : Int, ctxt : What) {
   // }
 
 
-  mutable fun parseFunDecls() : List<FunDecl> {
-    // parse the function declarations
-    funDecls : List<FunDecl> = List[] ;
-    // parse the "(functions ( ... ))" part
-    expect(TokOpenParen()) ;
-    expect(TokKeyword("functions")) ;
-    expect(TokOpenParen()) ;
-    
-    loop {
-      if (lexer.token(pos).i1 == None()) {
-        invariant_violation(`Unexpected end of input in function clause.`)
-      }
-      else if (lexer.token(pos) == Some(TokCloseParen())) {
-        break
-      }
-      else {
-        decl = parseFunDecl() ;
-        !funDecls = List.Cons(decl, funDecls) ;
-      }
-    }
-    expect(TokCloseParen()) ;
-
-    funDecls.reversed()
+  fun parseFunDecls() : Parser<List<FunDecl>> {
+    doLocally("function declarations", (parser) ~>
+      parser.open()
+            .kword("functions")
+            .open()
+            .collectUntil(TokCloseParen(), (p) ~> p.parseFunDecl())
+            .close())
   }
+
+
+//  mutable fun parseFunDecls() : List<FunDecl> {
+//    // parse the function declarations
+//    funDecls : List<FunDecl> = List[] ;
+//    // parse the "(functions ( ... ))" part
+//    expect(TokOpenParen()) ;
+//    expect(TokKeyword("functions")) ;
+//    expect(TokOpenParen()) ;
+//    
+//    loop {
+//      if (lexer.token(pos).i1 == None()) {
+//        invariant_violation(`Unexpected end of input in function clause.`)
+//      }
+//      else if (lexer.token(pos) == Some(TokCloseParen())) {
+//        break
+//      }
+//      else {
+//        decl = parseFunDecl() ;
+//        !funDecls = List.Cons(decl, funDecls) ;
+//      }
+//    }
+//    expect(TokCloseParen()) ;
+//
+//    funDecls.reversed()
+//  }
 
 
   // TODO: make it return Token
-  mutable fun parseIdentifier() : String {
+  fun parseIdentifier() : Parser<String> {
     lexer.token(pos) match {
-      | TokIdent(str) -> str
-      | _ -> throw SyntaxError(SmolContext.Identifier(here, `I expected to read identifier, but saw "${name}".`))
+      | (newPos, Some(TokIdent(str))) -> Parser(str, lexer, newPos, ctxt)
+      | (_, tok) -> {
+        throw SyntaxError(ctxt, "I was expecting to read an identifier, but saw ${tok.toString()} instead.")
+        // Should produce a message looking something like:
+        // When I was parsing <imports list>
+        //                    <a function declaration for "foo">
+        //                    <a variable declaration for "bar">
+        //                                                       I was expecting to read an identifier, but saw ...
+        // That is a good looking error to me.
+      }
     }
   }
+
+  fun parseIdentifiers() : Parser<List<String>> {
+    collectUntil(TokCloseParen(), (p) ~> p.parseIdentifier())
+  }
+
+//  mutable fun parseIdentifier() : String {
+//    lexer.token(pos) match {
+//      | TokIdent(str) -> str
+//      | _ -> throw SyntaxError(SmolContext.Identifier(here, `I expected to read identifier, but saw "${name}".`))
+//    }
+//  }
 
 
   fun parseVarDecl() : Parser<VarDecl> {
@@ -457,7 +494,66 @@ class Parser<T>(result : T, lexer : Lexer, pos : Int, ctxt : What) {
 //  }
 
 
-  mutable fun parseExpr() : Expr {
+  fun parseExpr() : Parser<Expr> {
+    lexer.token(pos) match {
+      | (_, None()) -> throw SyntaxError(ctxt, "unexpected end of input while trying to parse expression") // TODO: Construct a specific error type, like UnexpectedEOFWhen("expressions")
+      | (newPos, Some(tok)) -> {
+        tok match {
+          | TokNum(i) -> return(ENum(i))
+          | TokIdent(str) -> return(EVar(str))
+          | TokOper(str) -> throw SyntaxError(ctxt, `was expecting an expression but saw operator ${str}`)
+          | TokOpenParen() -> parseExpr1().close()
+          | TokCloseParen() -> throw SyntaxError(ctxt, `was expecting an expression but saw ')'`)
+          | TokOpenBracket() -> parseIdentifiers().map((strings) ~> strings.map((str) ~> EVar(str))).closeBrace().map((vars) ~> EList(vars))
+          | TokCloseBracket() -> throw SyntaxError(ctxt, `was expecting an expression but saw ']'`)
+          | TokComma() -> throw SyntaxError(ctxt, `was expecting an expression but saw ','`)
+          | TokKeyword(word) -> throw SyntaxError(ctxt, `was expecting an expression but saw a keyword '${word}'`)
+        }
+      }
+    }
+  }
+
+
+//  mutable fun parseExpr() : Expr {
+//    // TODO: implement
+//    //  ENum(Int)
+//    //  EList(List<Expr>) // Expr or EVar?
+//    //  EOp(Op)
+//    //  ECall(EVar, List<EVar>)
+//    //  EIf(EVar, Expr, Expr)
+//    //  EConst(EVar, Expr) // we only have local constants
+//    //  EBlock(List<Expr>)
+//    //  EWhile(Expr, Expr)
+//
+//    next() match {
+//      | None() -> invariant_violation(`Unexpected end of input while reading expression.`)
+//      | Some(tok) -> {
+//        tok match {
+//          | TokNum(i) -> ENum(i)
+//          | TokIdent(str) -> EVar(str)
+//          | TokOper(str) -> invariant_violation(`Unexpected '${str}' while reading expression.`)
+//          | TokOpenParen() -> {
+//            expr = parseExpr1() ;
+//            expect(TokCloseParen()) ;
+//            expr
+//          }
+//          | TokCloseParen() -> invariant_violation(`Unexpected ')' while reading expression.`)
+//          | TokOpenBracket() -> {
+//            contents : List<Expr> = parseListContents() ;
+//            expect(TokCloseBracket()) ;
+//            EList(contents)
+//          }
+//          | TokCloseBracket() -> invariant_violation(`Unexpected ']' while reading expression.`)
+//          | TokComma() -> invariant_violation(`Unexpected ',' while reading expression.`)
+//          | TokKeyword(word) -> invariant_violation(`Unexpected keyword '${word}' while reading expression.`)
+//        }
+//      }
+//    }
+//
+//  }
+
+
+  fun parseExpr1 : Parser<Expr> {
     // TODO: implement
     //  ENum(Int)
     //  EList(List<Expr>) // Expr or EVar?
@@ -468,112 +564,166 @@ class Parser<T>(result : T, lexer : Lexer, pos : Int, ctxt : What) {
     //  EBlock(List<Expr>)
     //  EWhile(Expr, Expr)
 
-    next() match {
-      | None() -> invariant_violation(`Unexpected end of input while reading expression.`)
-      | Some(tok) -> {
+    lexer.token(pos) match {
+      | (_, None()) -> throw SyntaxError(ctxt, `was expecting an expression but saw the end of the input`) // TODO: make a custom error for this
+      | (newPos, Some(tok)) -> {
         tok match {
-          | TokNum(i) -> ENum(i)
-          | TokIdent(str) -> EVar(str)
-          | TokOper(str) -> invariant_violation(`Unexpected '${str}' while reading expression.`)
-          | TokOpenParen() -> {
-            expr = parseExpr1() ;
-            expect(TokCloseParen()) ;
-            expr
-          }
-          | TokCloseParen() -> invariant_violation(`Unexpected ')' while reading expression.`)
-          | TokOpenBracket() -> {
-            contents : List<Expr> = parseListContents() ;
-            expect(TokCloseBracket()) ;
-            EList(contents)
-          }
-          | TokCloseBracket() -> invariant_violation(`Unexpected ']' while reading expression.`)
-          | TokComma() -> invariant_violation(`Unexpected ',' while reading expression.`)
-          | TokKeyword(word) -> invariant_violation(`Unexpected keyword '${word}' while reading expression.`)
+          | TokNum(i) -> throw SyntaxError(ctxt, `unexpected numeric literal '${i}' at the LHS position of a function application`)
+          | TokIdent(str) -> parseArgs(EVar(str)).close()
+          | TokOper(str) -> doLocally(`operation '${str}'`, p ~> p.parseOperation(str).close())
+          | TokKeyword(word) -> parseStatement(word).close()
+          | TokOpenParen() -> throw SyntaxError(ctxt, `illegal nested function application`) // TODO: custom error constructor
+          | TokCloseParen() -> throw SyntaxError(ctxt, `illegal empty function application`) // TODO: custom error constructor
+          | TokOpenBracket() -> throw SyntaxError(ctxt, `illegal '[' at the start of a function application`) // TODO: custom error constructor?
+          | TokCloseBracket() -> throw SyntaxError(ctxt, `illegal ']' at the start of a function application`) // TODO: custom error constructor?
+          | TokComma() -> throw SyntaxError(ctxt, `illegal ',' at the start of a function application`) // TODO: custom error constructor?
         }
       }
     }
 
   }
 
-  mutable fun parseExpr1() : Expr {
-    // TODO: implement
-    //  ENum(Int)
-    //  EList(List<Expr>) // Expr or EVar?
-    //  EOp(Op)
-    //  ECall(EVar, List<EVar>)
-    //  EIf(EVar, Expr, Expr)
-    //  EConst(EVar, Expr) // we only have local constants
-    //  EBlock(List<Expr>)
-    //  EWhile(Expr, Expr)
 
-    // this function can parse all the expressions, because we are in the context of open paren
+//  mutable fun parseExpr1() : Expr {
+//    // TODO: implement
+//    //  ENum(Int)
+//    //  EList(List<Expr>) // Expr or EVar?
+//    //  EOp(Op)
+//    //  ECall(EVar, List<EVar>)
+//    //  EIf(EVar, Expr, Expr)
+//    //  EConst(EVar, Expr) // we only have local constants
+//    //  EBlock(List<Expr>)
+//    //  EWhile(Expr, Expr)
+//
+//    // this function can parse all the expressions, because we are in the context of open paren
+//
+//    next() match {
+//      | None() -> invariant_violation(`Unexpected end of input while reading composite expression.`)
+//      | Some((p, tok)) -> {
+//        tok match {
+//          | TokNum(i) -> invariant_violation(`Unexpected number literal while reading composite expression.`)
+//          | TokIdent(str) -> {
+//            app = parseApplication(str) ;
+//            expect(TokCloseParen()) ;
+//            app
+//          }
+//          | TokOper(str) -> {
+//            op = parseOperation(str) ;
+//            expect(TokCloseParen()) ;
+//            op
+//          }
+//          | TokKeyword(word) -> {
+//            stmt = parseStatement(word) ;
+//            expect(TokCloseParen()) ;
+//            stmt
+//          }
+//          | TokOpenParen() -> {
+//            expr = parseExpr1() ;
+//            expect(TokCloseParen()) ;
+//            expr
+//          }
+//          | TokCloseParen() -> invariant_violation(`Unexpected ')' while reading composite expression.`)
+//          | TokOpenBracket() -> invariant_violation(`Unexpected '[' while reading composite expression.`)
+//          | TokCloseBracket() -> invariant_violation(`Unexpected ']' while reading composite expression.`)
+//          | TokComma() -> invariant_violation(`Unexpected ',' while reading composite expression.`)
+//        }
+//      }
+//    }
+//  }
 
-    next() match {
-      | None() -> invariant_violation(`Unexpected end of input while reading composite expression.`)
-      | Some((p, tok)) -> {
-        tok match {
-          | TokNum(i) -> invariant_violation(`Unexpected number literal while reading composite expression.`)
-          | TokIdent(str) -> {
-            app = parseApplication(str) ;
-            expect(TokCloseParen()) ;
-            app
-          }
-          | TokOper(str) -> {
-            op = parseOperation(str) ;
-            expect(TokCloseParen()) ;
-            op
-          }
-          | TokKeyword(word) -> {
-            stmt = parseStatement(word) ;
-            expect(TokCloseParen()) ;
-            stmt
-          }
-          | TokOpenParen() -> {
-            expr = parseExpr1() ;
-            expect(TokCloseParen()) ;
-            expr
-          }
-          | TokCloseParen() -> invariant_violation(`Unexpected ')' while reading composite expression.`)
-          | TokOpenBracket() -> invariant_violation(`Unexpected '[' while reading composite expression.`)
-          | TokCloseBracket() -> invariant_violation(`Unexpected ']' while reading composite expression.`)
-          | TokComma() -> invariant_violation(`Unexpected ',' while reading composite expression.`)
-        }
-      }
-    }
-  }
-
-  mutable fun parseOperation(opName : String) : Expr {
+  fun parseOperation(opName : String) : Parser<Expr> {
     // the opName contains the name of the operator
-    // depending on the name we parse one or two identifiers
+    // depending on the name we parse one or two identifiers (or an expression)
     // then we check that there is a closing paren but leave it there
-    // TODO: implement
+
+    (opName match {
+      | "+" -> parseIdentifier().do((parser) ~> {
+        left = parser.result;
+        parser.parseIdentifier()
+              .map((right) ~> OAdd(EVar(left), EVar(right)))
+      })
+      | "-" -> parseIdentifier().do((parser) ~> {
+        left = parser.result;
+        parser.parseIdentifier()
+              .map((right) ~> OSub(EVar(left), EVar(right)))
+      })
+      | "=" -> parseIdentifier().do((parser) ~> {
+        left = parser.result;
+        parser.parseIdentifier()
+              .map((right) ~> OEq(EVar(left), EVar(right)))
+      })
+      | "<" -> parseIdentifier().do((parser) ~> {
+        left = parser.result;
+        parser.parseIdentifier()
+              .map((right) ~> OLeT(EVar(left), EVar(right)))
+      })
+      | "write!" -> parseIdentifier().map((id) ~> OWrite(EVar(id)))
+      | "read!" -> parseIdentifier().map((id) ~> ORead(EVar(id)))
+      | "set!" -> parseIdentifier().do((parser) ~> {
+        name = parser.result;
+        parser.parseExpr()
+              .map((expr) ~> OSet(EVar(name), expr))
+      })
+    }).map((op) ~> EOp(op))
   }
 
-  mutable fun parseApplication(funName : String) : Expr {
-    // parse the application
+//  mutable fun parseApplication(funName : String) : Expr {
+//    // parse the application
+//    // zero or many identifiers
+//    // check that there is `)' but keep it there
+//    // TODO: implement
+//  }
+
+  fun parseArgs(lhs : EVar) : Parser<ECall> {
+    // parse the rest of the function application
     // zero or many identifiers
     // check that there is `)' but keep it there
-    // TODO: implement
+
+    collectUntil(TokCloseParen(), (parser) ~> parser.parseIdentifier().map((id) ~> EVar(id)))
   }
 
-  mutable fun parseStatement(keyword : String) : Expr {
-    // depending on the keyword parse a specific "statement"
-    // TODO: implement
-  }
+  fun parseStatement(keyword : String) : Parser<Expr> {
+    keyword match {
+      // if <var> <expr> <expr>
+      | "if" -> {
+        p = parseIdentifier();
+        cond = p.result;
 
-  mutable fun parseListContents() : List<Expr> {
-    // TODO: implement
-    // expressions separated by `,'
-    // check that there is `]' but keep it there
-  }
+        !p = parseExpr();
+        posBranch = p.result;
 
+        !p = parseExpr();
+        negBranch = p.result;
+
+        p.return(EIf(cond, posBranch, negBranch))
+      }
+
+      | "begin" ->
+        // begin <expr_1> ... <expr_n>
+        collectUntil(TokCloseParen(), (p) ~> p.parseExpr()).map((elist) ~> EBlock(elist))
+
+      // while <expr> <expr>
+      | "while" -> parseExpr().do((parser) ~> {
+        cond = parser.result;
+        parser.parseExpr()
+              .map((body) ~> EWhile(cond, body))
+      })
+
+      // const <ident> <expr>
+      | "const" -> parseIdentifier().do((parser) ~> {
+        name = parser.result;
+        parser.parseExpr()
+              .map((def) ~> EConst(EVar(name), def))
+      })
+    }
+  }
 }
 
 
 // TODO:  Try to make the Parser into an object.        CHECK
 // TODO:  First, implement the same thing.              CHECK
 //        Eliminate boilerplate.                        CHECK OR DID I?
-//        Inject the context for errors.                WORKING ON IT
-//        Have errors as a thing.                       WORKING ON IT
+//        Inject the context for errors.                WORKING ON IT               MAYBE SOLVED IT?
+//        Have errors as a thing.                       WORKING ON IT               ALMOST THERE?
 
 module end ;
