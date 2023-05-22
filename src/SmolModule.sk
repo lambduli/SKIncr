@@ -1,14 +1,7 @@
-value class Module(String, List<Import>, List<VarDecl>, List<FunDecl>) // module name, all imports, all global mutable variable declarations, all function declarations
+value class Module(modName: String, imports: List<Import>, mutVars: List<VarDecl>, funcs: List<FunDecl>) uses Hashable, Orderable
 
+value class Import(moduleName: String) uses Hashable, Orderable
 
-fun moduleSize() : Int { // a number of bindings in the module
+value class VarDecl(varName: String, init: Expr) uses Hashable, Orderable
 
-}
-
-
-value class Import(String) // name of the module to import
-
-
-value class VarDecl(String, Expr) // name of the variable, expression that initializes it
-
-value class FunDecl(String, List<EVar>, Expr) // name, list of parameters, body
+value class FunDecl(funName: String, params: List<EVar>, body: Expr) uses Hashable, Orderable

@@ -1,10 +1,41 @@
-base class Val {
-  children =
-  | VUnit()
-  | VNum(Int)
-  | VBool(Bool)
-  | VList(List<Val>)
-  | VClosure(List<EVar>, Expr, Env, String) // a list of parameters, a code, and an environment
+mutable base class Val uses Show
+
+mutable class VUnit extends Val {
+  fun toString(): String {
+    "()"
+  }
 }
 
-// TODO: implement show() for all Values
+mutable class VNum(i: Int) extends Val {
+  fun toString(): String {
+    `${i}`
+  }
+}
+
+mutable class VBool(b: Bool) extends Val {
+  fun toString(): String {
+    `${b}`
+  }
+}
+
+mutable class VList(l: List<mutable Val>) extends Val {
+  fun toString(): String {
+    `TODO: implement`
+  }
+}
+
+mutable class VClosure(params: List<EVar>, body: Expr, env: Env, fname: String) extends Val {
+  fun toString(): String {
+    `TODO: implement`
+  }
+}
+
+// children =
+//   | VUnit()
+//   | VNum(i: Int)
+//   | VBool(b: Bool)
+//   | VList(List<mutable Val>)
+//   | VClosure(params: List<EVar>, body: Expr, env: Env, fname: String) // a list of parameters, a code, and an environment
+// 
+// // TODO: implement show() for all Values
+// 

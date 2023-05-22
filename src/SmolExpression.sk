@@ -1,4 +1,4 @@
-base class Expr {
+base class Expr uses Hashable, Orderable {
   children =
   | ENum(Int)
   | EList(List<EVar>) // Expr or EVar?
@@ -11,14 +11,14 @@ base class Expr {
 }
 
 
-class EVar(name: String) extends Expr uses Orderable, Show {
+class EVar(name: String) extends Expr uses Show {
   fun toString(): String {
     this.name
   }
 }
 
 
-base class Op {
+base class Op uses Hashable, Orderable {
   children =
   | OAdd(EVar, EVar)    // +
   | OSub(EVar, EVar)    // -

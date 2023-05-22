@@ -16,9 +16,9 @@
 
 
 // evalProgram needs to 
-fun evalProgram(program : Program) : (Env, Value) {
+fun evalProgram(program : Program) : (Env, Val) {
   // first do a non-total top-sort ordering of the list of Modules within the Program
-  modules : List<Modules> = program match { | Program(ms, _) -> ms } ;
+  modules : List<Module> = program match { | Program(ms) -> ms } ;
   topSorted : List<Module> = sortModules(modules) ;
 
   // then build the evaluation context
@@ -27,7 +27,7 @@ fun evalProgram(program : Program) : (Env, Value) {
 
   // then evaluate the "main" function in the Main module
   // evaluate a call like "main()" or "main(...args)", depending on whether I have some arguments for "main"
-  theCall : ECall(EVar("main"), List.Nil()) ;
+  theCall = ECall(EVar("main"), List.Nil()) ;
 
   exitVal = evalExpr(context, theCall) ;
 
@@ -43,13 +43,13 @@ fun evalProgram(program : Program) : (Env, Value) {
 
 fun sortModules(modules : List<Module>) : List<Module> {
   m2i : Map<Module, Int> = makeM2I(modules);
-  i2m : Map<Int, Module> = Map.mapItems((m, i) ~> (i, m));
+  i2m : Map<Int, Module> = m2i.mapItems((m, i) ~> (i, m));
   graph : Map<Int, Set<Int>> = buildGraph(modules, m2i);
   // now when I've build a graph, I can start the algorithm
 
 
   l : List<Int> = List.Nil();
-  s : Set<Int> = Set.createFromItems(graph.filter((i, is) ~> is.isEmpty()).map((i, _is) ~> i));
+  s : Set<Int> = Set::createFromItems(graph.filter((i, is) ~> is.isEmpty()).map((i, _is) ~> i));
 
   while (! s.isEmpty()) {
     n : Int = getFirst(s);
@@ -57,7 +57,7 @@ fun sortModules(modules : List<Module>) : List<Module> {
     s.remove(n);
 
     // add N to L
-    l = List.Cons(n, l)
+    !l = List.Cons(n, l);
 
     // for every node M depending on N:
     for (m in dependants(graph, n))
@@ -65,7 +65,7 @@ fun sortModules(modules : List<Module>) : List<Module> {
       graph.set(m, graph.get(m).remove(n));
       // if M has no more dependencies -> add it to S
       if (graph.get(m).isEmpty()) s.add(m)
-  }
+  };
 
   // if graph has edges -> error (a cycle)
   if (! graph.isEmpty()) invariant_violation("Module Cycle!");
@@ -75,21 +75,27 @@ fun sortModules(modules : List<Module>) : List<Module> {
 }
 
 fun makeM2I(modules : List<Module>) : Map<Module, Int> {
-  items = modules.mapWithIndex((i, m) ~> (m, i))
-  Map.createFromItems(items)
+  items = modules.mapWithIndex((i, m) ~> (m, i));
+  Map::createFromItems(items)
 }
 
 fun buildGraph(ms : List<Module>, m2i : Map<Module, Int>) : Map<Int, Set<Int>> {
-  items = modules.map((m) ~> (m2i.get(m), dependencies(m, ms).map((m) ~> m2i.get(m))));
-  Map.createFromItems(items)
+  items = ms.map((m) ~> (  m2i.get(m), Set::createFromItems(dependencies(m, ms).map((m) ~> m2i.get(m)))  ));
+  Map::createFromItems(items)
 }
 
 fun dependencies(m : Module, ms : List<Module>) : Set<Module> {
   m match {
-    | Module(name, imports, _, _) -> {
-      names : Set<String> = Set.createFromItems(import.map(moduleName));
-      Set.createFromItems(ms.filter((m) ~> names.contains(moduleName(m))))
+    | Module(_, imports, _, _) -> {
+      names : Set<String> = Set::createFromItems(imports.map(importedModName));
+      Set::createFromItems(ms.filter((m) ~> names.contains(moduleName(m))))
     }
+  }
+}
+
+fun importedModName(m : Import) : String {
+  m match {
+    | Import(n) -> n
   }
 }
 
@@ -99,14 +105,15 @@ fun moduleName(m : Module) : String {
   }
 }
 
-fun getFirst<T>(s : Set<T>) : T {
+fun getFirst<T: Hashable & Equality>(s : Set<T>) : T {
   s.values().next() match {
     | Some(t) -> t
+    | None() -> invariant_violation("Interpreter Error: EMPTY SET")
   }
 }
 
 fun dependants(graph : Map<Int, Set<Int>>, node : Int) : Set<Int> {
-  Set.createFromIterator(graph.filter((i, is) ~> is.contains(node)).mapItems((i, _is) ~> i).keys())
+  Set::createFromIterator(graph.filter((_, is) ~> is.contains(node)).keys())
 }
 /////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -117,21 +124,21 @@ fun dependants(graph : Map<Int, Set<Int>>, node : Int) : Set<Int> {
 //////////////////////////////////////
 
 fun programToContext(sorted : List<Module>) : Env {
-  initScopeChain : Env = List.Nil() ; // an empty chain
+  initScopeChain : Env = mutable List.Nil() ; // an empty chain
 
-  finalEnv = sorted.foldl((env : Env, module : Module) ~> {
-    moduleName = module match {
+  finalEnv = sorted.foldl((env : Env, mod : Module) ~> {
+    moduleName = mod match {
       | Module(name, _, _, _) -> name
     } ;
 
-    declCnt = module match {
+    declCnt = mod match {
       | Module(_, _, vars, funs) -> vars.size() + funs.size()
     } ;
 
-    thisModuleScope : Scope = ModuleScope(Map.mcreate(declCnt), moduleName) ;
+    thisModuleScope : mutable Scope = mutable ModuleScope(Map::mcreate(declCnt), moduleName) ;
     currentEnv : Env = List.Cons(thisModuleScope, env) ;
 
-    moduleToContext(currentEnv, module) ;
+    moduleToContext(currentEnv, mod) ;
 
     currentEnv // explicitly returning the current stack/scope chain/environment
   }, initScopeChain) ;
@@ -140,7 +147,7 @@ fun programToContext(sorted : List<Module>) : Env {
 }
 
 
-fun moduleToContext(env : Env, module : Module) : void {
+fun moduleToContext(env : Env, mod : Module) : void {
   // This function does not add anything to the Env stack
   // it only mutates the top-most Scope's mapping using Map.set() function.
   // 
@@ -148,17 +155,15 @@ fun moduleToContext(env : Env, module : Module) : void {
   // Functions go first - those variables might need them.
   // Variables are expected to be in topological ordering with no cyclic dependencies between them.
 
-  currentModuleScope : Scope = env.getHead() ;  // this is the scope I will add stuff into
+  currentModuleScope : mutable Scope = env.getHead() ;  // this is the scope I will add stuff into
 
-  currentScopeMapping : Map<EVar, Val> = currentModuleScope match {
-    | ModuleScope(mapping, _) -> mapping
-  } ;
+  currentScopeMapping : Map<EVar, Val> = currentModuleScope.mapping;
 
-  funDecls = module match {
+  funDecls = mod match {
       | Module(_, _, _, funDecls) -> funDecls
     } ;
 
-  varDecls = module match {
+  varDecls = mod match {
       | Module(_, _, varDecls, _) -> varDecls
     } ;
 

@@ -1,21 +1,26 @@
-fun evalExpr(env : Env, expr : Expr) : Val {
+fun evalExpr(env : Env, expr : Expr) : mutable Val {
   expr match {
-    | ENum(int) -> VNum(int)
+    | ENum(int) -> mutable VNum(int)
 
     | var@EVar(_) -> lookup(var, env)
 
-    | EList(exprs) -> {
-      exprs.mapAcc((newState, expr) ~> evalExpr(env, newState,expr), state) match {
-        | (newState, vals) -> (newState, VList(vals))
+    | EList(vars) -> {
+      vars.map((var) -> lookup(var, env)) match {
+        | vals -> mutable VList(vals)
       }
     }
 
-    | EOp(op, args) -> evalOpCall(env, op, args)
+    | EOp(op) -> evalOpCall(env, op)
 
     | ECall(fname, args) -> {
-      closure = lookup(fname, env) ;
-      argVals = args.map((expr) ~> evalExpr(env, expr)) ;
-      evalFnCall(closure, argVals)
+      val = lookup(fname, env);
+      val match {
+        | clsr@VClosure(_, _, _, _) -> {
+          argVals = args.map((expr) -> evalExpr(env, expr)) ;
+          evalFnCall(clsr, argVals)
+        }
+        | _ -> invariant_violation("Interpreter Error: The LHS of a function application is not a closure value.")
+      }
     }
 
     | EIf(cond, thenB, elseB) ->  {
@@ -26,64 +31,67 @@ fun evalExpr(env : Env, expr : Expr) : Val {
         | VBool(false) -> {
           evalExpr(env, elseB)
         }
+        | _ -> invariant_violation("Interpreter Error: Non-bool value in IF expression.")
       }
     }
 
-    | EConst(var, expr) -> {
-      val = evalExpr(env, expr) ;
+    | EConst(var, e) -> {
+      val = evalExpr(env, e) ;
       putIntoLocalScope(var, val, env) ;
       val
     }
 
     | EBlock(exprs) -> {
-      blockScope : Scope = BlockScope(Map.mcreate(10)) // magic number for no reason at all ... ¯\_(O.o)_/¯
+      blockScope = mutable BlockScope(Map::mcreate(0));
       
-      scopeChain: Env = List.Cons(blockScope, env) ;
+      scopeChain = mutable List.Cons(blockScope, env) ;
 
-      vals = exprs.map((expr) ~> evalExpr(scopeChain, expr)) ;
+      vals = exprs.map((expr) -> evalExpr(scopeChain, expr)) ;
       vals.last()
     }
 
     | EWhile(cond, body) -> {
       // run some aux function that takes the env, condition-expr, and an expression
       evalLoop(env, cond, body) ;
-      VUnit // loops do not evaluate to a value I guess ... ¯\_(Ô.ō)_/¯
+      mutable VUnit() // loops do not evaluate to a value I guess ... ¯\_(Ô.ō)_/¯
     }
   }
 }
 
 
 fun evalLoop(env : Env, cond : Expr, body : Expr) : void {
-  condVal : Val = evalExpr(env, cond) ;
+  condVal: mutable Val = evalExpr(env, cond) ;
 
-  condVal match {
+  _ = condVal match {
     | VBool(true) -> {
-      evalExpr(env, body) ;
-      evalLoop(env, cond, body)
+      _ = evalExpr(env, body);
+      _ = evalLoop(env, cond, body)
     }
 
     | VBool(false) -> void
-  }
+
+    | _ -> invariant_violation("Interpreter Error: The condition in WHILE loop has a non-bool type.")
+  };
 }
 
 
-fun evalFnCall(closure: VClosure, args : List<Val>) : Val {
+fun evalFnCall(closure: mutable VClosure, args : List<mutable Val>) : mutable Val {
   params = closure.params ;
   body = closure.body ;
-  env = closure.env ;
-  funName = closure.name ;
+  env: Env = closure.env ;
+  funName = closure.fname ;
 
-  items = List.map2((param, arg) ~> (param, arg), params, args) ;
-  mapping = Map.mcreateFromItems(items) ;
-  funScope : Scope = FunctionScope(mapping, funName) ;
+  items = List::map2((param, arg) ~> (param, arg), params, args) ;
+  mapping = Map::mcreateFromItems(items);
+  funScope: mutable Scope = mutable FunctionScope(mapping, funName) ;
 
-  scopeChain : Env = List.Cons(funScope, env) ;
+  scopeChain: Env = mutable List.Cons(funScope, env) ;
 
   evalExpr(scopeChain, body)
 }
 
 
-fun evalOpCall(env : Env, op : Op, args : List<EVar>) : Val {
+fun evalOpCall(env : Env, op : Op) : mutable Val {
   op match {
     | OAdd(lexpr, rexpr)  -> doBinOp(env, lexpr, rexpr, (lVal, rVal) ~> VNum(lVal.i + rVal.i))
     | OSub(lexpr, rexpr)  -> doBinOp(env, lexpr, rexpr, (lVal, rVal) ~> VNum(lVal.i - rVal.i))
@@ -92,23 +100,24 @@ fun evalOpCall(env : Env, op : Op, args : List<EVar>) : Val {
 
     | OWrite(expr) -> {
       val = evalExpr(env, expr) ;
-      str = val.show() ;
+      str = val.toString() ;
       val
     }
 
     | ORead(EVar(name)) -> {
       // TODO: read a number from the std in and update the environment
       // also return the value that was stored
-      read_line match {
-        None -> void // TODO: do something
+      read_line() match {
+        | None() -> void // TODO: do something
+        | Some(_) -> void // TODO: do something
       } ;
 
-      VUnit()
+      mutable VUnit()
     }
 
     | OSet(var@EVar(_), expr) -> {
       val = evalExpr(env, expr) ;
-      updateSlot(env, var, val) ;
+      _ = updateSlot(var, env, val) ;
       val
     }
   }
@@ -116,7 +125,7 @@ fun evalOpCall(env : Env, op : Op, args : List<EVar>) : Val {
 
 
 
-fun doBinOp(env : Env, left : Expr, right : Expr, fn : (Expr, Expr) ~> Val) : Val {
+fun doBinOp(env : Env, left : Expr, right : Expr, fn : (mutable Val, mutable Val) ~> mutable Val) : mutable Val {
   valLeft = evalExpr(env, left) ;
     
   valRight = evalExpr(env, right) ;
@@ -130,7 +139,7 @@ fun asNum(num : VNum) : Int {
 
 
 
-fun lookup(env : Env, mem : Mem, fName : EVar) : Val {
-  addr = env.get(fName);
-  mem.get(addr)
-}
+// fun lookup(env : Env, mem : Mem, fName : EVar) : Val {
+//   addr = env.get(fName);
+//   mem.get(addr)
+// }

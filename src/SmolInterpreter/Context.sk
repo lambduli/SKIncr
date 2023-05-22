@@ -1,18 +1,23 @@
-type Env = List<Scope> ;
+type Env = mutable List<mutable Scope> ;
 
 
-base class Scope {
+mutable base class Scope {
   children =
-    | ModuleScope(mapping : Map<EVar, Val>, name : String) // module-name
-    | FunctionScope(mapping : Map<EVar, Val>, name : String) // function-name + a position (later)
-    | BlockScope(mapping : Map<EVar, Val>) // a position (later)
+    | ModuleScope(mapping : mutable Map<EVar, mutable Val>, name : String) // module-name
+    | FunctionScope(mapping : mutable Map<EVar, mutable Val>, name : String) // function-name + a position (later)
+    | BlockScope(mapping : mutable Map<EVar, mutable Val>) // a position (later)
 }
 
 
-fun lookup(var : EVar, env : Env) : Val {
-  optVal = None() ;
+fun mapempty() : Map<EVar, Val> {
+  Map::createFromIterator(List[].values());
+}
+
+
+fun lookup(var : EVar, env : Env) : mutable Val {
+  optVal: Option<mutable Val> = None() ;
   
-  maybeFound = env.find((scope : Scope) ->
+  _ = env.find((scope : mutable Scope) ->
     scope match {
       | ModuleScope(mapping, _)
       | FunctionScope(mapping, _)
@@ -21,17 +26,17 @@ fun lookup(var : EVar, env : Env) : Val {
         mapping.maybeGet(var) match {
           | None() -> false
           | Some(val) -> {
-            optVal = Some(val) ;
+            !optVal = Some(val) ;
             true
           }
         }
-    }) ;
+    });
 
-  optVal.fromSome(`Error: Didn't find a variable ${var.toString()}`)
+  optVal.fromSome(`Interpreter Error: Didn't find a variable ${var.toString()}`) // TODO: probably have a custom error handling
 }
 
 
-fun putIntoLocalScope(var, val, env) : void {
+fun putIntoLocalScope(var : EVar, val : mutable Val, env : Env) : void {
   env match {
     | List.Cons(ModuleScope(mapping, _), _)
     | List.Cons(FunctionScope(mapping, _), _)
@@ -41,21 +46,28 @@ fun putIntoLocalScope(var, val, env) : void {
 }
 
 
-fun updateSlot(var : EVar, env : Env, val : Val) : Val {
-  maybeFound = env.find((scope : Scope) ->
-    scope match {
-      | ModuleScope(mapping, _)
-      | FunctionScope(mapping, _)
-      | BlockScope(mapping) ->
-        // try to find it in the mapping
-        mapping.maybeGet(var) match {
-          | None() -> false
-          | Some(val) -> {
-            optVal = Some(val) ;
-            true
-          }
-        }
-    }) ;
+fun updateSlot(var : EVar, env : Env, val : mutable Val) : Val {
+  maybeMapping : Option<mutable Map<EVar, Val>> = None();
+
+  _ = env.find((scope : mutable Scope) ->
+        scope match {
+          | ModuleScope(mapping, _)
+          | FunctionScope(mapping, _)
+          | BlockScope(mapping) ->
+            // try to find it in the mapping
+            mapping.maybeGet(var) match {
+              | None() -> false
+              | Some(_) -> {
+                !maybeMapping = Some(mapping);
+                true
+              }
+            }
+        });
+
+  maybeMapping match {
+    | None() -> invariant_violation(`Interpreter Error: Tried to update a variable '${var}' but it is not in the scope.`)
+    | Some(mapping) -> mapping.set(var, val)
+  };
 
   val
 }

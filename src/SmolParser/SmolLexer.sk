@@ -1,17 +1,67 @@
 module SmolLexer;
 
-abstract class Token {
-  children
-    = TokNum(Int)
-    | TokIdent(String)
-    | TokOper(String)
-    | TokOpenParen()
-    | TokCloseParen()
-    | TokOpenBracket()
-    | TokCloseBracket()
-    | TokComma()
-    | TokKeyword(String)
+base class Token uses Show, Equality {
+  overridable fun equals(_other: Token) : Bool {
+    invariant_violation("I don't even know anymore.")
+  }
 }
+
+class TokNum(i: Int) extends Token {
+  fun toString() : String {
+    this.i.toString()
+  }
+}
+
+class TokIdent(name: String) extends Token {
+  fun toString() : String {
+    this.name
+  }
+}
+
+class TokOper(name: String) extends Token {
+  fun toString() : String { 
+    this.name
+  }
+}
+
+class TokOpenParen() extends Token {
+  fun toString() : String {
+    "("
+  }
+}
+
+class TokCloseParen() extends Token {
+  fun toString() : String {
+    ")"
+  }
+}
+
+class TokOpenBracket() extends Token {
+  fun toString() : String {
+    "["
+  }
+}
+
+class TokCloseBracket() extends Token {
+  fun toString() : String {
+    "]"
+  }
+}
+
+class TokComma() extends Token {
+  fun toString() : String {
+    ","
+  }
+}
+
+class TokKeyword(name: String) extends Token {
+  fun toString() : String {
+    this.name
+  }
+}
+
+
+
 
 fun isLetter(c: Char): Bool {
   Chars.isUpperCaseLetter(c) || Chars.isLowerCaseLetter(c) || c == '_'
@@ -31,34 +81,24 @@ class .Lexer private (content: Vector<Char>) {
     static(text.chars())
   }
 
-  fun isNumber(pos : Int) : Bool {
-    result = token(pos)
-    if result matches Some(str) {
-      // TODO: check that the string represents a valid number
-    }
-    else {
-      false
-    }
-  }
-
   fun wordToTok(str : String) : Token {
-         if (str = "+") TokOper(str)
-    else if (str = "-") TokOper(str)
-    else if (str = "=") TokOper(str)
-    else if (str = "<") TokOper(str)
-    else if (str = "write!") TokOper(str)
-    else if (str = "read!") TokOper(str)
-    else if (str = "set!") TokOper(str)
-    else if (str = "module") TokKeyword(str)
-    else if (str = "imports") TokKeyword(str)
-    else if (str = "functions") TokKeyword(str)
-    else if (str = "vars") TokKeyword(str)
-    else if (str = "function") TokKeyword(str)
-    else if (str = "let") TokKeyword(str)
-    else if (str = "const") TokKeyword(str)
-    else if (str = "if") TokKeyword(str)
-    else if (str = "begin") TokKeyword(str)
-    else if (str = "while") TokKeyword(str)
+         if (str == "+") TokOper(str)
+    else if (str == "-") TokOper(str)
+    else if (str == "=") TokOper(str)
+    else if (str == "<") TokOper(str)
+    else if (str == "write!") TokOper(str)
+    else if (str == "read!") TokOper(str)
+    else if (str == "set!") TokOper(str)
+    else if (str == "module") TokKeyword(str)
+    else if (str == "imports") TokKeyword(str)
+    else if (str == "functions") TokKeyword(str)
+    else if (str == "vars") TokKeyword(str)
+    else if (str == "function") TokKeyword(str)
+    else if (str == "let") TokKeyword(str)
+    else if (str == "const") TokKeyword(str)
+    else if (str == "if") TokKeyword(str)
+    else if (str == "begin") TokKeyword(str)
+    else if (str == "while") TokKeyword(str)
     else TokIdent(str)
   }
 
@@ -78,17 +118,21 @@ class .Lexer private (content: Vector<Char>) {
     if (Chars.isDigit(this.content[posBegin])) {
       while (pos < this.content.size() && Chars.isDigit(this.content[pos])) {
         !pos = pos + 1
+      };
+
+      str: String = String::fromChars(this.content.slice(posBegin, pos).toArray());
+      str.toIntOption() match {
+        | None() -> invariant_violation("This can't really happen")
+        | Some(i) -> (pos, Some(TokNum(i)))
       }
-      int : Int = Int::fromString(String::fromChars(this.content.slice(posBegin, pos).toArray())) ;
-      return (pos, Some(TokNum(int)))
     }
     // read the whole identifier or one of (read!, set!, write!) keywords
     else if (isLetter(this.content[posBegin])) {
       while (pos < this.content.size() && isLetterOrDigitOrBang(this.content[pos])) {
         !pos = pos + 1
-      }
+      };
       str = String::fromChars(this.content.slice(posBegin, pos).toArray()) ;
-      return (pos, Some(wordToTok(str)))
+      (pos, Some(wordToTok(str)))
     }
     // read special characters
     else {
@@ -97,36 +141,52 @@ class .Lexer private (content: Vector<Char>) {
       if (c == '+' || c == '-' || c == '=' || c == '<') {
         !pos = pos + 1;
         str = String::fromChars(this.content.slice(posBegin, pos).toArray()) ;
-        return (pos, Some(wordToTok(str)))
+        (pos, Some(wordToTok(str)))
       }
       else if (c == '(') // )
       {
         // read the paren
         !pos = pos + 1 ;
-        return (pos, Some(TokOpenParen()))
+        (pos, Some(TokOpenParen()))
       }
       // (
       else if (c == ')') {
         // read the paren
         !pos = pos + 1 ;
-        return (pos, Some(TokCloseParen()))
+        (pos, Some(TokCloseParen()))
       }
       else if (c == '[') {
         // read the paren
         !pos = pos + 1 ;
-        return (pos, Some(TokOpenBracket()))
+        (pos, Some(TokOpenBracket()))
       }
       else if (c == ']') {
         // read the paren
         !pos = pos + 1 ;
-        return (pos, Some(TokCloseBracket()))
+        (pos, Some(TokCloseBracket()))
       }
       else if (c == ',') {
         // read the paren
         !pos = pos + 1 ;
-        return (pos, Some(TokComma()))
+        (pos, Some(TokComma()))
+      }
+      else {
+        invariant_violation(`Lexical Error: Unknown token '${c}'.`) // TODO: this should produce the ordinary parsing error. Or rather some new subtype of it.
       }
     };
+  }
+}
+
+fun wordToTok(str: String) : Token {
+  str match {
+    | "+" -> TokOper(str)
+    | "-" -> TokOper(str)
+    | "=" -> TokOper(str)
+    | "<" -> TokOper(str)
+    | "write!" -> TokKeyword(str)
+    | "read!" -> TokKeyword(str)
+    | "set!" -> TokKeyword(str)
+    | _ -> TokIdent(str)
   }
 }
 
