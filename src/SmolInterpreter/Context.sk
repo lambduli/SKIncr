@@ -8,6 +8,14 @@ mutable base class Scope {
     | BlockScope(mapping : mutable Map<EVar, mutable Val>) // a position (later)
 }
 
+fun mapping(scope: mutable Scope): mutable Map<EVar, mutable Val> {
+  scope match {
+    | ModuleScope(m, _)
+    | FunctionScope(m, _)
+    | BlockScope(m) -> m
+  }
+}
+
 
 fun mapempty() : Map<EVar, Val> {
   Map::createFromIterator(List[].values());
@@ -46,8 +54,8 @@ fun putIntoLocalScope(var : EVar, val : mutable Val, env : Env) : void {
 }
 
 
-fun updateSlot(var : EVar, env : Env, val : mutable Val) : Val {
-  maybeMapping : Option<mutable Map<EVar, Val>> = None();
+fun updateSlot(var : EVar, env : Env, val : mutable Val) : mutable Val {
+  maybeMapping : Option<mutable Map<EVar, mutable Val>> = None();
 
   _ = env.find((scope : mutable Scope) ->
         scope match {

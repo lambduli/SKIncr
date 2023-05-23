@@ -93,18 +93,18 @@ fun evalFnCall(closure: mutable VClosure, args : List<mutable Val>) : mutable Va
 
 fun evalOpCall(env : Env, op : Op) : mutable Val {
   op match {
-    | OAdd(lexpr, rexpr)  -> doBinOp(env, lexpr, rexpr, (lVal, rVal) ~> VNum(lVal.i + rVal.i))
-    | OSub(lexpr, rexpr)  -> doBinOp(env, lexpr, rexpr, (lVal, rVal) ~> VNum(lVal.i - rVal.i))
-    | OEq(lexpr, rexpr)   -> doBinOp(env, lexpr, rexpr, (lVal, rVal) ~> VBool(lVal.i == rVal.i))
-    | OLeT(lexpr, rexpr)  -> doBinOp(env, lexpr, rexpr, (lVal, rVal) ~> VBool(lVal.i < rVal.i))
+    | OAdd(lexpr, rexpr)  -> doBinOp(env, lexpr, rexpr, (lVal, rVal) ~> mutable VNum(lVal.i + rVal.i))
+    | OSub(lexpr, rexpr)  -> doBinOp(env, lexpr, rexpr, (lVal, rVal) ~> mutable VNum(lVal.i - rVal.i))
+    | OEq(lexpr, rexpr)   -> doBinOp(env, lexpr, rexpr, (lVal, rVal) ~> mutable VBool(lVal.i == rVal.i))
+    | OLeT(lexpr, rexpr)  -> doBinOp(env, lexpr, rexpr, (lVal, rVal) ~> mutable VBool(lVal.i < rVal.i))
 
     | OWrite(expr) -> {
       val = evalExpr(env, expr) ;
-      str = val.toString() ;
+      _str = val.toString() ;
       val
     }
 
-    | ORead(EVar(name)) -> {
+    | ORead(EVar(_name)) -> {
       // TODO: read a number from the std in and update the environment
       // also return the value that was stored
       read_line() match {
@@ -125,12 +125,14 @@ fun evalOpCall(env : Env, op : Op) : mutable Val {
 
 
 
-fun doBinOp(env : Env, left : Expr, right : Expr, fn : (mutable Val, mutable Val) ~> mutable Val) : mutable Val {
-  valLeft = evalExpr(env, left) ;
-    
-  valRight = evalExpr(env, right) ;
-  
-  fn(valLeft, valRight)
+fun doBinOp(env : Env, left : Expr, right : Expr, fn : (mutable VNum, mutable VNum) ~> mutable Val) : mutable Val {
+  valLeft = evalExpr(env, left);
+  valRight = evalExpr(env, right);
+
+  (valLeft, valRight) match {
+    | (l@VNum(_), r@VNum(_)) -> fn(l, r)
+    | _ -> invariant_violation(`[TYPE ERROR] Intepreter Error: Operands are not numbers.`)
+  }
 }
 
 fun asNum(num : VNum) : Int {

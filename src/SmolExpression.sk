@@ -1,4 +1,4 @@
-base class Expr uses Hashable, Orderable {
+base class Expr uses Hashable, Orderable, Show {
   children =
   | ENum(Int)
   | EList(List<EVar>) // Expr or EVar?
@@ -8,17 +8,25 @@ base class Expr uses Hashable, Orderable {
   | EConst(EVar, Expr) // we only have local constants
   | EBlock(List<Expr>)
   | EWhile(Expr, Expr)
-}
+  | EVar(name: String)
 
-
-class EVar(name: String) extends Expr uses Show {
   fun toString(): String {
-    this.name
+    this match {
+      | ENum(i) -> `${i}`
+      | EList(vars) -> `[${vars}]`
+      | EOp(op) -> `${op}`
+      | ECall(var, vars) -> `(${var} ${vars})`
+      | EIf(var, thn, els) -> `(if ${var} ${thn} ${els})`
+      | EConst(var, expr) -> `(const ${var} ${expr})`
+      | EBlock(exprs) -> `(begin ${exprs})`
+      | EWhile(cond, body) -> `(while ${cond} ${body})`
+      | EVar(name) -> name
+    }
   }
 }
 
 
-base class Op uses Hashable, Orderable {
+base class Op uses Hashable, Orderable, Show {
   children =
   | OAdd(EVar, EVar)    // +
   | OSub(EVar, EVar)    // -
@@ -27,4 +35,16 @@ base class Op uses Hashable, Orderable {
   | OWrite(EVar)        // write!
   | ORead(EVar)         // read!
   | OSet(EVar, Expr)    // set!
+
+  fun toString(): String {
+    this match {
+      | OAdd(lvar, rvar) -> `(+ ${lvar} ${rvar})`
+      | OSub(lvar, rvar) -> `(- ${lvar} ${rvar})`
+      | OEq(lvar, rvar) -> `(= ${lvar} ${rvar})`
+      | OLeT(lvar, rvar) -> `(<= ${lvar} ${rvar})`
+      | OWrite(var) -> `(write! ${var})`
+      | ORead(var) -> `(read! ${var})`
+      | OSet(var, expr) -> `(set! ${var} ${expr})`
+    }
+  }
 }

@@ -1,31 +1,31 @@
 mutable base class Val uses Show
 
-mutable class VUnit extends Val {
-  fun toString(): String {
+mutable class VUnit() extends Val {
+  readonly fun toString(): String {
     "()"
   }
 }
 
 mutable class VNum(i: Int) extends Val {
-  fun toString(): String {
-    `${i}`
+  readonly fun toString(): String {
+    `${this.i}`
   }
 }
 
 mutable class VBool(b: Bool) extends Val {
-  fun toString(): String {
-    `${b}`
+  readonly fun toString(): String {
+    `${this.b}`
   }
 }
 
 mutable class VList(l: List<mutable Val>) extends Val {
-  fun toString(): String {
+  readonly fun toString(): String {
     `TODO: implement`
   }
 }
 
 mutable class VClosure(params: List<EVar>, body: Expr, env: Env, fname: String) extends Val {
-  fun toString(): String {
+  readonly fun toString(): String {
     `TODO: implement`
   }
 }
