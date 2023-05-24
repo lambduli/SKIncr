@@ -93,4 +93,19 @@ examples: build/skia
 # @echo "--------------------------------------------------"
 	@cat ./src/examples/one-fun.smol | ./build/skia
 
+	@echo "--------------------------------------------------"
+	@echo "file:  ./src/examples/control-flow.smol"
+# @echo ""
+# @cat ./src/examples/control-flow.smol
+# @echo "--------------------------------------------------"
+	@cat ./src/examples/control-flow.smol | ./build/skia
+
+
+	@echo "--------------------------------------------------"
+	@echo "file:  ./src/examples/comments.smol"
+# @echo ""
+# @cat ./src/examples/comments.smol
+# @echo "--------------------------------------------------"
+	@cat ./src/examples/comments.smol | ./build/skia
+
 	@echo "====================== DONE ======================"

@@ -2,6 +2,8 @@ fun evalExpr(env : Env, expr : Expr) : mutable Val {
   expr match {
     | ENum(int) -> mutable VNum(int)
 
+    | EBool(b) -> mutable VBool(b)
+
     | var@EVar(_) -> lookup(var, env)
 
     | EList(vars) -> {

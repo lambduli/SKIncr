@@ -3,7 +3,7 @@ fun main(): void {
   loop {
     read_line() match {
     | None() -> break void
-    | Some(line) -> !text = text + line
+    | Some(line) -> !text = text + "\n" + line
     }
   };
   
@@ -18,7 +18,7 @@ fun main(): void {
   //       print_string(`${tok}`);
   //     }
   //     | _ -> {
-  //       print_string("something bad happened");
+  //       print_string("At the end of the input.");
   //       break void;
   //     }
   //   }

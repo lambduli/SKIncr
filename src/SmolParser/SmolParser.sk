@@ -54,26 +54,31 @@ class IllegalApplication{ msg : String } extends SyntaxError {
   }
 }
 
+class UnknownToken{ s : Char } extends SyntaxError {
+  fun toString() : String {
+    `I saw unknown symbol '${this.s}'.\n`
+  }
+}
+
+fun raise<T>(err: SyntaxError, lexer: Lexer): T {
+  input: Vector<Char> = lexer.content;
+  // now print a small amount of tokens leading to the error
+  begin = max(0, err.at - 30);
+  end = err.at;
+  slice = String::fromChars(input.slice(begin, end).toArray());
+
+  arr = Vector::mfill(end - begin - 1, ' ');
+  arr.push('^');
+  arrows = String::fromChars(arr.toArray());
+
+  print_string(`[ERROR]\n'${err}'\n`);
+  print_string(`${slice}`);
+  print_string(`${arrows}`);
+  throw err;
+}
+
 
 class .Parser<+T>(result : T, lexer : Lexer, pos : Int, ctxt : String) {
-  fun raise<T>(err: SyntaxError): T {
-    input: Vector<Char> = this.lexer.content;
-    // now print a small amount of tokens leading to the error
-    begin = max(0, err.at - 30);
-    end = err.at;
-    slice = String::fromChars(input.slice(begin, end).toArray());
-
-    arr = Vector::mfill(end - begin - 1, ' ');
-    arr.push('^');
-    arrows = String::fromChars(arr.toArray());
-
-    print_string(`[THROWING] '${err}'\n`);
-    print_string(`${slice}`);
-    print_string(`${arrows}`);
-    throw err;
-  }
-
-
   static fun create(lexer: Lexer) : Parser<void> {
     filename = "TODO: put the name here"; // TODO: fix
     Parser(void, lexer, 0, `a file '${filename}'`)
@@ -140,9 +145,9 @@ class .Parser<+T>(result : T, lexer : Lexer, pos : Int, ctxt : String) {
   fun expect(tok : Token) : this {
     (newpos, newtok) = this.lexer.token(this.pos);
     newtok match {
-      | None() -> this.raise(UnexpectedEOI{ ctxt => this.ctxt, at => this.pos, expected => tok })
+      | None() -> raise(UnexpectedEOI{ ctxt => this.ctxt, at => newpos, expected => tok }, this.lexer)
       | Some(actual) ->
-          if (actual != tok) this.raise(TokenMismatch{ ctxt => this.ctxt, at => newpos, expected => tok, saw => actual })
+          if (actual != tok) raise(TokenMismatch{ ctxt => this.ctxt, at => newpos, expected => tok, saw => actual }, this.lexer)
           else Parser(this.result, this.lexer, newpos, this.ctxt)
     }
   }
@@ -246,8 +251,8 @@ class .Parser<+T>(result : T, lexer : Lexer, pos : Int, ctxt : String) {
     t = this.lexer.token(this.pos);
     t match {
       | (newPos, Some(TokIdent(str))) -> Parser(str, this.lexer, newPos, this.ctxt)
-      | (newpos, Some(tok)) -> this.raise(NotIdentifier{ ctxt => this.ctxt, at => newpos, saw => tok })
-      | (_, None()) -> this.raise(UnexpectedEOIWhen{ parsing => "an identifier", at => this.pos, ctxt => this.ctxt })
+      | (newpos, Some(tok)) -> raise(NotIdentifier{ ctxt => this.ctxt, at => newpos, saw => tok }, this.lexer)
+      | (_, None()) -> raise(UnexpectedEOIWhen{ parsing => "an identifier", at => this.pos, ctxt => this.ctxt }, this.lexer)
     }
   }
 
@@ -319,19 +324,20 @@ class .Parser<+T>(result : T, lexer : Lexer, pos : Int, ctxt : String) {
 
   fun parseExpr() : Parser<Expr> {
     this.lexer.token(this.pos) match {
-      | (_, None()) -> this.raise(UnexpectedEOIWhen{ ctxt => this.ctxt, at => this.pos, parsing => "an expression" })
+      | (_, None()) -> raise(UnexpectedEOIWhen{ ctxt => this.ctxt, at => this.pos, parsing => "an expression" }, this.lexer)
       | (newPos, Some(tok)) -> {
         p = this.moveTo(newPos);
         tok match {
           | TokNum(i) -> p.return_(ENum(i))
+          | TokBool(b) -> p.return_(EBool(b))
           | TokIdent(str) -> p.return_(EVar(str))
-          | TokOper(str) -> this.raise(UnexpectedTokenWhen{ ctxt => this.ctxt, at => this.pos, parsing => "an expression", saw => TokOper(str) })
+          | TokOper(str) -> raise(UnexpectedTokenWhen{ ctxt => this.ctxt, at => this.pos, parsing => "an expression", saw => TokOper(str) }, this.lexer)
           | TokOpenParen() -> p.parseExpr1()
-          | TokCloseParen() -> this.raise(UnexpectedTokenWhen{ ctxt => this.ctxt, at => this.pos, parsing => "an expression", saw => TokCloseParen() })
+          | TokCloseParen() -> raise(UnexpectedTokenWhen{ ctxt => this.ctxt, at => this.pos, parsing => "an expression", saw => TokCloseParen() }, this.lexer)
           | TokOpenBracket() -> p.parseVars().closeBracket().map((vars) ~> EList(vars))
-          | TokCloseBracket() -> this.raise(UnexpectedTokenWhen{ ctxt => this.ctxt, at => this.pos, parsing => "an expression", saw => TokCloseBracket() })
-          | TokComma() -> this.raise(UnexpectedTokenWhen{ ctxt => this.ctxt, at => this.pos, parsing => "an expression", saw => TokComma() })
-          | TokKeyword(word) -> this.raise(UnexpectedTokenWhen{ ctxt => this.ctxt, at => this.pos, parsing => "an expression", saw => TokKeyword(word) })
+          | TokCloseBracket() -> raise(UnexpectedTokenWhen{ ctxt => this.ctxt, at => this.pos, parsing => "an expression", saw => TokCloseBracket() }, this.lexer)
+          | TokComma() -> raise(UnexpectedTokenWhen{ ctxt => this.ctxt, at => this.pos, parsing => "an expression", saw => TokComma() }, this.lexer)
+          | TokKeyword(word) -> raise(UnexpectedTokenWhen{ ctxt => this.ctxt, at => this.pos, parsing => "an expression", saw => TokKeyword(word) }, this.lexer)
         }
       }
     }
@@ -348,19 +354,20 @@ class .Parser<+T>(result : T, lexer : Lexer, pos : Int, ctxt : String) {
     //  EWhile(Expr, Expr)
 
     this.lexer.token(this.pos) match {
-      | (_, None()) -> this.raise(UnexpectedEOIWhen{ ctxt => this.ctxt, at => this.pos, parsing => "an expression" })
+      | (_, None()) -> raise(UnexpectedEOIWhen{ ctxt => this.ctxt, at => this.pos, parsing => "an expression" }, this.lexer)
       | (newPos, Some(tok)) -> {
         p = this.moveTo(newPos);
         tok match {
-          | TokNum(i) -> this.raise(IllegalApplication{ ctxt => this.ctxt, at => this.pos, msg => `unexpected numeric literal '${i}' at the LHS of a function application` })
+          | TokNum(i) -> raise(IllegalApplication{ ctxt => this.ctxt, at => this.pos, msg => `unexpected numeric literal '${i}' at the LHS of a function application` }, this.lexer)
+          | TokBool(b) -> raise(IllegalApplication{ ctxt => this.ctxt, at => this.pos, msg => `unexpected boolean literal '${b}' at the LHS of a function application` }, this.lexer)
           | TokIdent(str) -> p.parseArgs(EVar(str)).close()
           | TokOper(str) -> p.doLocally(`operation '${str}'`, p ~> p.parseOperation(str).close())
           | TokKeyword(word) -> p.doLocally(`a statement`, p ~> p.parseStatement(word).close())
-          | TokOpenParen() -> this.raise(IllegalApplication{ ctxt => this.ctxt, at => this.pos, msg => `the LHS being a composite expression while it should be an identifier` })
-          | TokCloseParen() -> this.raise(IllegalApplication{ ctxt => this.ctxt, at => this.pos, msg => `no function and no arguments` })
-          | TokOpenBracket() -> this.raise(IllegalApplication{ ctxt => this.ctxt, at => this.pos, msg => `illegal '['` })
-          | TokCloseBracket() -> this.raise(IllegalApplication{ ctxt => this.ctxt, at => this.pos, msg => `illegal ']'` })
-          | TokComma() -> this.raise(IllegalApplication{ ctxt => this.ctxt, at => this.pos, msg => `illegal ','` })
+          | TokOpenParen() -> raise(IllegalApplication{ ctxt => this.ctxt, at => this.pos, msg => `the LHS being a composite expression while it should be an identifier` }, this.lexer)
+          | TokCloseParen() -> raise(IllegalApplication{ ctxt => this.ctxt, at => this.pos, msg => `no function and no arguments` }, this.lexer)
+          | TokOpenBracket() -> raise(IllegalApplication{ ctxt => this.ctxt, at => this.pos, msg => `illegal '['` }, this.lexer)
+          | TokCloseBracket() -> raise(IllegalApplication{ ctxt => this.ctxt, at => this.pos, msg => `illegal ']'` }, this.lexer)
+          | TokComma() -> raise(IllegalApplication{ ctxt => this.ctxt, at => this.pos, msg => `illegal ','` }, this.lexer)
         }
       }
     }

@@ -1,6 +1,7 @@
 base class Expr uses Hashable, Orderable, Show {
   children =
   | ENum(Int)
+  | EBool(Bool)
   | EList(List<EVar>) // Expr or EVar?
   | EOp(Op)
   | ECall(EVar, List<EVar>)
@@ -13,6 +14,7 @@ base class Expr uses Hashable, Orderable, Show {
   fun toString(): String {
     this match {
       | ENum(i) -> `${i}`
+      | EBool(b) -> `${b}`
       | EList(vars) -> `[${vars}]`
       | EOp(op) -> `${op}`
       | ECall(var, vars) -> `(${var} ${vars})`
