@@ -3,7 +3,7 @@ fun main(): void {
   loop {
     read_line() match {
     | None() -> break void
-    | Some(line) -> !text = text + line
+    | Some(line) -> !text = text + "\n" + line
     }
   };
   

@@ -1,0 +1,74 @@
+(module Main imports ())
+
+# this is a comment, it spans until the end of this line
+
+(vars (
+  (let two 2) #  these would make more sense as global constants
+  (let three 3) # ^ and this one
+  (let cond (< two three))
+
+  (let x (if condition 0 1)) # because of the limitations, all the mutable state must be global, unusual
+  (let shouldContinue True)
+))
+
+(functions (
+  (function not (bool)
+    (if bool False True))
+
+  (function foo ()
+    # some comment saying what 'foo' does followed by an empty line
+
+    (begin
+      (const a 23)
+      (while shouldContinue
+        (begin
+          (const one 1)
+          (const y (+ one x))
+          (set! x y)
+          (const eq (= x a))
+          (set! shouldContinue (not eq))
+        )
+      )
+    )
+  )
+
+  (function simpler ()
+    (const a 23)
+  )
+  
+  (function simple ()
+    (begin
+      (const a 23)
+    )
+  )
+
+  (function main ()
+    (begin
+      (const a 23)
+      (const c 42)
+      (const b (foo a c))
+      (+ a b)
+    )
+  )
+
+  (function foo (x y)
+    (begin
+      (const z 0)
+      (while (< x y)
+        (begin
+          (set! z (+ y z))
+          (const one 1)
+          (set! x (+ x one))
+        )
+      )
+      z
+    )
+  )
+))
+# so can there be something?
+# can I end the file without a newline?
+# seems like I can
+# I think the parser does not care if there is something after the functions declaration section ends
+# let's test it
+foo bar True + 23
+# it works just fine, maybe unusual for a language

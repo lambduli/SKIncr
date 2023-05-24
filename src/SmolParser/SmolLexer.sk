@@ -84,11 +84,27 @@ class .Lexer private (content: Vector<Char>) {
     static(text.chars())
   }
 
-  fun token(posBegin: Int): (Int, ?Token) {
-    // ignore white spaces
-    while (posBegin < this.content.size() && isSpace(this.content[posBegin])) {
-      !posBegin = posBegin + 1;
+  fun skipWhiteAndComment(posBegin: Int): Int {
+    while (posBegin < this.content.size()) {
+      if (this.content[posBegin] == '#') {
+        while(posBegin < this.content.size()) {
+          if (this.content[posBegin] == '\n') break void;
+          !posBegin = posBegin + 1;
+        }
+      }
+      else if (isSpace(this.content[posBegin])) {
+        !posBegin = posBegin + 1;
+      }
+      else {
+        break void;
+      }
     };
+    posBegin
+  }
+
+
+  fun token(posBegin: Int): (Int, ?Token) {
+    !posBegin = this.skipWhiteAndComment(posBegin);
 
     if (posBegin >= this.content.size()) {
       return (posBegin, None());

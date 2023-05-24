@@ -145,7 +145,7 @@ class .Parser<+T>(result : T, lexer : Lexer, pos : Int, ctxt : String) {
   fun expect(tok : Token) : this {
     (newpos, newtok) = this.lexer.token(this.pos);
     newtok match {
-      | None() -> raise(UnexpectedEOI{ ctxt => this.ctxt, at => this.pos, expected => tok }, this.lexer)
+      | None() -> raise(UnexpectedEOI{ ctxt => this.ctxt, at => newpos, expected => tok }, this.lexer)
       | Some(actual) ->
           if (actual != tok) raise(TokenMismatch{ ctxt => this.ctxt, at => newpos, expected => tok, saw => actual }, this.lexer)
           else Parser(this.result, this.lexer, newpos, this.ctxt)
