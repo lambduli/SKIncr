@@ -1,4 +1,4 @@
-module Lexer;
+module Parser;
 
 base class Token uses Show, Equality {
   overridable fun equals(_other: Token) : Bool {
@@ -61,8 +61,6 @@ class TokKeyword(name: String) extends Token {
 }
 
 
-
-
 fun isLetter(c: Char): Bool {
   Chars.isUpperCaseLetter(c) || Chars.isLowerCaseLetter(c) || c == '_'
 }
@@ -74,7 +72,6 @@ fun isLetterOrDigitOrBang(c: Char): Bool {
 fun isSpace(c: Char): Bool {
   c == ' ' || c == '\t' || c == '\n'
 }
-
 
 class .Lexer private (content: Vector<Char>) {
   static fun create(text: String): this {

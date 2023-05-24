@@ -1,23 +1,20 @@
-module alias Tok = Lexer;
-
 module Parser;
-
 
 base class SyntaxError{ ctxt : String, at : Int } extends Exception {
   overridable fun toString() : String {
-    invariant_violation(`The abstract .toString() of an error was called! | ctxt='${this.ctxt}' at='${this.at}'`)
+    invariant_violation(`The .toString() of an error was called! | ctxt='${this.ctxt}' at='${this.at}'`)
   }
 }
 
-class TokenMismatch{ expected : Tok.Token, saw : Tok.Token } extends SyntaxError {
+class TokenMismatch{ expected : Token, saw : Token } extends SyntaxError {
   fun toString() : String {
-    `I was expecting '${this.expected}' but instead saw '${this.saw}'.` +
+    `I was expecting '${this.expected}' but saw '${this.saw}'.` +
     `\n` +
     `When I was parsing ${this.ctxt}.`
   }
 }
 
-class NotIdentifier{ saw : Tok.Token } extends SyntaxError {
+class NotIdentifier{ saw : Token } extends SyntaxError {
   fun toString() : String {
     `I was expecting to read an identifier, but saw '${this.saw}'.` +
     `\n` +
@@ -25,7 +22,7 @@ class NotIdentifier{ saw : Tok.Token } extends SyntaxError {
   }
 }
 
-class UnexpectedEOI{ expected : Tok.Token } extends SyntaxError {
+class UnexpectedEOI{ expected : Token } extends SyntaxError {
   fun toString() : String {
     `I was expecting to read '${this.expected}' but the input ended inexpectedly.` +
     `\n` +
@@ -41,7 +38,7 @@ class UnexpectedEOIWhen{ parsing : String } extends SyntaxError {
   }
 }
 
-class UnexpectedTokenWhen{ parsing : String, saw : Tok.Token } extends SyntaxError {
+class UnexpectedTokenWhen{ parsing : String, saw : Token } extends SyntaxError {
   fun toString() : String {
     `I was trying to parse ${this.parsing} but saw the token '${this.saw.toString()}' which should not be there.` +
     `\n` +
@@ -56,8 +53,6 @@ class IllegalApplication{ msg : String } extends SyntaxError {
     `When I was parsing ${this.ctxt}.`
   }
 }
-
-
 
 
 class .Parser<+T>(result : T, lexer : Lexer, pos : Int, ctxt : String) {
@@ -117,7 +112,7 @@ class .Parser<+T>(result : T, lexer : Lexer, pos : Int, ctxt : String) {
 
   // the function could be written in more functional style, using recursion instead of the loop
   // no mutation would be necessary, then
-  fun collectUntil<R>(tok: Tok.Token, fn: Parser<void> ~> Parser<R>) : Parser<List<R>> {
+  fun collectUntil<R>(tok: Token, fn: Parser<void> ~> Parser<R>) : Parser<List<R>> {
     // must preserve the `ctxt'
     // changes the `pos'
     // the `result' is the List<R>
@@ -142,7 +137,7 @@ class .Parser<+T>(result : T, lexer : Lexer, pos : Int, ctxt : String) {
     Parser(things.reversed(), this.lexer, parser.pos, this.ctxt)
   }
 
-  fun expect(tok : Tok.Token) : this {
+  fun expect(tok : Token) : this {
     (newpos, newtok) = this.lexer.token(this.pos);
     newtok match {
       | None() -> this.raise(UnexpectedEOI{ ctxt => this.ctxt, at => this.pos, expected => tok })
@@ -156,19 +151,19 @@ class .Parser<+T>(result : T, lexer : Lexer, pos : Int, ctxt : String) {
     // reads the open paren from the input
     // keeps the `result' intact
     // returns a new parser with the same `lexer`, a different `pos' and the same `ctxt'
-    this.expect(Tok.TokOpenParen())
+    this.expect(TokOpenParen())
   }
 
   fun close() : this {
-    this.expect(Tok.TokCloseParen())
+    this.expect(TokCloseParen())
   }
 
   fun closeBracket() : this {
-    this.expect(Tok.TokCloseBracket())
+    this.expect(TokCloseBracket())
   }
 
   fun kword(str : String) : this {
-    this.expect(Tok.TokKeyword(str))
+    this.expect(TokKeyword(str))
   }
 
 
@@ -232,7 +227,7 @@ class .Parser<+T>(result : T, lexer : Lexer, pos : Int, ctxt : String) {
       parser.open()
             .kword("vars")
             .open()
-            .collectUntil(Tok.TokCloseParen(), (parser) ~> parser.parseVarDecl())
+            .collectUntil(TokCloseParen(), (parser) ~> parser.parseVarDecl())
             .close()
             .close()
     })
@@ -242,7 +237,7 @@ class .Parser<+T>(result : T, lexer : Lexer, pos : Int, ctxt : String) {
     this.doLocally("function declarations", (parser) ~> parser.open()
                                                               .kword("functions")
                                                               .open()
-                                                              .collectUntil(Tok.TokCloseParen(), (p) ~> p.parseFunDecl())
+                                                              .collectUntil(TokCloseParen(), (p) ~> p.parseFunDecl())
                                                               .close())
   }
 
@@ -250,14 +245,14 @@ class .Parser<+T>(result : T, lexer : Lexer, pos : Int, ctxt : String) {
   fun parseIdentifier() : Parser<String> {
     t = this.lexer.token(this.pos);
     t match {
-      | (newPos, Some(Tok.TokIdent(str))) -> Parser(str, this.lexer, newPos, this.ctxt)
+      | (newPos, Some(TokIdent(str))) -> Parser(str, this.lexer, newPos, this.ctxt)
       | (newpos, Some(tok)) -> this.raise(NotIdentifier{ ctxt => this.ctxt, at => newpos, saw => tok })
       | (_, None()) -> this.raise(UnexpectedEOIWhen{ parsing => "an identifier", at => this.pos, ctxt => this.ctxt })
     }
   }
 
   fun parseIdentifiers() : Parser<List<String>> {
-    this.collectUntil(Tok.TokCloseParen(), (p) ~> p.parseIdentifier())
+    this.collectUntil(TokCloseParen(), (p) ~> p.parseIdentifier())
   }
 
   fun parseVarDecl() : Parser<VarDecl> {
@@ -316,7 +311,7 @@ class .Parser<+T>(result : T, lexer : Lexer, pos : Int, ctxt : String) {
 //  }
 
   fun parseParams() : Parser<List<EVar>> {
-    this.open().collectUntil(Tok.TokCloseParen(), (p) ~> {
+    this.open().collectUntil(TokCloseParen(), (p) ~> {
       o: Parser<EVar> = p.parseIdentifier().map((str) ~> EVar(str));
       o
   }).close()
@@ -328,15 +323,15 @@ class .Parser<+T>(result : T, lexer : Lexer, pos : Int, ctxt : String) {
       | (newPos, Some(tok)) -> {
         p = this.moveTo(newPos);
         tok match {
-          | Tok.TokNum(i) -> p.return_(ENum(i))
-          | Tok.TokIdent(str) -> p.return_(EVar(str))
-          | Tok.TokOper(str) -> this.raise(UnexpectedTokenWhen{ ctxt => this.ctxt, at => this.pos, parsing => "an expression", saw => Tok.TokOper(str) })
-          | Tok.TokOpenParen() -> p.parseExpr1()
-          | Tok.TokCloseParen() -> this.raise(UnexpectedTokenWhen{ ctxt => this.ctxt, at => this.pos, parsing => "an expression", saw => Tok.TokCloseParen() })
-          | Tok.TokOpenBracket() -> p.parseVars().closeBracket().map((vars) ~> EList(vars))
-          | Tok.TokCloseBracket() -> this.raise(UnexpectedTokenWhen{ ctxt => this.ctxt, at => this.pos, parsing => "an expression", saw => Tok.TokCloseBracket() })
-          | Tok.TokComma() -> this.raise(UnexpectedTokenWhen{ ctxt => this.ctxt, at => this.pos, parsing => "an expression", saw => Tok.TokComma() })
-          | Tok.TokKeyword(word) -> this.raise(UnexpectedTokenWhen{ ctxt => this.ctxt, at => this.pos, parsing => "an expression", saw => Tok.TokKeyword(word) })
+          | TokNum(i) -> p.return_(ENum(i))
+          | TokIdent(str) -> p.return_(EVar(str))
+          | TokOper(str) -> this.raise(UnexpectedTokenWhen{ ctxt => this.ctxt, at => this.pos, parsing => "an expression", saw => TokOper(str) })
+          | TokOpenParen() -> p.parseExpr1()
+          | TokCloseParen() -> this.raise(UnexpectedTokenWhen{ ctxt => this.ctxt, at => this.pos, parsing => "an expression", saw => TokCloseParen() })
+          | TokOpenBracket() -> p.parseVars().closeBracket().map((vars) ~> EList(vars))
+          | TokCloseBracket() -> this.raise(UnexpectedTokenWhen{ ctxt => this.ctxt, at => this.pos, parsing => "an expression", saw => TokCloseBracket() })
+          | TokComma() -> this.raise(UnexpectedTokenWhen{ ctxt => this.ctxt, at => this.pos, parsing => "an expression", saw => TokComma() })
+          | TokKeyword(word) -> this.raise(UnexpectedTokenWhen{ ctxt => this.ctxt, at => this.pos, parsing => "an expression", saw => TokKeyword(word) })
         }
       }
     }
@@ -357,15 +352,15 @@ class .Parser<+T>(result : T, lexer : Lexer, pos : Int, ctxt : String) {
       | (newPos, Some(tok)) -> {
         p = this.moveTo(newPos);
         tok match {
-          | Tok.TokNum(i) -> this.raise(IllegalApplication{ ctxt => this.ctxt, at => this.pos, msg => `unexpected numeric literal '${i}' at the LHS position of a function application` })
-          | Tok.TokIdent(str) -> p.parseArgs(EVar(str)).close()
-          | Tok.TokOper(str) -> p.doLocally(`operation '${str}'`, p ~> p.parseOperation(str).close())
-          | Tok.TokKeyword(word) -> p.doLocally(`a statement`, p ~> p.parseStatement(word).close())
-          | Tok.TokOpenParen() -> this.raise(IllegalApplication{ ctxt => this.ctxt, at => this.pos, msg => `the LHS being a composite expression while it should be an identifier` })
-          | Tok.TokCloseParen() -> this.raise(IllegalApplication{ ctxt => this.ctxt, at => this.pos, msg => `no function and no arguments` })
-          | Tok.TokOpenBracket() -> this.raise(IllegalApplication{ ctxt => this.ctxt, at => this.pos, msg => `illegal '['` })
-          | Tok.TokCloseBracket() -> this.raise(IllegalApplication{ ctxt => this.ctxt, at => this.pos, msg => `illegal ']'` })
-          | Tok.TokComma() -> this.raise(IllegalApplication{ ctxt => this.ctxt, at => this.pos, msg => `illegal ','` })
+          | TokNum(i) -> this.raise(IllegalApplication{ ctxt => this.ctxt, at => this.pos, msg => `unexpected numeric literal '${i}' at the LHS of a function application` })
+          | TokIdent(str) -> p.parseArgs(EVar(str)).close()
+          | TokOper(str) -> p.doLocally(`operation '${str}'`, p ~> p.parseOperation(str).close())
+          | TokKeyword(word) -> p.doLocally(`a statement`, p ~> p.parseStatement(word).close())
+          | TokOpenParen() -> this.raise(IllegalApplication{ ctxt => this.ctxt, at => this.pos, msg => `the LHS being a composite expression while it should be an identifier` })
+          | TokCloseParen() -> this.raise(IllegalApplication{ ctxt => this.ctxt, at => this.pos, msg => `no function and no arguments` })
+          | TokOpenBracket() -> this.raise(IllegalApplication{ ctxt => this.ctxt, at => this.pos, msg => `illegal '['` })
+          | TokCloseBracket() -> this.raise(IllegalApplication{ ctxt => this.ctxt, at => this.pos, msg => `illegal ']'` })
+          | TokComma() -> this.raise(IllegalApplication{ ctxt => this.ctxt, at => this.pos, msg => `illegal ','` })
         }
       }
     }
@@ -404,7 +399,7 @@ class .Parser<+T>(result : T, lexer : Lexer, pos : Int, ctxt : String) {
         parser.parseExpr()
               .map((expr) ~> OSet(EVar(name), expr))
       })
-      | _ -> invariant_violation("[INTERNAL] Parser Error: It looks like the Lexer gave me an Operator Token which seems to be unknown to the Parser")
+      | _ -> invariant_violation("[INTERNAL] Parser Error: the Lexer gave me an unknown Operator Token")
     }).map((op) ~> EOp(op))
   }
 
@@ -417,7 +412,7 @@ class .Parser<+T>(result : T, lexer : Lexer, pos : Int, ctxt : String) {
   }
 
   fun parseVars() : Parser<List<EVar>> {
-    this.collectUntil(Tok.TokCloseParen(), (parser) ~> parser.parseIdentifier().map((id) ~> EVar(id)))
+    this.collectUntil(TokCloseParen(), (parser) ~> parser.parseIdentifier().map((id) ~> EVar(id)))
   }
 
   // rewriting because of the same reason as the ones above (re-assignment)
@@ -445,7 +440,7 @@ class .Parser<+T>(result : T, lexer : Lexer, pos : Int, ctxt : String) {
 
       | "begin" ->
         // begin <expr_1> ... <expr_n>
-        this.collectUntil(Tok.TokCloseParen(), (p) ~> p.parseExpr()).map((elist) ~> EBlock(elist))
+        this.collectUntil(TokCloseParen(), (p) ~> p.parseExpr()).map((elist) ~> EBlock(elist))
 
       // while <expr> <expr>
       | "while" -> this.parseExpr().do_((parser) ~> {
@@ -485,7 +480,7 @@ class .Parser<+T>(result : T, lexer : Lexer, pos : Int, ctxt : String) {
 //
 //      | "begin" ->
 //        // begin <expr_1> ... <expr_n>
-//        this.collectUntil(Tok.TokCloseParen(), (p) ~> p.parseExpr()).map((elist) ~> EBlock(elist))
+//        this.collectUntil(TokCloseParen(), (p) ~> p.parseExpr()).map((elist) ~> EBlock(elist))
 //
 //      // while <expr> <expr>
 //      | "while" -> this.parseExpr().do_((parser) ~> {
@@ -504,12 +499,4 @@ class .Parser<+T>(result : T, lexer : Lexer, pos : Int, ctxt : String) {
 //  }
 }
 
-
-module end ;
-
-// fun max(a: Int, b: Int): Int {
-//   if (a > b)
-//     a
-//   else
-//     b
-// }
+module end;
