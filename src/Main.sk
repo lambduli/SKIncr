@@ -1,6 +1,4 @@
-fun main(): void {
-  print_string("Hello world!");
-  
+fun main(): void {  
   text = "";
   loop {
     read_line() match {
@@ -11,36 +9,33 @@ fun main(): void {
   
   lexer = Lexer::create(text);
 
-  print_string("lexer created");
-
-  pos = Some(0);
-
-  loop {
-    lexer.token(pos.fromSome("impossible!")) match {
-      | (npos, Some(tok)) -> {
-        !pos = Some(npos); // npos;
-        print_string(`${tok}`);
-      }
-      | _ -> {
-        print_string("something bad happened");
-        break void;
-      }
-    }
-  };
+  // pos = Some(0);
+  // 
+  // loop {
+  //   lexer.token(pos.fromSome("impossible!")) match {
+  //     | (npos, Some(tok)) -> {
+  //       !pos = Some(npos); // npos;
+  //       print_string(`${tok}`);
+  //     }
+  //     | _ -> {
+  //       print_string("something bad happened");
+  //       break void;
+  //     }
+  //   }
+  // };
 
   p = Parser::create(lexer);
-
-  print_string("parser created");
   
-  mod = p.parseMod().result;
+  _mod = p.parseMod().result;
 
-  print_string(`Parsed: \n${mod}`);
+  // Printing what I parsed takes too much space.
+  // print_string(`Parsed:\n\n${mod}`);
+  
+  // can't do try-catch because in embedded mode, whatever that means (?)
   // try {
   //   _m = p.parseMod()
   // }
   // catch {
   //   | err -> `${err}`
   // };
-  
-  print_string("Exiting.");
 }

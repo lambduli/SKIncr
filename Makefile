@@ -70,10 +70,27 @@ clean:
 	rm -Rf build
 
 examples: build/skia
-	@echo "**************************************************"
-	@echo "*** Testing Smol:"
-	@echo "**************************************************"
-	@echo "(module Main imports ()) (vars ((let x 23) (let z 42) (let y (+ x z)))) (functions ())"
-	@echo "(module Main imports ()) (vars ((let x 23) (let z 42) (let y (+ x z)))) (functions ())" | ./build/skia
-	@echo "**************************************************"
-	@echo "*** end"
+	@echo "=================================================="
+	@echo "                   Testing Smol:                  "
+	@echo "--------------------------------------------------"
+	@echo "file:  ./src/examples/three-vars.smol"
+# @echo ""
+# @cat ./src/examples/three-vars.smol
+# @echo "--------------------------------------------------"
+	@cat ./src/examples/three-vars.smol | ./build/skia
+
+	@echo "--------------------------------------------------"
+	@echo "file:  ./src/examples/first.smol"
+# @echo ""
+# @cat ./src/examples/first.smol
+# @echo "--------------------------------------------------"
+	@cat ./src/examples/first.smol | ./build/skia
+
+	@echo "--------------------------------------------------"
+	@echo "file:  ./src/examples/one-fun.smol"
+# @echo ""
+# @cat ./src/examples/one-fun.smol
+# @echo "--------------------------------------------------"
+	@cat ./src/examples/one-fun.smol | ./build/skia
+
+	@echo "====================== DONE ======================"

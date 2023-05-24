@@ -5,11 +5,17 @@ module Parser;
 
 base class SyntaxError{ ctxt : String, at : Int } extends Exception {
   overridable fun toString() : String {
-    invariant_violation("The abstract .toString() of an error was called!")
+    invariant_violation(`The abstract .toString() of an error was called! | ctxt='${this.ctxt}' at='${this.at}'`)
   }
 }
 
-class TokenMismatch{ expected : Tok.Token, saw : Tok.Token } extends SyntaxError {}
+class TokenMismatch{ expected : Tok.Token, saw : Tok.Token } extends SyntaxError {
+  fun toString() : String {
+    `I was expecting '${this.expected}' but instead saw '${this.saw}'.` +
+    `\n` +
+    `When I was parsing ${this.ctxt}.`
+  }
+}
 
 class NotIdentifier{ saw : Tok.Token } extends SyntaxError {
   fun toString() : String {
@@ -55,6 +61,24 @@ class IllegalApplication{ msg : String } extends SyntaxError {
 
 
 class .Parser<+T>(result : T, lexer : Lexer, pos : Int, ctxt : String) {
+  fun raise<T>(err: SyntaxError): T {
+    input: Vector<Char> = this.lexer.content;
+    // now print a small amount of tokens leading to the error
+    begin = max(0, err.at - 30);
+    end = err.at;
+    slice = String::fromChars(input.slice(begin, end).toArray());
+
+    arr = Vector::mfill(end - begin - 1, ' ');
+    arr.push('^');
+    arrows = String::fromChars(arr.toArray());
+
+    print_string(`[THROWING] '${err}'\n`);
+    print_string(`${slice}`);
+    print_string(`${arrows}`);
+    throw err;
+  }
+
+
   static fun create(lexer: Lexer) : Parser<void> {
     filename = "TODO: put the name here"; // TODO: fix
     Parser(void, lexer, 0, `a file '${filename}'`)
@@ -105,7 +129,7 @@ class .Parser<+T>(result : T, lexer : Lexer, pos : Int, ctxt : String) {
     loop {
       if (parser.lexer.token(parser.pos).i1 == Some(tok)) {
         // we are done!
-        // we don't care about the new `pos'
+        // we don't care about the new `pos' because we are not reading that terminator
         break void
       }
       else {
@@ -119,19 +143,11 @@ class .Parser<+T>(result : T, lexer : Lexer, pos : Int, ctxt : String) {
   }
 
   fun expect(tok : Tok.Token) : this {
-    print_string("[PARSER] [expect]");
-    // the errors should look something like this:
-    // `I expected '${tok.toString()}' but saw the input end unexpectedly!` + '\n' +
-    // `While I was parsing ${ctxt.toString()}.` + '\n' +
-    // `${TODO: Print that part of the source code (starting from the context up until the current position.)}`
-
-    // the parser is immutable, so we need to rewrite the `expect'
-
     (newpos, newtok) = this.lexer.token(this.pos);
     newtok match {
-      | None() -> raise(UnexpectedEOI{ ctxt => this.ctxt, at => this.pos, expected => tok })
+      | None() -> this.raise(UnexpectedEOI{ ctxt => this.ctxt, at => this.pos, expected => tok })
       | Some(actual) ->
-          if (actual != tok) raise(TokenMismatch{ ctxt => this.ctxt, at => this.pos, expected => tok, saw => actual })
+          if (actual != tok) this.raise(TokenMismatch{ ctxt => this.ctxt, at => newpos, expected => tok, saw => actual })
           else Parser(this.result, this.lexer, newpos, this.ctxt)
     }
   }
@@ -152,19 +168,16 @@ class .Parser<+T>(result : T, lexer : Lexer, pos : Int, ctxt : String) {
   }
 
   fun kword(str : String) : this {
-    print_string("[PARSER] [kword]");
     this.expect(Tok.TokKeyword(str))
   }
 
 
   // rewriting in this style because of the type-related rules for re-assignment
   fun parseMod() : Parser<Module> {
-    print_string("[PARSER] [parseMod]");
+
     this.parseModHead()
         .do_((pr) ~> {
           (name, imports) = pr.result;
-
-          print_string(`[PARSER] module name: '${name}' imports: '${imports}'`);
 
           pr.parseVarDecls()
             .do_((pr) ~> {
@@ -196,15 +209,12 @@ class .Parser<+T>(result : T, lexer : Lexer, pos : Int, ctxt : String) {
   // Parsers are always immutable
   // so I start with a method called on `this.' and then chain everything until I return the final Parser
   fun parseModHead() : Parser<(String, List<Import>)> {
-    print_string("[PARSER] [parseModHead]");
-    this.doLocally("module header", (parser) ~> { print_string("[PARSER] (locally - module header)");
-                                                  parser.open()
+    this.doLocally("module header", (parser) ~> { parser.open()
                                                         .kword("module")
                                                         .parseIdentifier()
                                                         .kword("imports")
                                                         .open()
                                                         .doLocally("import list", (parser) ~> {
-                                                          print_string("[PARSER] (locally - import list)");
                                                           name = parser.result;
                                                           p = parser.parseIdentifiers().map((strings) ~> strings.map((str) ~> Import(str))); // if this fails -> "... was parsing import list ..."
                                                           imports = p.result;
@@ -222,11 +232,8 @@ class .Parser<+T>(result : T, lexer : Lexer, pos : Int, ctxt : String) {
       parser.open()
             .kword("vars")
             .open()
-            .collectUntil(Tok.TokCloseParen(), (parser) ~> {
-              p = parser.parseVarDecl();
-              print_string(`I just parsed some variable declaration '${p.result}'`);
-              p
-            })
+            .collectUntil(Tok.TokCloseParen(), (parser) ~> parser.parseVarDecl())
+            .close()
             .close()
     })
   }
@@ -241,12 +248,11 @@ class .Parser<+T>(result : T, lexer : Lexer, pos : Int, ctxt : String) {
 
   // TODO: make it return Token
   fun parseIdentifier() : Parser<String> {
-    print_string("[PARSER] [parseIdentifier]");
     t = this.lexer.token(this.pos);
     t match {
       | (newPos, Some(Tok.TokIdent(str))) -> Parser(str, this.lexer, newPos, this.ctxt)
-      | (_, Some(tok)) -> raise(NotIdentifier{ ctxt => this.ctxt, at => this.pos, saw => tok })
-      | (_, None()) -> raise(UnexpectedEOIWhen{ parsing => "an identifier", at => this.pos, ctxt => this.ctxt })
+      | (newpos, Some(tok)) -> this.raise(NotIdentifier{ ctxt => this.ctxt, at => newpos, saw => tok })
+      | (_, None()) -> this.raise(UnexpectedEOIWhen{ parsing => "an identifier", at => this.pos, ctxt => this.ctxt })
     }
   }
 
@@ -264,15 +270,10 @@ class .Parser<+T>(result : T, lexer : Lexer, pos : Int, ctxt : String) {
         .parseIdentifier()
         .do_((parser) ~> {
           varName = parser.result;
-          print_string(`[PARSE VAR DECL 1]  ident='${varName}'  `);
           parser
-            .doLocally(`variable declaration for ${varName}`, (parser) ~> {
-              
-              p = parser.parseExpr()
-                    .map((expr) ~> (VarDecl(varName, expr)));
-              print_string(`[LOCALLY PARSE VAR DECL 2]  ident='${varName}' body='${p.result}' `);
-              p
-            })
+            .doLocally(`variable declaration for ${varName}`, (parser) ~>
+              parser.parseExpr()
+                    .map((expr) ~> (VarDecl(varName, expr))))
             .close()
         })
   }
@@ -290,7 +291,7 @@ class .Parser<+T>(result : T, lexer : Lexer, pos : Int, ctxt : String) {
             .do_((pr) ~> {
               params = pr.result;
 
-              pr.doLocally(`function body of '${funName}'`, (p) ~> p.parseExpr())
+              pr.doLocally(`function body of '${funName}'`, (p) ~> p.parseExpr().close())
                 .do_((pr) ~> {
                   funBody = pr.result;
 
@@ -323,19 +324,19 @@ class .Parser<+T>(result : T, lexer : Lexer, pos : Int, ctxt : String) {
 
   fun parseExpr() : Parser<Expr> {
     this.lexer.token(this.pos) match {
-      | (_, None()) -> raise(UnexpectedEOIWhen{ ctxt => this.ctxt, at => this.pos, parsing => "an expression" })
+      | (_, None()) -> this.raise(UnexpectedEOIWhen{ ctxt => this.ctxt, at => this.pos, parsing => "an expression" })
       | (newPos, Some(tok)) -> {
         p = this.moveTo(newPos);
         tok match {
           | Tok.TokNum(i) -> p.return_(ENum(i))
           | Tok.TokIdent(str) -> p.return_(EVar(str))
-          | Tok.TokOper(str) -> raise(UnexpectedTokenWhen{ ctxt => this.ctxt, at => this.pos, parsing => "an expression", saw => Tok.TokOper(str) })
-          | Tok.TokOpenParen() -> p.parseExpr1().close()
-          | Tok.TokCloseParen() -> raise(UnexpectedTokenWhen{ ctxt => this.ctxt, at => this.pos, parsing => "an expression", saw => Tok.TokCloseParen() })
+          | Tok.TokOper(str) -> this.raise(UnexpectedTokenWhen{ ctxt => this.ctxt, at => this.pos, parsing => "an expression", saw => Tok.TokOper(str) })
+          | Tok.TokOpenParen() -> p.parseExpr1()
+          | Tok.TokCloseParen() -> this.raise(UnexpectedTokenWhen{ ctxt => this.ctxt, at => this.pos, parsing => "an expression", saw => Tok.TokCloseParen() })
           | Tok.TokOpenBracket() -> p.parseVars().closeBracket().map((vars) ~> EList(vars))
-          | Tok.TokCloseBracket() -> raise(UnexpectedTokenWhen{ ctxt => this.ctxt, at => this.pos, parsing => "an expression", saw => Tok.TokCloseBracket() })
-          | Tok.TokComma() -> raise(UnexpectedTokenWhen{ ctxt => this.ctxt, at => this.pos, parsing => "an expression", saw => Tok.TokComma() })
-          | Tok.TokKeyword(word) -> raise(UnexpectedTokenWhen{ ctxt => this.ctxt, at => this.pos, parsing => "an expression", saw => Tok.TokKeyword(word) })
+          | Tok.TokCloseBracket() -> this.raise(UnexpectedTokenWhen{ ctxt => this.ctxt, at => this.pos, parsing => "an expression", saw => Tok.TokCloseBracket() })
+          | Tok.TokComma() -> this.raise(UnexpectedTokenWhen{ ctxt => this.ctxt, at => this.pos, parsing => "an expression", saw => Tok.TokComma() })
+          | Tok.TokKeyword(word) -> this.raise(UnexpectedTokenWhen{ ctxt => this.ctxt, at => this.pos, parsing => "an expression", saw => Tok.TokKeyword(word) })
         }
       }
     }
@@ -352,19 +353,19 @@ class .Parser<+T>(result : T, lexer : Lexer, pos : Int, ctxt : String) {
     //  EWhile(Expr, Expr)
 
     this.lexer.token(this.pos) match {
-      | (_, None()) -> raise(UnexpectedEOIWhen{ ctxt => this.ctxt, at => this.pos, parsing => "an expression" })
+      | (_, None()) -> this.raise(UnexpectedEOIWhen{ ctxt => this.ctxt, at => this.pos, parsing => "an expression" })
       | (newPos, Some(tok)) -> {
         p = this.moveTo(newPos);
         tok match {
-          | Tok.TokNum(i) -> raise(IllegalApplication{ ctxt => this.ctxt, at => this.pos, msg => `unexpected numeric literal '${i}' at the LHS position of a function application` })
+          | Tok.TokNum(i) -> this.raise(IllegalApplication{ ctxt => this.ctxt, at => this.pos, msg => `unexpected numeric literal '${i}' at the LHS position of a function application` })
           | Tok.TokIdent(str) -> p.parseArgs(EVar(str)).close()
           | Tok.TokOper(str) -> p.doLocally(`operation '${str}'`, p ~> p.parseOperation(str).close())
-          | Tok.TokKeyword(word) -> p.parseStatement(word).close()
-          | Tok.TokOpenParen() -> raise(IllegalApplication{ ctxt => this.ctxt, at => this.pos, msg => `the LHS being a composite expression while it should be an identifier` })
-          | Tok.TokCloseParen() -> raise(IllegalApplication{ ctxt => this.ctxt, at => this.pos, msg => `no function and no arguments` })
-          | Tok.TokOpenBracket() -> raise(IllegalApplication{ ctxt => this.ctxt, at => this.pos, msg => `illegal '['` })
-          | Tok.TokCloseBracket() -> raise(IllegalApplication{ ctxt => this.ctxt, at => this.pos, msg => `illegal ']'` })
-          | Tok.TokComma() -> raise(IllegalApplication{ ctxt => this.ctxt, at => this.pos, msg => `illegal ','` })
+          | Tok.TokKeyword(word) -> p.doLocally(`a statement`, p ~> p.parseStatement(word).close())
+          | Tok.TokOpenParen() -> this.raise(IllegalApplication{ ctxt => this.ctxt, at => this.pos, msg => `the LHS being a composite expression while it should be an identifier` })
+          | Tok.TokCloseParen() -> this.raise(IllegalApplication{ ctxt => this.ctxt, at => this.pos, msg => `no function and no arguments` })
+          | Tok.TokOpenBracket() -> this.raise(IllegalApplication{ ctxt => this.ctxt, at => this.pos, msg => `illegal '['` })
+          | Tok.TokCloseBracket() -> this.raise(IllegalApplication{ ctxt => this.ctxt, at => this.pos, msg => `illegal ']'` })
+          | Tok.TokComma() -> this.raise(IllegalApplication{ ctxt => this.ctxt, at => this.pos, msg => `illegal ','` })
         }
       }
     }
@@ -454,11 +455,13 @@ class .Parser<+T>(result : T, lexer : Lexer, pos : Int, ctxt : String) {
       })
 
       // const <ident> <expr>
-      | "const" -> this.parseIdentifier().do_((parser) ~> {
-        name = parser.result;
-        parser.parseExpr()
-              .map((def) ~> EConst(EVar(name), def))
-      })
+      | "const" ->
+          this.parseIdentifier()
+              .do_((parser) ~> {
+                name = parser.result;
+                parser.parseExpr()
+                      .map((def) ~> EConst(EVar(name), def))
+              })
 
       | _ -> invariant_violation(`[INTERNAL] Parser Error: The Lexer produced a Keyword-Token '${keyword}' but the Parser does not recognize this keyword.`)
     }
@@ -502,17 +505,11 @@ class .Parser<+T>(result : T, lexer : Lexer, pos : Int, ctxt : String) {
 }
 
 
-// TODO:  Try to make the Parser into an object.        CHECK
-// TODO:  First, implement the same thing.              CHECK
-//        Eliminate boilerplate.                        CHECK OR DID I?
-//        Inject the context for errors.                WORKING ON IT               MAYBE SOLVED IT?
-//        Have errors as a thing.                       WORKING ON IT               ALMOST THERE?
-
-fun raise<T>(err: SyntaxError): T {
-  print_string(`[THROWING] '${err}'`);
-  throw err;
-}
-
-
-
 module end ;
+
+// fun max(a: Int, b: Int): Int {
+//   if (a > b)
+//     a
+//   else
+//     b
+// }

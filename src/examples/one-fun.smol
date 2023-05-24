@@ -1,0 +1,22 @@
+(module Main imports ())
+
+(vars (
+  (let x 0)
+  (let z 0)
+))
+
+(functions (
+  (function foo (x y)
+    (begin
+        (const z 0)
+        (while (< x y)
+          (begin
+            (const one 1)
+            (set! z (+ y z))
+            (set! x (+ x one))
+          )
+        )
+        z
+    )
+  )
+))

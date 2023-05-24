@@ -82,7 +82,6 @@ class .Lexer private (content: Vector<Char>) {
   }
 
   fun token(posBegin: Int): (Int, ?Token) {
-    print_string(`------ [LEXER] at ${posBegin}`);
     // ignore white spaces
     while (posBegin < this.content.size() && isSpace(this.content[posBegin])) {
       !posBegin = posBegin + 1;
@@ -152,24 +151,13 @@ class .Lexer private (content: Vector<Char>) {
       }
       else {
         print_string(`[LEXER] [UNKNOWN TOKEN] '${c}'`);
-        invariant_violation(`Lexical Error: Unknown token '${c}'.`) // TODO: this should produce the ordinary parsing error. Or rather some new subtype of it.
+        invariant_violation(`Lexical Error: Unknown token '${c}'.`)
+        // TODO: this should produce the ordinary parsing error. Or rather some new subtype of it.
       }
     };
   }
 }
 
-// fun wordToTok(str: String) : Token {
-//   str match {
-//     | "+" -> TokOper(str)
-//     | "-" -> TokOper(str)
-//     | "=" -> TokOper(str)
-//     | "<" -> TokOper(str)
-//     | "write!" -> TokKeyword(str)
-//     | "read!" -> TokKeyword(str)
-//     | "set!" -> TokKeyword(str)
-//     | _ -> TokIdent(str)
-//   }
-// }
 
 fun wordToTok(str : String) : Token {
   tok = ( if (str == "+") TokOper(str)
@@ -190,8 +178,6 @@ fun wordToTok(str : String) : Token {
   else if (str == "begin") TokKeyword(str)
   else if (str == "while") TokKeyword(str)
   else TokIdent(str) );
-
-  print_string(`wordToTok(${str}) = ${tok}`);
 
   tok
 }
