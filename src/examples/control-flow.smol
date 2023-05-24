@@ -1,0 +1,29 @@
+(module Main imports ())
+
+(vars (
+  (let two 2)
+  (let three 3)
+  (let cond (< two three))
+  (let x (if condition 0 1))
+  (let shouldContinue True)
+))
+
+(functions (
+  (function not (bool)
+    (if bool False True))
+
+  (function foo ()
+    (begin
+      (const a 23)
+      (while shouldContinue
+        (begin
+          (const one 1)
+          (const y (+ one x))
+          (set! x y)
+          (const eq (= x a))
+          (set! shouldContinue (not eq))
+        )
+      )
+    )
+  )
+))

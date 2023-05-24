@@ -2,13 +2,19 @@ module Parser;
 
 base class Token uses Show, Equality {
   overridable fun equals(_other: Token) : Bool {
-    invariant_violation("I don't even know anymore.")
+    invariant_violation("[INTERNAL ERROR] The `equals` from base Token class was called. Should never happen.")
   }
 }
 
 class TokNum(i: Int) extends Token {
   fun toString() : String {
     this.i.toString()
+  }
+}
+
+class TokBool(b: Bool) extends Token {
+  fun toString(): String {
+    this.b.toString()
   }
 }
 
@@ -56,7 +62,7 @@ class TokComma() extends Token {
 
 class TokKeyword(name: String) extends Token {
   fun toString() : String {
-    `::${this.name}`
+    `::${this.name}` // TODO: remove the :: eventually, this is just so I can read it on the output and see the difference between identifier and keyword.
   }
 }
 
@@ -147,9 +153,7 @@ class .Lexer private (content: Vector<Char>) {
         (pos, Some(TokComma()))
       }
       else {
-        print_string(`[LEXER] [UNKNOWN TOKEN] '${c}'`);
-        invariant_violation(`Lexical Error: Unknown token '${c}'.`)
-        // TODO: this should produce the ordinary parsing error. Or rather some new subtype of it.
+        raise(UnknownToken{ ctxt => "", at => pos, s => c }, this)
       }
     };
   }
@@ -174,6 +178,8 @@ fun wordToTok(str : String) : Token {
   else if (str == "if") TokKeyword(str)
   else if (str == "begin") TokKeyword(str)
   else if (str == "while") TokKeyword(str)
+  else if (str == "True") TokBool(true)
+  else if (str == "False") TokBool(false)
   else TokIdent(str) );
 
   tok
