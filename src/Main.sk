@@ -46,3 +46,9 @@ fun main(): void {
 
   print_string(`❯ ${val}`);
 }
+
+
+@test
+fun tryThis(): void {
+  print_string(".....................................................................");
+}

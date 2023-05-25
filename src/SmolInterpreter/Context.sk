@@ -59,9 +59,22 @@ fun updateSlot(var : EVar, env : Env, val : mutable Val) : mutable Val {
 
   _ = env.find((scope : mutable Scope) ->
         scope match {
-          | ModuleScope(mapping, _)
-          | FunctionScope(mapping, _)
           | BlockScope(mapping) ->
+            // try to find it in the mapping
+            // I should not be able to find it, if I find it, it means it's a local constant and those can't be reset!
+            mapping.maybeGet(var) match {
+              | None() -> false
+              | Some(_) -> invariant_violation(`[INTERPRETER ERROR]: You tried to 'set!' a local constant '${var}'. That is not allowed.`)
+            }
+          | FunctionScope(mapping, fname) ->
+            // try to find it in the mapping
+            // I should not be able to find it, if I find it, it means it's a local constant and those can't be reset!
+            mapping.maybeGet(var) match {
+              | None() -> false
+              | Some(_) -> invariant_violation(`[INTERPRETER ERROR]: You tried to 'set!' a function parameter '${var}'. That is not allowed! The parameter '${var}' comes from the function '${fname}'.`)
+            }
+
+          | ModuleScope(mapping, _) ->
             // try to find it in the mapping
             mapping.maybeGet(var) match {
               | None() -> false

@@ -1,82 +1,5 @@
 module Parser;
 
-base class SyntaxError{ ctxt : String, at : Int } extends Exception {
-  overridable fun toString() : String {
-    invariant_violation(`The .toString() of an error was called! | ctxt='${this.ctxt}' at='${this.at}'`)
-  }
-}
-
-class TokenMismatch{ expected : Token, saw : Token } extends SyntaxError {
-  fun toString() : String {
-    `I was expecting '${this.expected}' but saw '${this.saw}'.` +
-    `\n` +
-    `When I was parsing ${this.ctxt}.`
-  }
-}
-
-class NotIdentifier{ saw : Token } extends SyntaxError {
-  fun toString() : String {
-    `I was expecting to read an identifier, but saw '${this.saw}'.` +
-    `\n` +
-    `When I was parsing ${this.ctxt}`
-  }
-}
-
-class UnexpectedEOI{ expected : Token } extends SyntaxError {
-  fun toString() : String {
-    `I was expecting to read '${this.expected}' but the input ended inexpectedly.` +
-    `\n` +
-    `When I was parsing ${this.ctxt}`
-  }
-}
-
-class UnexpectedEOIWhen{ parsing : String } extends SyntaxError {
-  fun toString() : String {
-    `I was trying to parse ${this.parsing} but the input ended unexpectedly.` +
-    `\n` +
-    `When I was parsing ${this.ctxt}`
-  }
-}
-
-class UnexpectedTokenWhen{ parsing : String, saw : Token } extends SyntaxError {
-  fun toString() : String {
-    `I was trying to parse ${this.parsing} but saw the token '${this.saw.toString()}' which should not be there.` +
-    `\n` +
-    `When I was parsing ${this.ctxt}.`
-  }
-}
-
-class IllegalApplication{ msg : String } extends SyntaxError {
-  fun toString() : String {
-    `I was trying to parse a function application but saw ${this.msg}.\n` +
-    `\n` +
-    `When I was parsing ${this.ctxt}.`
-  }
-}
-
-class UnknownToken{ s : Char } extends SyntaxError {
-  fun toString() : String {
-    `I saw unknown symbol '${this.s}'.\n`
-  }
-}
-
-fun raise<T>(err: SyntaxError, lexer: Lexer): T {
-  input: Vector<Char> = lexer.content;
-  // now print a small amount of tokens leading to the error
-  begin = max(0, err.at - 30);
-  end = err.at;
-  slice = String::fromChars(input.slice(begin, end).toArray());
-
-  arr = Vector::mfill(end - begin - 1, ' ');
-  arr.push('^');
-  arrows = String::fromChars(arr.toArray());
-
-  print_string(`[ERROR]\n'${err}'\n`);
-  print_string(`${slice}`);
-  print_string(`${arrows}`);
-  throw err;
-}
-
 
 class .Parser<+T>(result : T, lexer : Lexer, pos : Int, ctxt : String) {
   static fun create(lexer: Lexer) : Parser<void> {
@@ -206,22 +129,22 @@ class .Parser<+T>(result : T, lexer : Lexer, pos : Int, ctxt : String) {
 //    p.return_(Module(name, imports, varDecls, funDecls))
 //  }
 
-  // Parsers are always immutable
-  // so I start with a method called on `this.' and then chain everything until I return the final Parser
+
   fun parseModHead() : Parser<(String, List<Import>)> {
-    this.doLocally("module header", (parser) ~> { parser.open()
-                                                        .kword("module")
-                                                        .parseIdentifier()
-                                                        .kword("imports")
-                                                        .open()
-                                                        .doLocally("import list", (parser) ~> {
-                                                          name = parser.result;
-                                                          p = parser.parseIdentifiers().map((strings) ~> strings.map((str) ~> Import(str))); // if this fails -> "... was parsing import list ..."
-                                                          imports = p.result;
-                                                          p.return_((name, imports))
-                                                        })
-                                                        .close() // if this fails -> "... was parsing module header ..."
-                                                        .close()
+    this.doLocally("module header", (parser) ~> {
+      parser.open()
+            .kword("module")
+            .parseIdentifier()
+            .kword("imports")
+            .open()
+            .doLocally("import list", (parser) ~> {
+              name = parser.result;
+              p = parser.parseIdentifiers().map((strings) ~> strings.map((str) ~> Import(str)));
+              imports = p.result;
+              p.return_((name, imports))
+            })
+            .close()
+            .close()
     })
   }
 
@@ -239,14 +162,15 @@ class .Parser<+T>(result : T, lexer : Lexer, pos : Int, ctxt : String) {
   }
 
   fun parseFunDecls() : Parser<List<FunDecl>> {
-    this.doLocally("function declarations", (parser) ~> parser.open()
-                                                              .kword("functions")
-                                                              .open()
-                                                              .collectUntil(TokCloseParen(), (p) ~> p.parseFunDecl())
-                                                              .close())
+    this.doLocally("function declarations", (parser) ~>
+      parser.open()
+            .kword("functions")
+            .open()
+            .collectUntil(TokCloseParen(), (p) ~> p.parseFunDecl())
+            .close())
   }
 
-  // TODO: make it return Token
+  // TODO: make it return Token?
   fun parseIdentifier() : Parser<String> {
     t = this.lexer.token(this.pos);
     t match {
@@ -261,10 +185,6 @@ class .Parser<+T>(result : T, lexer : Lexer, pos : Int, ctxt : String) {
   }
 
   fun parseVarDecl() : Parser<VarDecl> {
-    // example
-    // (let x (+ 23 42))
-    // (let y 65)
-
     this.open()
         .kword("let")
         .parseIdentifier()
@@ -344,15 +264,6 @@ class .Parser<+T>(result : T, lexer : Lexer, pos : Int, ctxt : String) {
   }
 
   fun parseExpr1() : Parser<Expr> {
-    //  ENum(Int)
-    //  EList(List<Expr>) // Expr or EVar?
-    //  EOp(Op)
-    //  ECall(EVar, List<EVar>)
-    //  EIf(EVar, Expr, Expr)
-    //  EConst(EVar, Expr) // we only have local constants
-    //  EBlock(List<Expr>)
-    //  EWhile(Expr, Expr)
-
     this.lexer.token(this.pos) match {
       | (_, None()) -> raise(UnexpectedEOIWhen{ ctxt => this.ctxt, at => this.pos, parsing => "an expression" }, this.lexer)
       | (newPos, Some(tok)) -> {

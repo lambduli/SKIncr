@@ -1,0 +1,19 @@
+(module Main imports ())
+
+(vars (
+  (let x 0)
+  (let y 0)
+))
+
+(functions (
+  (function main ()
+    (begin
+      (const seven 7)
+      (fail x y)
+    )
+  )
+
+  # this function will cause a runtime exception
+  (function fail (a b)
+    (set! a 23))
+))

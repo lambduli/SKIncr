@@ -1,98 +1,38 @@
 module Parser;
 
-base class Token uses Show, Equality {
-  overridable fun equals(_other: Token) : Bool {
-    invariant_violation("[INTERNAL ERROR] The `equals` from base Token class was called. Should never happen.")
-  }
-}
-
-class TokNum(i: Int) extends Token {
-  fun toString() : String {
-    this.i.toString()
-  }
-}
-
-class TokBool(b: Bool) extends Token {
-  fun toString(): String {
-    this.b.toString()
-  }
-}
-
-class TokIdent(name: String) extends Token {
-  fun toString() : String {
-    this.name
-  }
-}
-
-class TokOper(name: String) extends Token {
-  fun toString() : String { 
-    this.name
-  }
-}
-
-class TokOpenParen() extends Token {
-  fun toString() : String {
-    "("
-  }
-}
-
-class TokCloseParen() extends Token {
-  fun toString() : String {
-    ")"
-  }
-}
-
-class TokOpenBracket() extends Token {
-  fun toString() : String {
-    "["
-  }
-}
-
-class TokCloseBracket() extends Token {
-  fun toString() : String {
-    "]"
-  }
-}
-
-class TokComma() extends Token {
-  fun toString() : String {
-    ","
-  }
-}
-
-class TokKeyword(name: String) extends Token {
-  fun toString() : String {
-    `::${this.name}` // TODO: remove the :: eventually, this is just so I can read it on the output and see the difference between identifier and keyword.
-  }
-}
-
-
-fun isLetter(c: Char): Bool {
-  Chars.isUpperCaseLetter(c) || Chars.isLowerCaseLetter(c) || c == '_'
-}
-
-fun isLetterOrDigitOrBang(c: Char): Bool {
-  isLetter(c) || Chars.isDigit(c) || (c == '!')
-}
-
-fun isSpace(c: Char): Bool {
-  c == ' ' || c == '\t' || c == '\n'
-}
 
 class .Lexer private (content: Vector<Char>) {
   static fun create(text: String): this {
     static(text.chars())
   }
 
+
+  fun isLetter(c: Char): Bool {
+    Chars.isUpperCaseLetter(c) || Chars.isLowerCaseLetter(c) || c == '_'
+  }
+
+
+  fun isLetterOrDigitOrBang(c: Char): Bool {
+    this.isLetter(c) || Chars.isDigit(c) || (c == '!')
+  }
+
+
+  fun isSpace(c: Char): Bool {
+    c == ' ' || c == '\t' || c == '\n'
+  }
+
+
   fun skipWhiteAndComment(posBegin: Int): Int {
     while (posBegin < this.content.size()) {
       if (this.content[posBegin] == '#') {
         while(posBegin < this.content.size()) {
-          if (this.content[posBegin] == '\n') break void;
+          if (this.content[posBegin] == '\n') {
+            break void;
+          };
           !posBegin = posBegin + 1;
         }
       }
-      else if (isSpace(this.content[posBegin])) {
+      else if (this.isSpace(this.content[posBegin])) {
         !posBegin = posBegin + 1;
       }
       else {
@@ -100,6 +40,32 @@ class .Lexer private (content: Vector<Char>) {
       }
     };
     posBegin
+  }
+
+
+  fun wordToTok(str : String) : Token {
+    tok = ( if (str == "+") TokOper(str)
+    else if (str == "-") TokOper(str)
+    else if (str == "=") TokOper(str)
+    else if (str == "<") TokOper(str)
+    else if (str == "write!") TokOper(str)
+    else if (str == "read!") TokOper(str)
+    else if (str == "set!") TokOper(str)
+    else if (str == "module") TokKeyword(str)
+    else if (str == "imports") TokKeyword(str)
+    else if (str == "functions") TokKeyword(str)
+    else if (str == "vars") TokKeyword(str)
+    else if (str == "function") TokKeyword(str)
+    else if (str == "let") TokKeyword(str)
+    else if (str == "const") TokKeyword(str)
+    else if (str == "if") TokKeyword(str)
+    else if (str == "begin") TokKeyword(str)
+    else if (str == "while") TokKeyword(str)
+    else if (str == "True") TokBool(true)
+    else if (str == "False") TokBool(false)
+    else TokIdent(str) );
+
+    tok
   }
 
 
@@ -125,47 +91,34 @@ class .Lexer private (content: Vector<Char>) {
       }
     }
     // read the whole identifier or one of (read!, set!, write!) keywords
-    else if (isLetter(this.content[pos])) {
-      while (pos < this.content.size() && isLetterOrDigitOrBang(this.content[pos])) {
+    else if (this.isLetter(this.content[pos])) {
+      while (pos < this.content.size() && this.isLetterOrDigitOrBang(this.content[pos])) {
         !pos = pos + 1;
       };
       str = String::fromChars(this.content.slice(posBegin, pos).toArray()) ;
-      (pos, Some(wordToTok(str)))
+      (pos, Some(this.wordToTok(str)))
     }
     // read special characters
     else {
       c = this.content[pos];
       !pos = pos + 1;
       if (c == '+' || c == '-' || c == '=' || c == '<') {
-        // !pos = pos + 1;
         str = String::fromChars(this.content.slice(posBegin, pos).toArray()) ;
-        (pos, Some(wordToTok(str)))
+        (pos, Some(this.wordToTok(str)))
       }
-      else if (c == '(') // )
-      {
-        // read the paren
-        // !pos = pos + 1 ;
+      else if (c == '(') {
         (pos, Some(TokOpenParen()))
       }
-      // (
       else if (c == ')') {
-        // read the paren
-        // !pos = pos + 1 ;
         (pos, Some(TokCloseParen()))
       }
       else if (c == '[') {
-        // read the paren
-        // !pos = pos + 1 ;
         (pos, Some(TokOpenBracket()))
       }
       else if (c == ']') {
-        // read the paren
-        // !pos = pos + 1 ;
         (pos, Some(TokCloseBracket()))
       }
       else if (c == ',') {
-        // read the paren
-        // !pos = pos + 1 ;
         (pos, Some(TokComma()))
       }
       else {
@@ -174,32 +127,5 @@ class .Lexer private (content: Vector<Char>) {
     };
   }
 }
-
-
-fun wordToTok(str : String) : Token {
-  tok = ( if (str == "+") TokOper(str)
-  else if (str == "-") TokOper(str)
-  else if (str == "=") TokOper(str)
-  else if (str == "<") TokOper(str)
-  else if (str == "write!") TokOper(str)
-  else if (str == "read!") TokOper(str)
-  else if (str == "set!") TokOper(str)
-  else if (str == "module") TokKeyword(str)
-  else if (str == "imports") TokKeyword(str)
-  else if (str == "functions") TokKeyword(str)
-  else if (str == "vars") TokKeyword(str)
-  else if (str == "function") TokKeyword(str)
-  else if (str == "let") TokKeyword(str)
-  else if (str == "const") TokKeyword(str)
-  else if (str == "if") TokKeyword(str)
-  else if (str == "begin") TokKeyword(str)
-  else if (str == "while") TokKeyword(str)
-  else if (str == "True") TokBool(true)
-  else if (str == "False") TokBool(false)
-  else TokIdent(str) );
-
-  tok
-}
-
 
 module end;

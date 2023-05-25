@@ -1,0 +1,38 @@
+module Parser;
+
+base class Token uses Show, Equality {
+  children =
+    | TokNum(i: Int)
+    | TokBool(b: Bool)
+    | TokIdent(name: String)
+    | TokOper(name: String)
+    | TokOpenParen()
+    | TokCloseParen()
+    | TokOpenBracket()
+    | TokCloseBracket()
+    | TokComma()
+    | TokKeyword(name: String)
+
+
+  overridable fun equals(_other: Token) : Bool {
+    invariant_violation("[INTERNAL ERROR] The `equals` from base Token class was called. Should never happen.")
+  }
+
+
+  fun toString(): String {
+    this match {
+      | TokNum(i) -> i.toString()
+      | TokBool(b) -> b.toString()
+      | TokIdent(name) -> name
+      | TokOper(name) -> name
+      | TokOpenParen() -> `(`
+      | TokCloseParen() -> `)`
+      | TokOpenBracket() -> `[`
+      | TokCloseBracket() -> `]`
+      | TokComma() -> `,`
+      | TokKeyword(name) -> `::${name}`
+    }
+  }
+}
+
+module end;

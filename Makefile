@@ -108,4 +108,11 @@ examples: build/skia
 # @echo "--------------------------------------------------"
 	@cat ./src/examples/comments.smol | ./build/skia
 
+	@echo "--------------------------------------------------"
+	@echo "file:  ./src/examples/local-set.smol"
+# @echo ""
+# @cat ./src/examples/local-set.smol
+# @echo "--------------------------------------------------"
+	@cat ./src/examples/local-set.smol | ./build/skia
+
 	@echo "====================== DONE ======================"
