@@ -6,14 +6,26 @@
 ))
 
 (functions (
-  (function foo (x y)
+  (function main ()
     (begin
-        (const z 0)
-        (while (< x y)
+      (const seven 7)
+      (square seven)
+    )
+  )
+
+  # result is `y * y`
+  (function square (y)
+    (begin
+        (set! x 0) # resets the `x` to 0
+        (set! z 0) # resets the `z` to 0
+
+        # (const z 0) # again, should this be legal?
+
+        (while (< x y) # x=0 < y
           (begin
             (const one 1)
-            (set! z (+ y z))
-            (set! x (+ x one))
+            (set! z (+ y z)) # z = y + z
+            (set! x (+ x one)) # x = x + 1
           )
         )
         z

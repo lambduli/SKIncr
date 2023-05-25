@@ -47,8 +47,8 @@ fun sortModules(modules : List<Module>) : List<Module> {
   graph : mutable Map<Int, mutable Set<Int>> = buildGraph(modules, m2i);
   // now when I've build a graph, I can start the algorithm
 
-
   l : List<Int> = List.Nil();
+  // start with those modules that do not depend on any other modules
   s : mutable Set<Int> = Set::mcreateFromIterator(graph.filter((_i, is) ~> is.isEmpty()).keys());
 
   while (! s.isEmpty()) {
@@ -67,11 +67,17 @@ fun sortModules(modules : List<Module>) : List<Module> {
       graph.set(m, ss);
       // if M has no more dependencies -> add it to S
       if (graph.get(m).isEmpty()) s.add(m)
-    }
+    };
+
+    // remove N it from the graph as it has been dealt with
+    graph.remove(n);
   };
 
   // if graph has edges -> error (a cycle)
-  if (! graph.isEmpty()) invariant_violation("Module Cycle!");
+  if (! graph.isEmpty()) {
+    invariant_violation("Module Cycle!");
+    // TODO: It would be nice to print the name of the modules that form a cycle or something?
+  };
 
   // return L
   l.map((i) ~> i2m.get(i)).reversed()

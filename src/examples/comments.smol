@@ -7,7 +7,13 @@
   (let three 3) # ^ and this one
   (let cond (< two three))
 
-  (let x (if condition 0 1)) # because of the limitations, all the mutable state must be global, unusual
+  (let z 0)
+  (let zz 0)
+  
+  # this is just to test that the if works, no real reason behind it
+  # because of the limitations, all the mutable state must be global, unusual
+  (let x (if cond 0 1))
+  
   (let shouldContinue True)
 ))
 
@@ -15,9 +21,8 @@
   (function not (bool)
     (if bool False True))
 
+  # no idea what this function does
   (function foo ()
-    # some comment saying what 'foo' does followed by an empty line
-
     (begin
       (const a 23)
       (while shouldContinue
@@ -29,6 +34,26 @@
           (set! shouldContinue (not eq))
         )
       )
+      x
+    )
+  )
+
+  # if the first argument is smaller than the second argument
+  # then consider the difference between them
+  # and that many times multiply the second argument
+  # that is what the `z` will be set to
+  (function bar (x y)
+    (begin
+      (set! z 0) # resets the `z` to 0 each time `foo` is called
+      (set! zz x)
+      (while (< z y)
+        (begin
+          (set! z (+ y z))
+          (const one 1)
+          (set! zz (+ zz one))
+        )
+      )
+      z # will be equal to `y`
     )
   )
 
@@ -39,29 +64,36 @@
   (function simple ()
     (begin
       (const a 23)
+      a
     )
   )
 
   (function main ()
     (begin
       (const a 23)
-      (const c 42)
-      (const b (foo a c))
-      (+ a b)
+      (const b 42)
+      (const c (bar a b)) # c = b = 42
+      (const d (foo)) # 23
+      (+ c d)
     )
   )
 
-  (function foo (x y)
+  # result is `y * y`
+  (function square (y)
     (begin
-      (const z 0)
-      (while (< x y)
-        (begin
-          (set! z (+ y z))
-          (const one 1)
-          (set! x (+ x one))
+        (set! x 0) # resets the `x` to 0
+        (set! z 0) # resets the `z` to 0
+
+        # (const z 0) # again, should this be legal?
+
+        (while (< x y) # x=0 < y
+          (begin
+            (const one 1)
+            (set! z (+ y z)) # z = y + z
+            (set! x (+ x one)) # x = x + 1
+          )
         )
-      )
-      z
+        z
     )
   )
 ))

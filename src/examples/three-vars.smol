@@ -6,4 +6,6 @@
   (let y (+ x z))
 ))
 
-(functions ())
+(functions (
+  (function main () y)
+))

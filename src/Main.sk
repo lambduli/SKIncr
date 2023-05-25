@@ -26,7 +26,7 @@ fun main(): void {
 
   p = Parser::create(lexer);
   
-  _mod = p.parseMod().result;
+  mod = p.parseMod().result;
 
   // Printing what I parsed takes too much space.
   // print_string(`Parsed:\n\n${mod}`);
@@ -38,4 +38,11 @@ fun main(): void {
   // catch {
   //   | err -> `${err}`
   // };
+
+
+  program: Program = Program(List[mod]);
+
+  (_env, val) = evalProgram(program);
+
+  print_string(`❯ ${val}`);
 }
