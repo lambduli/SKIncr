@@ -12,8 +12,34 @@ fun str2module(input: String): Module {
   parser.parseMod().result
 }
 
-// TODO: continue from here
 
+fun run(): void {
+  // This function could serve as a main point for all the tests.
+
+  test_parser();
+
+  test_interpreter();
+
+}
+
+
+fun test_parser(): void {
+  // write tests for the parser
+
+  assertEqual(str2expr("42"),
+              ENum(42),
+              "parsed '42' incorrectly");
+}
+
+
+
+
+
+
+fun test_interpreter(): void {
+  // write tests for the interpreter
+  void
+}
 
 
 

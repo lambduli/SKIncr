@@ -4,23 +4,31 @@ fun main(): void {
   // result = parse(schema, args);
   // filename = result.getString("in");
 
-  modules: List<Module> = List::createFromItems(args.map(file2module));
-  
-  
-  // can't do try-catch because in embedded mode, whatever that means (?)
-  // try {
-  //   _m = p.parseMod()
-  // }
-  // catch {
-  //   | err -> `${err}`
-  // };
+
+  if (args.size() == 0) {
+    // just run the tests
+    Tests.run();
+  }
+  else {
+    // parse and interpreter the program
+    modules: List<Module> = List::createFromItems(args.map(file2module));
+    
+    
+    // can't do try-catch because in embedded mode, whatever that means (?)
+    // try {
+    //   _m = p.parseMod()
+    // }
+    // catch {
+    //   | err -> `${err}`
+    // };
 
 
-  program: Program = Program(modules);
+    program: Program = Program(modules);
 
-  (_env, val) = evalProgram(program);
+    (_env, val) = evalProgram(program);
 
-  print_string(`❯ ${val}`);
+    print_string(`❯ ${val}`);
+  }
 }
 
 
