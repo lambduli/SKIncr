@@ -69,7 +69,7 @@ fun sortModules(modules : List<Module>) : List<Module> {
       if (graph.get(m).isEmpty()) s.add(m)
     };
 
-    // remove N it from the graph as it has been dealt with
+    // remove N from the graph as it has been dealt with
     graph.remove(n);
   };
 
