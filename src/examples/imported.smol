@@ -1,0 +1,23 @@
+(module Lib imports ())
+
+
+(vars (
+  (let a 0)
+  (let b 0)
+))
+
+
+(functions (
+  (function someFun ()
+    (begin
+      (write! a)
+      (set! a 23)
+      (write! a)
+      (write! b)
+      (read! b)
+      (write! b)
+    )
+  )
+
+
+))

@@ -1,0 +1,20 @@
+(module Main imports (Lib))
+
+
+(vars (
+  (let a 0)
+  (let b 0)
+))
+
+
+(functions (
+  (function main ()
+    (begin
+      (someFun)
+      (write! a)
+      (write! b)
+    )
+  )
+
+
+))

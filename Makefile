@@ -103,4 +103,9 @@ examples: build/skia
 	@echo "file:  ./src/examples/io.smol"
 	./build/skia ./src/examples/io.smol
 
+
+	@echo "--------------------------------------------------"
+	@echo "files:  ./src/examples/imported.smol  ./src/examples/imports.smol"
+	./build/skia ./src/examples/imported.smol ./src/examples/imports.smol
+
 	@echo "====================== DONE ======================"

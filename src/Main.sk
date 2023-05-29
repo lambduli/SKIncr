@@ -3,15 +3,9 @@ fun main(): void {
   // schema =  Array[ StringParam{name => "in", help => "Path to the source code.", required => true} ];
   // result = parse(schema, args);
   // filename = result.getString("in");
-  filename = args[0];
 
-  text = FileSystem.readTextFile(filename);
+  modules: List<Module> = List::createFromItems(args.map(file2module));
   
-  lexer = Lexer::create(text);
-
-  parser = Parser::create(lexer);
-  
-  modul = parser.parseMod().result;
   
   // can't do try-catch because in embedded mode, whatever that means (?)
   // try {
@@ -22,7 +16,7 @@ fun main(): void {
   // };
 
 
-  program: Program = Program(List[modul]);
+  program: Program = Program(modules);
 
   (_env, val) = evalProgram(program);
 
@@ -30,7 +24,18 @@ fun main(): void {
 }
 
 
-@test
-fun tryThis(): void {
-  print_string(".....................................................................");
+fun file2module(filepath: String): Module {
+  text = FileSystem.readTextFile(filepath);
+  
+  lexer = Lexer::create(text);
+
+  parser = Parser::create(lexer);
+  
+  parser.parseMod().result
 }
+
+
+// @test
+// fun tryThis(): void {
+//   print_string(".....................................................................");
+// }

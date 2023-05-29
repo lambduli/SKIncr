@@ -1,0 +1,23 @@
+module Tests;
+
+fun str2expr(input: String): Expr {
+  lexer = Lexer::create(input);
+  parser = Parser::create(lexer);
+  parser.parseExpr().result
+}
+
+fun str2module(input: String): Module {
+  lexer = Lexer::create(input);
+  parser = Parser::create(lexer);
+  parser.parseMod().result
+}
+
+// TODO: continue from here
+
+
+
+
+
+
+
+module end;
