@@ -1,35 +1,17 @@
-fun main(): void {  
-  text = "";
-  loop {
-    read_line() match {
-    | None() -> break void
-    | Some(line) -> !text = text + "\n" + line
-    }
-  };
+fun main(): void {
+  args = arguments();
+  // schema =  Array[ StringParam{name => "in", help => "Path to the source code.", required => true} ];
+  // result = parse(schema, args);
+  // filename = result.getString("in");
+  filename = args[0];
+
+  text = FileSystem.readTextFile(filename);
   
   lexer = Lexer::create(text);
 
-  // pos = Some(0);
-  // 
-  // loop {
-  //   lexer.token(pos.fromSome("impossible!")) match {
-  //     | (npos, Some(tok)) -> {
-  //       !pos = Some(npos); // npos;
-  //       print_string(`${tok}`);
-  //     }
-  //     | _ -> {
-  //       print_string("At the end of the input.");
-  //       break void;
-  //     }
-  //   }
-  // };
-
-  p = Parser::create(lexer);
+  parser = Parser::create(lexer);
   
-  mod = p.parseMod().result;
-
-  // Printing what I parsed takes too much space.
-  // print_string(`Parsed:\n\n${mod}`);
+  modul = parser.parseMod().result;
   
   // can't do try-catch because in embedded mode, whatever that means (?)
   // try {
@@ -40,7 +22,7 @@ fun main(): void {
   // };
 
 
-  program: Program = Program(List[mod]);
+  program: Program = Program(List[modul]);
 
   (_env, val) = evalProgram(program);
 

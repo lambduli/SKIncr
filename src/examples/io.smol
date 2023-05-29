@@ -1,0 +1,23 @@
+(module Main imports ())
+
+
+(vars (
+  (let a 0)
+  (let b 0)
+))
+
+
+(functions (
+  (function main ()
+    (begin
+      (write! a)
+      (set! a 23)
+      (write! a)
+      (write! b)
+      (read! b)
+      (write! b)
+    )
+  )
+
+
+))

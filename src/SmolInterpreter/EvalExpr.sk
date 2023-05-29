@@ -101,20 +101,28 @@ fun evalOpCall(env : Env, op : Op) : mutable Val {
     | OLeT(lexpr, rexpr)  -> doBinOp(env, lexpr, rexpr, (lVal, rVal) ~> mutable VBool(lVal.i < rVal.i))
 
     | OWrite(expr) -> {
-      val = evalExpr(env, expr) ;
-      _str = val.toString() ;
+      val = evalExpr(env, expr);
+      str = val.toString();
+      print_string(str);
       val
     }
 
-    | ORead(EVar(_name)) -> {
+    | ORead(var) -> {
       // TODO: read a number from the std in and update the environment
       // also return the value that was stored
       read_line() match {
-        | None() -> void // TODO: do something
-        | Some(_) -> void // TODO: do something
-      } ;
-
-      mutable VUnit()
+        | None() -> invariant_violation(`[INTERPRETER ERROR]: Operation 'read!' failed for some reason.`);
+        | Some(line) -> {
+          line.toIntOption() match {
+            | None() -> invariant_violation(`[INTERPRETER ERROR]: Operation 'read!' failed. The input '${line}' is not a number.`);
+            | Some(i) -> {
+              val = mutable VNum(i);
+              _ = updateSlot(var, env, val);
+              val
+            }
+          }
+        }
+      }
     }
 
     | OSet(var@EVar(_), expr) -> {

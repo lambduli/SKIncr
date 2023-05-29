@@ -74,45 +74,33 @@ examples: build/skia
 	@echo "                   Testing Smol:                  "
 	@echo "--------------------------------------------------"
 	@echo "file:  ./src/examples/three-vars.smol"
-# @echo ""
-# @cat ./src/examples/three-vars.smol
-# @echo "--------------------------------------------------"
-	@cat ./src/examples/three-vars.smol | ./build/skia
+	./build/skia ./src/examples/three-vars.smol
 
 	@echo "--------------------------------------------------"
 	@echo "file:  ./src/examples/first.smol"
-# @echo ""
-# @cat ./src/examples/first.smol
-# @echo "--------------------------------------------------"
-	@cat ./src/examples/first.smol | ./build/skia
+	./build/skia ./src/examples/first.smol
 
 	@echo "--------------------------------------------------"
 	@echo "file:  ./src/examples/one-fun.smol"
-# @echo ""
-# @cat ./src/examples/one-fun.smol
-# @echo "--------------------------------------------------"
-	@cat ./src/examples/one-fun.smol | ./build/skia
+	./build/skia ./src/examples/one-fun.smol
 
 	@echo "--------------------------------------------------"
 	@echo "file:  ./src/examples/control-flow.smol"
-# @echo ""
-# @cat ./src/examples/control-flow.smol
-# @echo "--------------------------------------------------"
-	@cat ./src/examples/control-flow.smol | ./build/skia
+	./build/skia ./src/examples/control-flow.smol
 
 
 	@echo "--------------------------------------------------"
 	@echo "file:  ./src/examples/comments.smol"
-# @echo ""
-# @cat ./src/examples/comments.smol
-# @echo "--------------------------------------------------"
-	@cat ./src/examples/comments.smol | ./build/skia
+	./build/skia ./src/examples/comments.smol
+
+# this one is supposed to rail at runtime
+#	@echo "--------------------------------------------------"
+#	@echo "file:  ./src/examples/local-set.smol"
+#	./build/skia ./src/examples/local-set.smol
+
 
 	@echo "--------------------------------------------------"
-	@echo "file:  ./src/examples/local-set.smol"
-# @echo ""
-# @cat ./src/examples/local-set.smol
-# @echo "--------------------------------------------------"
-	@cat ./src/examples/local-set.smol | ./build/skia
+	@echo "file:  ./src/examples/io.smol"
+	./build/skia ./src/examples/io.smol
 
 	@echo "====================== DONE ======================"
