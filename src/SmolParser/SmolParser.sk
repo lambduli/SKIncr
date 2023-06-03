@@ -1,5 +1,93 @@
 module Parser;
 
+// Grammar
+
+// File ::= Header Globals Functions
+// Header ::= (module Ident imports (Ident..))
+// Globals ::= (var (Decl..))
+// Decl ::= (let Ident Expr)
+// Functions ::= (functions (Function..))
+// Function ::= (function Ident(Ident..) Expr)
+// Expr ::=  Val
+//        |  Var
+//        |  Cond
+//        |  While
+//        |  Decl
+//        |  Block
+//        |  Call
+// Val := num | tt | ff
+// Call ::= (Ident Expr..)
+// Cond ::= (if Expr Expr Expr)
+// Block ::= (begin Expr.. )
+// Var ::= Ident
+// While ::= (while Expr Expr)
+
+class Reader{bad: Bool} {
+	static fun make(): this { Reader{ bad => false } }
+	fun eat(_s: String): Reader { this }
+	fun isBad(): Bool { this.bad }
+	fun hasIdentifier():  Reader {
+	 !this.bad = true;
+	 this
+ }
+	fun identifier(): String { "" }
+	fun set(_message: String): Reader { this }
+}
+
+
+base class Parseable{r: Reader} {
+	fun eat(s: String): this {
+	 !this.r = this.r.eat(s);
+	 this
+ }
+	fun identifier(): String {
+	 !this.r = this.r.hasIdentifier();
+   if (this.r.isBad()) "" else this.r.identifier()
+ }
+	fun identifiers(): List<String> {
+   List<String>[""]
+ }
+}
+
+/*
+class File(header: Header, globals: Globals, functions: Functions) {
+	fun parse(r: Reader) {
+	 r = r;
+	 header = header.parse(r);
+ }
+}
+
+fun new_file() {
+	File{ header => HeaderErr{}, globals => GlobalsErr{}, functions => FunctionsErr{} }
+}
+
+class FileErr extends File {
+}
+*/
+
+class Header{name: String, imports: List<String>} extends Parseable {
+  fun parse(r: Reader): Header {
+	 !this.r = r;
+   !this.r = this.r.set("file header");
+	 _ = this.eat("(").eat("module");
+	 name = this.identifier();
+	 _ = this.eat("imports").eat("(");
+	 imports = this.identifiers();
+	 _ = this.eat(")");
+	 Header{ r=> this.r, name=> name, imports=> imports}
+ }
+}
+
+/*
+class HeaderErr extends Header {}
+
+class Globals {}
+class GloabalErr extends Globals {}
+
+class Functions {}
+class FunctionsErr extends Functions {}
+*/
+
 
 class .Parser<+T>(result : T, lexer : Lexer, pos : Int, ctxt : String) {
   static fun create(lexer: Lexer) : Parser<void> {
@@ -46,7 +134,7 @@ class .Parser<+T>(result : T, lexer : Lexer, pos : Int, ctxt : String) {
     // the `result' is the List<R>
 
     things : List<R> = List[];
-    
+
     parser: Parser<void> = this.return_(void);
 
     loop {

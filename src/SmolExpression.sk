@@ -13,16 +13,16 @@ base class Expr uses Hashable, Orderable, Show {
 
   fun toString(): String {
     this match {
-      | ENum(i) -> `${i}`
-      | EBool(b) -> `${b}`
-      | EList(vars) -> `[${vars}]`
-      | EOp(op) -> `${op}`
-      | ECall(var, vars) -> `(${var} ${vars})`
-      | EIf(var, thn, els) -> `(if ${var} ${thn} ${els})`
-      | EConst(var, expr) -> `(const ${var} ${expr})`
-      | EBlock(exprs) -> `(begin ${exprs})`
-      | EWhile(cond, body) -> `(while ${cond} ${body})`
-      | EVar(name) -> name
+    | ENum(i) -> `${i}`
+    | EBool(b) -> `${b}`
+    | EList(vars) -> `[${vars}]`
+    | EOp(op) -> `${op}`
+    | ECall(var, vars) -> `(${var} ${vars})`
+    | EIf(var, thn, els) -> `(if ${var} ${thn} ${els})`
+    | EConst(var, expr) -> `(const ${var} ${expr})`
+    | EBlock(exprs) -> `(begin ${exprs})`
+    | EWhile(cond, body) -> `(while ${cond} ${body})`
+    | EVar(name) -> name
     }
   }
 }

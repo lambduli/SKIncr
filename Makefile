@@ -1,5 +1,5 @@
 CC=clang-10
-CPP=clang++-10
+CPP=clang++
 LLC=llc-10
 
 OLEVEL=-O2
@@ -39,7 +39,7 @@ build/skc:
 	mkdir -p build
 	gunzip -c prebuild/preamble_and_skc_out64.ll.gz > build/preamble_and_skc_out64.ll
 	make build/libskip_runtime64.a
-	clang++-10 $(OLEVEL) build/preamble_and_skc_out64.ll build/libskip_runtime64.a -o build/skc -lrt -lpthread
+	clang++ $(OLEVEL) build/preamble_and_skc_out64.ll build/libskip_runtime64.a -o build/skc -lrt -lpthread
 
 build/magic.c:
 	date | cksum | awk '{print "unsigned long version = " $$1 ";"}' > build/magic.c
