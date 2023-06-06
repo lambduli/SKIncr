@@ -20,7 +20,7 @@ module Reader;
 // While ::= (while Expr Expr)
 
 value class File{name: String, imports: Vector<String>, decls: Vector<Decl>, funs: Vector<Function>} {
-	fun toString(): String {
+  fun toString(): String {
 		imports_str = toStringStrings(this.imports);
 		decls_str = toStringDecls(this.decls);
 		functions_str = toStringFunctions(this.funs);
@@ -64,31 +64,31 @@ fun toStringExpr(e : Expr): String {
 
 
 fun toStringStrings(v: Vector<String>): String {
-		s = "";	v.each(t -> !s = s+" "+t );	s.trimLeft()
+  s = "";	v.each(t -> !s = s+" "+t );	s.trimLeft()
 }
 
 fun toStringDecls(v: Vector<Decl>): String {
-		s = ""; v.each(t -> !s = s+" "+toStringExpr(t)); s.trimLeft()
+  s = ""; v.each(t -> !s = s+" "+toStringExpr(t)); s.trimLeft()
 }
 
 fun toStringFunctions(v: Vector<Function>): String {
-		s = "";	v.each(t -> !s = s+" "+t.toString()	); s.trimLeft()
+  s = "";	v.each(t -> !s = s+" "+t.toString()	); s.trimLeft()
 }
 
 fun toStringExprs(v: Vector<Expr>): String {
-		s = "";	v.each(t -> !s = s+" "+toStringExpr(t)); s.trimLeft()
+  s = "";	v.each(t -> !s = s+" "+toStringExpr(t)); s.trimLeft()
 }
 
 fun parseFile(r: mutable Reader): File {
-	  name = r.eat("(").eat("module").identifier();
-		_ = r.eat("imports").eat("(");
-		imports = identifiers(r);
-		_ = r.eat(")").eat(")").eat("(").eat("vars").eat("(");
-		decls = declarations(r);
-	  _ = r.eat(")").eat(")").eat("(").eat("functions").eat("(");
-		funs = functions(r);
-	  _ = r.eat(")").eat(")");
-		File{ name => name, imports => imports, decls => decls, funs => funs }
+  name = r.eat("(").eat("module").identifier();
+  _ = r.eat("imports").eat("(");
+  imports = identifiers(r);
+  _ = r.eat(")").eat(")").eat("(").eat("vars").eat("(");
+  decls = declarations(r);
+  _ = r.eat(")").eat(")").eat("(").eat("functions").eat("(");
+  funs = functions(r);
+  _ = r.eat(")").eat(")");
+  File{ name => name, imports => imports, decls => decls, funs => funs }
 }
 
 fun parseExpr(r: mutable Reader): Expr {
@@ -160,8 +160,8 @@ fun parseCall(r: mutable Reader): Call {
 fun identifiers(r: mutable Reader): Vector<String> {
 		vec = mutable Vector<String>[];
 		while (r.hasMoreTokens()) {
-				if (r.curToken().asString(r) == ")") { break void; };
-				vec.push(r.identifier());
+			if (r.curToken().asString(r) == ")") { break void; };
+			vec.push(r.identifier());
 		};
 		vec.chill()
 }
@@ -169,8 +169,8 @@ fun identifiers(r: mutable Reader): Vector<String> {
 fun expressions(r: mutable Reader): Vector<Expr> {
 		vec = mutable Vector<Expr>[];
 		while (r.hasMoreTokens()) {
-				if (r.curToken().asString(r) == ")") { break void; };
-				vec.push(parseExpr(r));
+			if (r.curToken().asString(r) == ")") { break void; };
+			vec.push(parseExpr(r));
 		};
 		vec.chill()
 }
@@ -178,8 +178,8 @@ fun expressions(r: mutable Reader): Vector<Expr> {
 fun declarations(r: mutable Reader): Vector<Decl> {
 		vec = mutable Vector<Decl>[];
 		while (r.hasMoreTokens()) {
-				if (r.curToken().asString(r) == ")") { break void; };
-				vec.push(parseDecl(r));
+			if (r.curToken().asString(r) == ")") { break void; };
+			vec.push(parseDecl(r));
 		};
 		vec.chill()
 }
@@ -187,8 +187,8 @@ fun declarations(r: mutable Reader): Vector<Decl> {
 fun functions(r: mutable Reader): Vector<Function> {
     vec = mutable Vector<Function>[];
 		while (r.hasMoreTokens()) {
-				if (r.curToken().asString(r) == ")") { break void; };
-				vec.push(parseFun(r));
+			if (r.curToken().asString(r) == ")") { break void; };
+			vec.push(parseFun(r));
 		};
 		vec.chill()
 }

@@ -1,7 +1,7 @@
 // The entry point for the interpreter and analyzer.
 //
-// The function expects to get a list of files, one of which should be a module named Main, with a function
-// named main. All imported modules should be available. No module can appear twice.
+// main() expects a list of files, one of which should be module `Main`, with a function
+// `main`. All imported modules should be available. No module should appear more than once.
 //
 fun main(): void {
 	paths = arguments();
