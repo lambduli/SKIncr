@@ -19,7 +19,10 @@ module Reader;
 // Var ::= Ident
 // While ::= (while Expr Expr)
 
-value class File{name: String, imports: Vector<String>, decls: Vector<Decl>, funs: Vector<Function>} {
+// -------------------------------------------------------------------------------------
+// ---------------------- ABSTRACT SYNTAX TREE ------------------------------------------
+// -------------------------------------------------------------------------------------
+value class File{tok: Tok, name: String, imports: Vector<String>, decls: Vector<Decl>, funs: Vector<Function>} {
 	fun toString(): String {
 		imports_str = toStringStrings(this.imports);
 		decls_str = toStringDecls(this.decls);
@@ -28,7 +31,7 @@ value class File{name: String, imports: Vector<String>, decls: Vector<Decl>, fun
 	}
 }
 
-value class Function{name: String, params: Vector<String>, body: Expr} {
+value class Function{tok: Tok, name: String, params: Vector<String>, body: Expr} {
   fun toString(): String {
 		params_str = toStringStrings(this.params);
 		body_expr = toStringExpr(this.body);
@@ -38,160 +41,249 @@ value class Function{name: String, params: Vector<String>, body: Expr} {
 
 base class Expr {
   children =
-	| Val(String)
-  | Var(String)
-	| Decl(String, Expr)
-  | Call(String, Vector<Expr>)
-  | Block(Vector<Expr>)
-	| While(Expr, Expr)
-  | Cond(Expr, Expr, Expr)
+	| Val(Tok, String)
+  | Var(Tok, String)
+	| Decl(Tok, String, Expr)
+  | Call(Tok, String, Vector<Expr>)
+  | Block(Tok, Vector<Expr>)
+	| While(Tok, Expr, Expr)
+  | Cond(Tok, Expr, Expr, Expr)
 }
 
 fun toStringExpr(e : Expr): String {
-		e match {
-		| Val(s) -> s
-		| Var(s) -> s
-		| Decl(s, b) -> { b_s = toStringExpr(b); `(let ${s} ${b_s})` }
-    | Call(s, es) -> { es_s = toStringExprs(es); `(${s} ${es_s})`}
-    | Block(es) -> { es_s = toStringExprs(es); `(begin ${es_s})`}
-  	| While(c, b) -> {  c_s = toStringExpr(c); b_s = toStringExpr(b); `(while ${c_s} ${b_s})`}
-    | Cond(c, t, f) -> {
-		      (c_s, t_s, f_s) = (toStringExpr(c), toStringExpr(t), toStringExpr(f));
-		     `(if ${c_s} ${t_s} ${f_s})`
-				 }
-		}
+  e match {
+  | Val(_,s) -> s
+  | Var(_,s) -> s
+  | Decl(_, s, b) -> { b_s = toStringExpr(b); `(let ${s} ${b_s})` }
+  | Call(_, s, es) -> { es_s = toStringExprs(es); `(${s} ${es_s})`}
+  | Block(_, es) -> { es_s = toStringExprs(es); `(begin ${es_s})`}
+  | While(_, c, b) -> {  c_s = toStringExpr(c); b_s = toStringExpr(b); `(while ${c_s} ${b_s})`}
+  | Cond(_, c, t, f) -> {
+    (c_s, t_s, f_s) = (toStringExpr(c), toStringExpr(t), toStringExpr(f));
+    `(if ${c_s} ${t_s} ${f_s})`
+    }
+  }
 }
 
-
+// There should be a function on Vectors to do this, is there?
 fun toStringStrings(v: Vector<String>): String {
 		s = "";	v.each(t -> !s = s+" "+t );	s.trimLeft()
 }
-
 fun toStringDecls(v: Vector<Decl>): String {
 		s = ""; v.each(t -> !s = s+" "+toStringExpr(t)); s.trimLeft()
 }
-
 fun toStringFunctions(v: Vector<Function>): String {
 		s = "";	v.each(t -> !s = s+" "+t.toString()	); s.trimLeft()
 }
-
 fun toStringExprs(v: Vector<Expr>): String {
 		s = "";	v.each(t -> !s = s+" "+toStringExpr(t)); s.trimLeft()
 }
 
+// -------------------------------------------------------------------------------------
+// ---------------------  PARSING THE AST ----------------------------------------------
+// -------------------------------------------------------------------------------------
+
+// Parse a file, always returns something. Clients check the Reader for an error.
 fun parseFile(r: mutable Reader): File {
-	  name = r.eat("(").eat("module").identifier();
-		_ = r.eat("imports").eat("(");
-		imports = identifiers(r);
-		_ = r.eat(")").eat(")").eat("(").eat("vars").eat("(");
-		decls = declarations(r);
-	  _ = r.eat(")").eat(")").eat("(").eat("functions").eat("(");
-		funs = functions(r);
-	  _ = r.eat(")").eat(")");
-		File{ name => name, imports => imports, decls => decls, funs => funs }
+  tok = r.curToken();
+  name = r.eat("(").eat("module").identifier();
+  _ = r.eat("imports").eat("(");
+  imports = identifiers(r);
+  _ = r.eat(")").eat(")").eat("(").eat("vars").eat("(");
+  decls = declarations(r);
+  _ = r.eat(")").eat(")").eat("(").eat("functions").eat("(");
+  funs = functions(r);
+ 	tik = r.curToken();
+  _ = r.eat(")").eat(")");
+	token = Tok(tok.start, tik.end, tok.lines, tok.lineBreak);
+  File{ tok => token, name => name, imports => imports, decls => decls, funs => funs }
 }
 
 fun parseExpr(r: mutable Reader): Expr {
-    tok = r.curToken();
-		tok_s = tok.asString(r);
-		if (tok_s == "(") {
-			 // Decl, Call, Block, While, Cond
-			 s = r.nextToken().asString(r);
-			 s match {
-			 | "let" -> parseDecl(r)
-			 | "begin" -> parseBlock(r)
-			 | "while" -> parseWhile(r)
-			 | "if" -> parseCond(r)
-			 | _ -> parseCall(r)
-			 }
-		} else {
-		  if (tok.isValue(r)) {	r.advanceTok(); Val(tok_s) } else Var(r.identifier())
-		}
+  tok = r.curToken();
+  if (!r.ok) { return Val(tok, "ERR"); };
+  tok_s = tok.asString(r);
+  if (tok_s == "(") {
+    r.nextToken().asString(r) match {
+    |   "let" -> parseDecl(r)
+    | "begin" -> parseBlock(r)
+    | "while" -> parseWhile(r)
+    |    "if" -> parseCond(r)
+    |       _ -> parseCall(r)
+    }
+  } else {
+    if (tok.isValue(r)) {	r.advanceTok(); Val(tok, tok_s) } else Var(tok, r.identifier())
+  }
 }
 
 fun parseFun(r: mutable Reader): Function {
- 	 name = r.eat("(").eat("function").identifier();
-	 _ = r.eat("(");
-	 args = identifiers(r);
-	 _ = r.eat(")");
-	 expr = parseExpr(r);
-	 _ = r.eat(")");
-	 Function{ name => name, params => args, body => expr }
+  tok = r.curToken();
+  name = r.eat("(").eat("function").identifier();
+  _ = r.eat("(");
+  args = identifiers(r);
+  _ = r.eat(")");
+  expr = parseExpr(r);
+	tik = r.curToken();
+  _ = r.eat(")");
+	token = Tok(tok.start, tik.end, tok.lines, tok.lineBreak);
+	 Function{ tok => token, name => name, params => args, body => expr }
 }
 
 fun parseDecl(r: mutable Reader): Decl {
-		name = r.eat("(").eat("let").identifier();
-		expr = parseExpr(r);
-		_ = r.eat(")");
-		Decl(name, expr)
+  tok = r.curToken();
+  name = r.eat("(").eat("let").identifier();
+  expr = parseExpr(r);
+	tik = r.curToken();
+  _ = r.eat(")");
+	token = Tok(tok.start, tik.end, tok.lines, tok.lineBreak);
+  Decl(token, name, expr)
 }
 
 fun parseBlock(r: mutable Reader): Block {
-		_ = r.eat("(").eat("begin");
-		exprs = expressions(r);
-		_ = r.eat(")");
-		Block(exprs)
+  tok = r.curToken();
+  _ = r.eat("(").eat("begin");
+  exprs = expressions(r);
+	tik = r.curToken();
+  _ = r.eat(")");
+	token = Tok(tok.start, tik.end, tok.lines, tok.lineBreak);
+  Block(token, exprs)
 }
 
 fun parseWhile(r: mutable Reader): While {
-		_ = r.eat("(").eat("while");
-		e = parseExpr(r);
-		b = parseExpr(r);
-		_ = r.eat(")");
-		While(e, b)
+  tok = r.curToken();
+  _ = r.eat("(").eat("while");
+  e = parseExpr(r);
+  b = parseExpr(r);
+	tik = r.curToken();
+  _ = r.eat(")");
+	token = Tok(tok.start, tik.end, tok.lines, tok.lineBreak);
+  While(token, e, b)
 }
 
 fun parseCond(r: mutable Reader): Cond {
-		_ = r.eat("(").eat("if");
-		c = parseExpr(r);
-		t = parseExpr(r);
-		f = parseExpr(r);
-		_ = r.eat(")");
-		Cond(c, t, f)
+  tok = r.curToken();
+  _ = r.eat("(").eat("if");
+  c = parseExpr(r);
+  t = parseExpr(r);
+  f = parseExpr(r);
+	tik = r.curToken();
+  _ = r.eat(")");
+	token = Tok(tok.start, tik.end, tok.lines, tok.lineBreak);
+  Cond(token, c, t, f)
 }
 
 fun parseCall(r: mutable Reader): Call {
-		name = r.eat("(").identifier();
-		exprs = expressions(r);
-		_ = r.eat(")");
-		Call(name, exprs)
+  tok = r.curToken();
+  name = r.eat("(").identifier();
+  exprs = expressions(r);
+	tik = r.curToken();
+  _ = r.eat(")");
+	token = Tok(tok.start, tik.end, tok.lines, tok.lineBreak);
+  Call(token, name, exprs)
 }
 
 fun identifiers(r: mutable Reader): Vector<String> {
-		vec = mutable Vector<String>[];
-		while (r.hasMoreTokens()) {
-				if (r.curToken().asString(r) == ")") { break void; };
-				vec.push(r.identifier());
-		};
-		vec.chill()
+  vec = mutable Vector<String>[];
+  while (r.hasMoreTokens()) {
+    if (r.curToken().asString(r) == ")") { break void; };
+    vec.push(r.identifier());
+  };
+  vec.chill()
 }
 
 fun expressions(r: mutable Reader): Vector<Expr> {
-		vec = mutable Vector<Expr>[];
-		while (r.hasMoreTokens()) {
-				if (r.curToken().asString(r) == ")") { break void; };
-				vec.push(parseExpr(r));
-		};
-		vec.chill()
+  vec = mutable Vector<Expr>[];
+  while (r.hasMoreTokens()) {
+    if (r.curToken().asString(r) == ")") { break void; };
+    vec.push(parseExpr(r));
+  };
+  vec.chill()
 }
 
 fun declarations(r: mutable Reader): Vector<Decl> {
-		vec = mutable Vector<Decl>[];
-		while (r.hasMoreTokens()) {
-				if (r.curToken().asString(r) == ")") { break void; };
-				vec.push(parseDecl(r));
-		};
-		vec.chill()
+  vec = mutable Vector<Decl>[];
+  while (r.hasMoreTokens()) {
+    if (r.curToken().asString(r) == ")") { break void; };
+    vec.push(parseDecl(r));
+  };
+  vec.chill()
 }
 
 fun functions(r: mutable Reader): Vector<Function> {
-    vec = mutable Vector<Function>[];
-		while (r.hasMoreTokens()) {
-				if (r.curToken().asString(r) == ")") { break void; };
-				vec.push(parseFun(r));
-		};
-		vec.chill()
+  vec = mutable Vector<Function>[];
+  while (r.hasMoreTokens()) {
+    if (r.curToken().asString(r) == ")") { break void; };
+    vec.push(parseFun(r));
+  };
+  vec.chill()
 }
+
+// -------------------------------------------------------------------------------------
+// ----------- CHECKING THE AST --------------------------------------------------------
+// -------------------------------------------------------------------------------------
+
+fun createScope(): mutable Scope { mutable Scope(mutable Vector<mutable Vector<String>>[]) }
+
+mutable class Scope(envs: mutable Vector<mutable Vector<String>>) {
+  mutable fun open(): void {
+    v = mutable Vector<String>[];
+		this.envs.push(v);
+	}
+	mutable fun close(): void {
+    _ = this.envs.pop();
+  }
+	mutable fun add(s: String): void {
+	  v = this.envs[this.envs.size() - 1];
+		v.push(s);
+	}
+	mutable fun has(s: String): Bool {
+	  found = false;
+    this.envs.each(v -> v.each(n -> if (s == n) { !found = true }));
+		found
+  }
+}
+
+fun createChecker(r: mutable Reader): mutable Checker { mutable Checker(createScope(), r) }
+
+mutable class Checker(env: mutable Scope, r: mutable Reader) {
+  mutable fun file(f: File): void {
+	  this.env.open();
+	  f match {
+		| File{ decls, funs} -> {
+       decls.each(d -> this.decl(d) );
+       funs.each(f -> this.func(f) );
+     }
+		};
+		this.env.close();
+	}
+
+  mutable fun decl(d: Decl): void {
+    d match {
+		| Decl(tok, name, _expr) -> {
+		   if (this.env.has(name)) {
+         this.r.fail(tok, `${name} already defined`);
+				 return void;
+			 };
+			 // expr
+			 this.env.add(name);
+		  }
+		}
+  }
+
+	mutable fun func(_f: Function): void {
+void;
+}
+}
+
+
+
+
+
+
+// -------------------------------------------------------------------------------------
+// -----------------  SUPPOR STUFF -----------------------------------------------------
+// -------------------------------------------------------------------------------------
+
 
 // -------------------------------------------------------------------------------------------
 // Tok
@@ -379,8 +471,7 @@ mutable class .Reader{
 	mutable fun eat(s: String): mutable Reader {
 		if (this.ok && this.hasMoreTokens()) {
  		  tok = this.curToken();
-			val = tok.asString(this);
-			if (val != s) { this.fail(tok, `expected ${s}`); };
+			if (tok.asString(this) != s) { this.fail(tok, `expected ${s}`); };
 			this.advanceTok();
 		};
 		this
@@ -398,8 +489,10 @@ mutable class .Reader{
 		if (this.tokPos > 0) this.tokens[this.tokPos-1] else this.curToken()
 	}
 
-	// Return the current token, assumes that there is one!
-	readonly fun curToken(): Tok { this.tokens[this.tokPos] }
+	// Return the current token, or a bad token if we are not in a good place
+  readonly fun curToken(): Tok {
+    if (this.ok && this.hasMoreTokens()) { this.tokens[this.tokPos] } else { Tok(0,-1,0,0) }
+  }
 
   // Returns the next token if available, otherwise fail and return garbage
 	mutable fun nextToken(): Tok {
