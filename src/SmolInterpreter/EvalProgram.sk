@@ -4,33 +4,28 @@
 // For that to happen, we need to first transform each module into its own partial-evaluation context.
 
 // The partial-evaluation context consists of a list of closures - for function declarations from that module
-// it also contains a list of global mutable variables - the expressions get evaluated within the specific module context.
+// it also contains a list of global mutable variables - the expressions get evaluated within the specific
+// module context.
 
 // Because of imports, the creating of partial-evaluation contexts is done in a sequence.
 // Each module is handled only after all the modules from which it imports are already handled.
 // At that point, just adding the current functions and mutable-variables into the shared evaluation context
-// is enough.
-// This means that every consecutive module will be handled within an environment containing all the bindings from all the
-// previously handled modules.
-// It is not the best strategy, but it should do.
+// is enough.  This means that every consecutive module will be handled within an environment containing all
+// the bindings from all the previously handled modules. It is not the best strategy, but it should do.
 
 
-// evalProgram needs to 
+// evalProgram needs to
 fun evalProgram(program : Program) : (Env, mutable Val) {
   // first do a non-total top-sort ordering of the list of Modules within the Program
   modules : List<Module> = program match { | Program(ms) -> ms } ;
   topSorted : List<Module> = sortModules(modules) ;
-
   // then build the evaluation context
   // that is, an environment containing all the bindings in the whole program
   context : Env = programToContext(topSorted) ;
-
   // then evaluate the "main" function in the Main module
   // evaluate a call like "main()" or "main(...args)", depending on whether I have some arguments for "main"
   theCall = ECall(EVar("main"), List.Nil()) ;
-
   exitVal = evalExpr(context, theCall) ;
-
   (context, exitVal)
 }
 
@@ -55,10 +50,8 @@ fun sortModules(modules : List<Module>) : List<Module> {
     n : Int = getFirst(s);
     // remove a node N from S
     s.remove(n);
-
     // add N to L
     !l = List.Cons(n, l);
-
     // for every node M depending on N:
     for (m in dependants(graph, n)) {
       // remove the dependency on N from M
@@ -68,11 +61,9 @@ fun sortModules(modules : List<Module>) : List<Module> {
       // if M has no more dependencies -> add it to S
       if (graph.get(m).isEmpty()) s.add(m)
     };
-
     // remove N from the graph as it has been dealt with
     graph.remove(n);
   };
-
   // if graph has edges -> error (a cycle)
   if (! graph.isEmpty()) {
     invariant_violation("Module Cycle!");
@@ -151,7 +142,7 @@ fun programToContext(sorted : List<Module>) : Env {
 
     currentEnv // explicitly returning the current stack/scope chain/environment
   }, initScopeChain) ;
-  
+
   finalEnv
 }
 
@@ -159,7 +150,6 @@ fun programToContext(sorted : List<Module>) : Env {
 fun moduleToContext(env : Env, mod : Module) : void {
   // This function does not add anything to the Env stack
   // it only mutates the top-most Scope's mapping using Map.set() function.
-  // 
   // This function iterates over all the variable declarations and function declarations.
   // Functions go first - those variables might need them.
   // Variables are expected to be in topological ordering with no cyclic dependencies between them.
@@ -184,9 +174,10 @@ fun moduleToContext(env : Env, mod : Module) : void {
         closure : mutable Val = mutable VClosure(params, body, env, funName) ;
         // the env is an immutable List
         // that means that this closure's Scope Chain starts with the current module's scope
-        // the mapping within that first scope will get mutated, but the chain as a whole will always start with the current module's scope
+        // the mapping within that first scope will get mutated, but the chain as a whole will always
+				// start with the current module's scope
         // that should be exactly what I need
-        
+
         // now I put it into the currentScopeMapping
         currentScopeMapping.set(EVar(funName), closure) ;
         // doing this, should also mutate the mapping within the closure itself
