@@ -1,12 +1,8 @@
 (module Lib imports ())
-
-
 (vars (
   (let a 0)
   (let b 0)
 ))
-
-
 (functions (
   (function someFun ()
     (begin
@@ -18,6 +14,4 @@
       (write! b)
     )
   )
-
-
 ))

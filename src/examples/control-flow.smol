@@ -18,13 +18,13 @@
   # no idea what this function does
   (function foo ()
     (begin
-      (const a 23)
+      (let a 23)
       (while shouldContinue
         (begin
-          (const one 1)
-          (const y (+ one x))
+          (let one 1)
+          (let y (+ one x))
           (set! x y)
-          (const eq (= x a))
+          (let eq (= x a))
           (set! shouldContinue (not eq))
         )
       )

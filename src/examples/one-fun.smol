@@ -8,7 +8,7 @@
 (functions (
   (function main ()
     (begin
-      (const seven 7)
+      (let seven 7)
       (square seven)
     )
   )
@@ -19,11 +19,9 @@
         (set! x 0) # resets the `x` to 0
         (set! z 0) # resets the `z` to 0
 
-        # (const z 0) # again, should this be legal?
-
         (while (< x y) # x=0 < y
           (begin
-            (const one 1)
+            (let one 1)
             (set! z (+ y z)) # z = y + z
             (set! x (+ x one)) # x = x + 1
           )

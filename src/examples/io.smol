@@ -1,11 +1,8 @@
 (module Main imports ())
-
-
 (vars (
   (let a 0)
   (let b 0)
 ))
-
 
 (functions (
   (function main ()

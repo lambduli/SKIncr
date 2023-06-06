@@ -1,49 +1,9 @@
 fun main(): void {
-  args = arguments();
-  // schema =  Array[ StringParam{name => "in", help => "Path to the source code.", required => true} ];
-  // result = parse(schema, args);
-  // filename = result.getString("in");
-
-
-  if (args.size() == 0) {
-    // just run the tests
-    Tests.run();
-  }
-  else {
-    // parse and interpreter the program
-    modules: List<Module> = List::createFromItems(args.map(file2module));
-    
-    
-    // can't do try-catch because in embedded mode, whatever that means (?)
-    // try {
-    //   _m = p.parseMod()
-    // }
-    // catch {
-    //   | err -> `${err}`
-    // };
-
-
-    program: Program = Program(modules);
-
-    (_env, val) = evalProgram(program);
-
-    print_string(`❯ ${val}`);
-  }
+	paths = arguments();
+  _files = paths.map(p -> {
+	  r = Reader::create(p);
+  	f = r.parse();
+		if (r.ok) { print_string(f.toString()); } else { r.error_report(); };
+	  r
+ });
 }
-
-
-fun file2module(filepath: String): Module {
-  text = FileSystem.readTextFile(filepath);
-  
-  lexer = Lexer::create(text);
-
-  parser = Parser::create(lexer);
-  
-  parser.parseMod().result
-}
-
-
-// @test
-// fun tryThis(): void {
-//   print_string(".....................................................................");
-// }

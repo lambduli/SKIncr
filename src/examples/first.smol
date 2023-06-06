@@ -11,21 +11,21 @@
 
 (functions (
   (function simpler ()
-    (const a 23)
+    (let a 23)
   )
   
   (function simple ()
     (begin
-      (const a 23)
+      (let a 23)
     )
   )
 
   (function main ()
     (begin
-      (const a 23)
-      (const c 42)
-      (const b (foo a c)) # 42 - 23 = 19 ; 19 * 42 = 798
-      (const ignore (foo a b)) # never used anyway
+      (let a 23)
+      (let c 42)
+      (let b (foo a c)) # 42 - 23 = 19 ; 19 * 42 = 798
+      (let ignore (foo a b)) # never used anyway
       (+ a b) # 23 + 798 = 821
     )
   )
@@ -38,11 +38,11 @@
     (begin
       (set! z 0) # resets the `z` to 0 each time `foo` is called
       (set! x f)
-      # (const z 10) # the question is, should this be allowed?
+      # (let z 10) # the question is, should this be allowed?
       (while (< x y)
         (begin
           (set! z (+ y z))
-          (const one 1)
+          (let one 1)
           (set! x (+ x one))
         )
       )

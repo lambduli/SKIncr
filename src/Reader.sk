@@ -1,0 +1,525 @@
+module Reader;
+
+// Grammar
+
+// File ::= (module Ident imports (Ident..))  (vars (Decl..))  (functions (Function..))
+// Decl ::= (let Ident Expr)
+// Function ::= (function Ident(Ident..) Expr)
+// Expr ::=  Val
+//        |  Var
+//        |  Cond
+//        |  While
+//        |  Decl
+//        |  Block
+//        |  Call
+// Val := num | tt | ff
+// Call ::= (Ident Expr..)
+// Cond ::= (if Expr Expr Expr)
+// Block ::= (begin Expr.. )
+// Var ::= Ident
+// While ::= (while Expr Expr)
+
+value class File{name: String, imports: Vector<String>, decls: Vector<Decl>, funs: Vector<Function>} {
+	fun toString(): String {
+		imports_str = toStringStrings(this.imports);
+		decls_str = toStringDecls(this.decls);
+		functions_str = toStringFunctions(this.funs);
+	  `(module ${this.name} imports (${imports_str}))\n(vars (${decls_str}))\n(functions (${functions_str}))`
+	}
+}
+
+value class Function{name: String, params: Vector<String>, body: Expr} {
+  fun toString(): String {
+		params_str = toStringStrings(this.params);
+		body_expr = toStringExpr(this.body);
+		`(function ${this.name} (${params_str}) ${body_expr})\n`;
+  }
+}
+
+base class Expr {
+  children =
+	| Val(String)
+  | Var(String)
+	| Decl(String, Expr)
+  | Call(String, Vector<Expr>)
+  | Block(Vector<Expr>)
+	| While(Expr, Expr)
+  | Cond(Expr, Expr, Expr)
+}
+
+fun toStringExpr(e : Expr): String {
+		e match {
+		| Val(s) -> s
+		| Var(s) -> s
+		| Decl(s, b) -> { b_s = toStringExpr(b); `(let ${s} ${b_s})` }
+    | Call(s, es) -> { es_s = toStringExprs(es); `(${s} ${es_s})`}
+    | Block(es) -> { es_s = toStringExprs(es); `(begin ${es_s})`}
+  	| While(c, b) -> {  c_s = toStringExpr(c); b_s = toStringExpr(b); `(while ${c_s} ${b_s})`}
+    | Cond(c, t, f) -> {
+		      (c_s, t_s, f_s) = (toStringExpr(c), toStringExpr(t), toStringExpr(f));
+		     `(if ${c_s} ${t_s} ${f_s})`
+				 }
+		}
+}
+
+
+fun toStringStrings(v: Vector<String>): String {
+		s = "";	v.each(t -> !s = s+" "+t );	s.trimLeft()
+}
+
+fun toStringDecls(v: Vector<Decl>): String {
+		s = ""; v.each(t -> !s = s+" "+toStringExpr(t)); s.trimLeft()
+}
+
+fun toStringFunctions(v: Vector<Function>): String {
+		s = "";	v.each(t -> !s = s+" "+t.toString()	); s.trimLeft()
+}
+
+fun toStringExprs(v: Vector<Expr>): String {
+		s = "";	v.each(t -> !s = s+" "+toStringExpr(t)); s.trimLeft()
+}
+
+fun parseFile(r: mutable Reader): File {
+	  name = r.eat("(").eat("module").identifier();
+		_ = r.eat("imports").eat("(");
+		imports = identifiers(r);
+		_ = r.eat(")").eat(")").eat("(").eat("vars").eat("(");
+		decls = declarations(r);
+	  _ = r.eat(")").eat(")").eat("(").eat("functions").eat("(");
+		funs = functions(r);
+	  _ = r.eat(")").eat(")");
+		File{ name => name, imports => imports, decls => decls, funs => funs }
+}
+
+fun parseExpr(r: mutable Reader): Expr {
+    tok = r.curToken();
+		tok_s = tok.asString(r);
+		if (tok_s == "(") {
+			 // Decl, Call, Block, While, Cond
+			 s = r.nextToken().asString(r);
+			 s match {
+			 | "let" -> parseDecl(r)
+			 | "begin" -> parseBlock(r)
+			 | "while" -> parseWhile(r)
+			 | "if" -> parseCond(r)
+			 | _ -> parseCall(r)
+			 }
+		} else {
+		  if (tok.isValue(r)) {	r.advanceTok(); Val(tok_s) } else Var(r.identifier())
+		}
+}
+
+fun parseFun(r: mutable Reader): Function {
+ 	 name = r.eat("(").eat("function").identifier();
+	 _ = r.eat("(");
+	 args = identifiers(r);
+	 _ = r.eat(")");
+	 expr = parseExpr(r);
+	 _ = r.eat(")");
+	 Function{ name => name, params => args, body => expr }
+}
+
+fun parseDecl(r: mutable Reader): Decl {
+		name = r.eat("(").eat("let").identifier();
+		expr = parseExpr(r);
+		_ = r.eat(")");
+		Decl(name, expr)
+}
+
+fun parseBlock(r: mutable Reader): Block {
+		_ = r.eat("(").eat("begin");
+		exprs = expressions(r);
+		_ = r.eat(")");
+		Block(exprs)
+}
+
+fun parseWhile(r: mutable Reader): While {
+		_ = r.eat("(").eat("while");
+		e = parseExpr(r);
+		b = parseExpr(r);
+		_ = r.eat(")");
+		While(e, b)
+}
+
+fun parseCond(r: mutable Reader): Cond {
+		_ = r.eat("(").eat("if");
+		c = parseExpr(r);
+		t = parseExpr(r);
+		f = parseExpr(r);
+		_ = r.eat(")");
+		Cond(c, t, f)
+}
+
+fun parseCall(r: mutable Reader): Call {
+		name = r.eat("(").identifier();
+		exprs = expressions(r);
+		_ = r.eat(")");
+		Call(name, exprs)
+}
+
+fun identifiers(r: mutable Reader): Vector<String> {
+		vec = mutable Vector<String>[];
+		while (r.hasMoreTokens()) {
+				if (r.curToken().asString(r) == ")") { break void; };
+				vec.push(r.identifier());
+		};
+		vec.chill()
+}
+
+fun expressions(r: mutable Reader): Vector<Expr> {
+		vec = mutable Vector<Expr>[];
+		while (r.hasMoreTokens()) {
+				if (r.curToken().asString(r) == ")") { break void; };
+				vec.push(parseExpr(r));
+		};
+		vec.chill()
+}
+
+fun declarations(r: mutable Reader): Vector<Decl> {
+		vec = mutable Vector<Decl>[];
+		while (r.hasMoreTokens()) {
+				if (r.curToken().asString(r) == ")") { break void; };
+				vec.push(parseDecl(r));
+		};
+		vec.chill()
+}
+
+fun functions(r: mutable Reader): Vector<Function> {
+    vec = mutable Vector<Function>[];
+		while (r.hasMoreTokens()) {
+				if (r.curToken().asString(r) == ")") { break void; };
+				vec.push(parseFun(r));
+		};
+		vec.chill()
+}
+
+// -------------------------------------------------------------------------------------------
+// Tok
+// -------------------------------------------------------------------------------------------
+value class Tok(start: Int, end: Int, lines: Int, lineBreak: Int) {
+
+	// return the token as a string, or ERROR if ill-formed
+  fun asString(r: mutable Reader): String {
+		s = this.start;
+		e = this.end;
+		if (e > s) String::fromChars(r.text.slice(s, e).toArray()) else "ERROR"
+	}
+
+  // booleans and integers are the only values supported so far. We should add strings and lists.
+	fun isValue(r: mutable Reader): Bool {
+    txt = r.text;
+    isBool = (txt[0] == 't' && txt[1] == 't') || (txt[0] == 'f' && txt[1] == 'f');
+		if (isBool) { return true; };
+		start = this.start;
+		end = this.end;
+		while (start < end) {
+		  c = txt[start];
+			if (!Chars.isDigit(c)) {
+			  return false;
+			};
+			!start = start + 1;
+		};
+		true
+	}
+
+  // Some examples of valid identifiers:  a, a!, a?, _, _a, a1, +, <=
+	fun isIdentifier(r: mutable Reader): Bool {
+	   if (this.isValue(r)) { return false; };
+		 from = this.start;
+		 to = this.end;
+		 if (to - from == 1) {
+		 		c =  r.text[from];
+				r.isLetter(c)
+				|| c == '+'
+				|| c == '*'
+  			|| c == '-'
+				|| c == '/'
+				|| c == '%'
+				|| c == '<'
+				|| c == '>'
+				|| c == '='
+		 } else if (to - from == 2) {
+		 	  c =  r.text[from];
+				c2 = r.text[from+1];
+				if (r.isLetter(c)) {
+				  c2 == '!' || c2 == '?' || Chars.isDigit(c) || r.isLetter(c)
+				} else {
+  				   (c == '&' && c2 == '&')
+	  			|| (c == '|' && c2 == '|')
+  	  		|| (c == '<' && c2 == '=')
+    			|| (c == '>' && c2 == '=')
+			 }
+  	 } else {
+		   c = r.text[from];
+			 if (!r.isLetter(c)) { return false; };
+			 !from = from + 1;
+		 	 while(from < to) {
+		     ch = r.text[from];
+				 b = r.isLetter(ch) || ch == '!' || ch == '?';
+				 if (!b) { return false; };
+				!from = from + 1;
+	 	   };
+			 true
+ 	  }
+	}
+
+  fun print(r: mutable Reader, msg: String): void {
+			print_string(this.error_message(r, msg));
+	}
+
+	fun error_message(r: mutable Reader, msg: String): String {
+		s1 = `File ${r.path} at line ${this.lines}`;
+		s2 = this.print_line(this.lines-2,r);
+		s3 = this.print_line(this.lines-1,r);
+		s4 = this.print_line(this.lines,r);
+		s5 = this.print_carret(r, msg);
+		`${s1}\n${s2}\n${s3}\n${s4}\n${s5}\n`
+	}
+
+  // Print a carret and a message at a particular position in a line
+  fun print_carret(r: mutable Reader, msg: String): String {
+		s = "    ";
+		line_start = this.start;
+		txt = r.text;
+		while (line_start > 0) {
+					c = txt[line_start];
+			if (r.isLineBreak(c)) {
+			  !line_start = line_start + 1;
+				break void;
+			};
+			!line_start = line_start - 1;
+			!s = s + " ";
+		};
+    `${s}^--${msg}`
+  }
+
+	// Assuming that our programs are no more than 999 long, this should align each printed line
+	fun pad(n: Int): String {
+			s = if (n < 10) "  " else { if (n < 99) " " else ""};
+			`${s}${n}`
+	}
+
+	// Given a line number, print the corresponding line in the file with line number prepended
+	fun print_line(line: Int, r: mutable Reader): String {
+		if (line < 0) { return ""; };
+		start = 0;
+		end = 0;
+		lineSeen = 0;
+		txt = r.text;
+		while(end < txt.size()) {
+		  c = txt[end];
+			!end = end + 1;
+			if (r.isLineBreak(c)) {
+			   !lineSeen = lineSeen + 1;
+				 if (lineSeen == line + 1) {
+				 		break void;
+				};
+				!start = end;
+			};
+  	};
+		s = String::fromChars(r.text.slice(start, end - 1).toArray());
+		num = this.pad(line);
+		`${num}| ${s}`
+ }
+}
+
+// ----------------------------------------------------------------------------------
+// Reader
+//
+// Interface to keep track of a file, its source text, parsed output, and any error.
+//
+// Does not throw exceptions.
+//
+// ?? The dot in front of the name is a trick to make the class visible at the top ??
+//
+// ?? Is there a way to have private fields? ??
+//
+// ?? !this.f = 1   ||   this.!f = 1  ??
+//
+// skiplang documentation still has .get method on String
+//
+// ----------------------------------------------------------------------------------
+mutable class .Reader{
+	path: String,                 // path to the target file
+  text: Vector<Char>,           // contents of the file
+	mutable tokens: mutable Vector<Tok>,  // stream of lexed tokens
+	mutable tokPos: Int = 0,      // position in the token stream
+	mutable ok: Bool = true,      // was there any error processing
+	mutable error: String = "",   // message to report to the user
+	mutable pos: Int = 0,         // current offset in the text
+	mutable lineBreak: Int = 0,   // last line break offset seen
+	mutable lines: Int = 0} {     // number of lines so far
+
+  // create: returns a new reader for the provided file.
+  // Reads the file after checking that it exists.
+  //
+  // TODO: the call to exists fails to compile, unclear why. ??????
+  static fun create(p: String): mutable Reader {
+	  toks = mutable Vector<Tok>[];
+    if (true /*FileSystem.exists(p)*/) {
+ 		  txt = FileSystem.readTextFile(p).chars();
+      r = mutable Reader{ path => p, text => txt, tokens => toks };
+			r.!tokens = r.lex();
+			r
+   	} else {
+   		mutable Reader{ path => p, text => Vector<Char>[], tokens => toks, ok => false,
+                      error => `File ${p} not found` }
+    }
+  }
+
+  // ------------- PARSING -----------------------------------------------------
+
+	// Parse this file, clients must check if this was succesful as something is returned in all cases.
+	mutable fun parse(): File {	parseFile(this)	}
+
+	// Do we have more tokens?
+  readonly fun hasMoreTokens(): Bool { this.tokPos < this.tokens.size(); }
+
+	// Consume the requested token, or fail
+	mutable fun eat(s: String): mutable Reader {
+		if (this.ok && this.hasMoreTokens()) {
+ 		  tok = this.curToken();
+			val = tok.asString(this);
+			if (val != s) { this.fail(tok, `expected ${s}`); };
+			this.advanceTok();
+		};
+		this
+	}
+
+	// Record that we have failed.
+	mutable fun fail(tok: Tok, msg: String): void {
+	  this.!ok = false;
+	  this.!tokPos = this.tokens.size();
+		this.!error = tok.error_message(this, msg);
+	}
+
+  // Return the previous token or the current one (approximate at the edge)
+	readonly fun prevToken(): Tok {
+		if (this.tokPos > 0) this.tokens[this.tokPos-1] else this.curToken()
+	}
+
+	// Return the current token, assumes that there is one!
+	readonly fun curToken(): Tok { this.tokens[this.tokPos] }
+
+  // Returns the next token if available, otherwise fail and return garbage
+	mutable fun nextToken(): Tok {
+	  if (this.tokPos +1 < this.tokens.size()) {
+		  this.tokens[this.tokPos+1]
+		} else {
+		  this.fail(this.curToken(), "premature end of file");
+			this.curToken()
+		}
+	}
+
+	// advance the position in the token stream, possibly off the end
+  mutable fun advanceTok(): void { this.!tokPos = this.tokPos + 1; }
+
+  // Return an identifier and fail if this is not well-formed
+	mutable fun identifier(): String {
+		if (!this.ok) { return ""; };
+		if (!this.hasMoreTokens()) { this.fail(this.prevToken(), "premature end of file"); };
+		tok = this.curToken();
+		if (!tok.isIdentifier(this)) { this.fail(tok, "expected an identifier"); };
+		this.advanceTok();
+		tok.asString(this)
+  }
+
+  // -------------- LEXING -----------------------------------------------------
+
+  // Process a file breaking it into tokens
+  mutable fun lex(): mutable Vector<Tok> {
+	  toks = mutable Vector<Tok>[];
+	  while(this.hasMore()) {
+		  tok = this.token();
+			toks.push(tok);
+		};
+		toks
+  }
+
+  // If an error occured report it.
+  readonly fun error_report(): void {
+		if (!this.ok) { print_string(this.error); }
+	}
+
+	// Identifiers and operators
+  readonly fun isLetterOrOp(c: Char): Bool {
+	  Chars.isDigit(c) || this.isLetter(c) || c == '!' || c == '%' || c == '&' || c == '|'
+		|| c == '-' || c == '+' || c == '*'  || c == '<' || c == '>' || c == '=' || c == '?' || c == '='
+  }
+	readonly fun isLetter(c: Char): Bool { Chars.isUpperCaseLetter(c) || Chars.isLowerCaseLetter(c) || c == '_' }
+  readonly fun isDelimiter(c: Char): Bool { c == '(' || c == ')' }
+	readonly fun isLineBreak(c: Char): Bool { c == '\n' }
+  readonly fun isSpace(c: Char): Bool { c == ' ' || c == '\t' }
+  readonly fun isComment(c: Char): Bool { c == '#' }
+
+  // return the current char and advance the position
+  mutable fun charNext(): Char {
+		 c = this.text[this.pos];
+		 this.!pos = this.pos + 1;
+		 c
+  }
+
+	readonly fun hasMore(): Bool {	this.pos < this.text.size()	}
+
+	// Records that a line break happened, if we moved the cursor we need to
+	// set it back to where the linebreak character occured.
+  mutable fun recordLineBreak(lastPos: Int): void {
+		this.!lines = this.lines + 1;
+		this.!lineBreak = lastPos;
+	}
+
+  // Skip a whole comment assuming we already read the leading #
+  mutable fun skipComment(): void {
+    while (this.hasMore()) {
+  	  c = this.charNext();
+		  if (this.isLineBreak(c)) {
+		    this.recordLineBreak(this.pos - 1);
+		    break void;
+	    }
+	  }
+	}
+
+  // Unreads the last character
+  mutable fun unread():void {	if (this.pos > 0) {	this.!pos = this.pos - 1; }; }
+
+  // Move past comments and white spaces, while keep track of lines
+  mutable fun skipSpaces(): void {
+    while (this.hasMore()) {
+			c = this.charNext();
+      if (this.isComment(c)) {
+        this.skipComment();
+			} else if (this.isLineBreak(c))	{
+			  this.recordLineBreak(this.pos - 1);
+      } else if (!this.isSpace(c)) {
+				this.unread();
+        break void;
+      }
+    }
+  }
+
+	// Returns the next token
+  mutable fun token(): Tok {
+    this.skipSpaces();
+		start = this.pos;
+		hasSeenChars = false;
+		while(this.hasMore()) {
+		  c = this.charNext();
+      if (this.isDelimiter(c)) {
+				if (hasSeenChars) { this.unread(); };
+				!hasSeenChars = true;
+		    break void;
+	    } else if (this.isLetterOrOp(c)) {
+				!hasSeenChars = true;
+			} else {
+				this.unread();
+				break void;
+			}
+    };
+		tok = if (hasSeenChars) Tok(start, this.pos, this.lines, this.lineBreak) else Tok(0, -1, 0, 0);
+		this.skipSpaces();
+		tok
+  }
+
+}
+
+module end;

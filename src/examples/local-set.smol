@@ -8,7 +8,7 @@
 (functions (
   (function main ()
     (begin
-      (const seven 7)
+      (let seven 7)
       (fail x y)
     )
   )

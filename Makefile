@@ -35,6 +35,10 @@ ONATIVE_FILES= build/magic.o $(addprefix build/,$(NATIVE_FILES:.c=.o))
 
 default: build/skia
 
+docker:
+	docker run -it -v /Users/jan/Documents/SKIncr:/jan/SKIncr buildme bash
+
+
 build/skc:
 	mkdir -p build
 	gunzip -c prebuild/preamble_and_skc_out64.ll.gz > build/preamble_and_skc_out64.ll
