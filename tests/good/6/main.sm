@@ -22,10 +22,9 @@
         (while (< x y) # x=0 < y
           (begin
             (let one 1)
-            (set! z (+ y z)) # z = y + z
-            (set! x (+ x one)) # x = x + 1
-          )
-        )
+            (set! z (+ y z)) 
+            (set! x (+ x one))
+        ) )
         z
     )
   )

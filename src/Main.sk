@@ -1,9 +1,30 @@
+// The entry point for the interpreter and analyzer.
+//
+// The function expects to get a list of files, one of which should be a module named Main, with a function
+// named main. All imported modules should be available. No module can appear twice.
+//
 fun main(): void {
 	paths = arguments();
+	if (paths.size() == 0) {
+		 test();
+		 return void;
+	};
   _files = paths.map(p -> {
 	  r = Reader::create(p);
   	f = r.parse();
 		if (r.ok) { print_string(f.toString()); } else { r.error_report(); };
 	  r
  });
+}
+
+fun test(): void {
+	good_test("./tests/good/1/main.sm");
+	good_test("./tests/good/2/main.sm");
+	good_test("./tests/good/3/main.sm");
+}
+
+fun good_test(p: String): void {
+	r = Reader::create(p);
+ 	_f = r.parse();
+  if (r.ok) { print_string("."); } else { r.error_report(); };
 }
