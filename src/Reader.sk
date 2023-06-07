@@ -125,13 +125,13 @@ fun parseFun(r: mutable Reader): Function {
   tok = r.curToken();
   name = r.eat("(").eat("function").identifier();
   _ = r.eat("(");
-  args = identifiers(r);
+  params = identifiers(r);
   _ = r.eat(")");
   expr = parseExpr(r);
 	tik = r.curToken();
   _ = r.eat(")");
 	token = Tok(tok.start, tik.end, tok.lines, tok.lineBreak);
-	 Function{ tok => token, name => name, params => args, body => expr }
+	 Function{ tok => token, name => name, params => params, body => expr }
 }
 
 fun parseDecl(r: mutable Reader): Decl {
@@ -249,82 +249,120 @@ fun createScope(): mutable Scope {
 mutable class Scope(ctxts: mutable Vector<String>,
                     envs: mutable Vector<mutable Vector<Name>>) {
 
-  mutable fun ctxtOpen(ctxt: String): void { this.ctxts.push(ctxt); }
+  mutable fun pushCtx(ctx: String): void { this.ctxts.push(ctx); }
 
-  mutable fun ctxtClose(ctxt: String): void {
+  mutable fun popCtx(ctx: String): void {
 	  c = this.ctxts.pop();
-		if (c != ctxt) { print_string("Warning: missmatched context"); }
+		if (c != ctx) { print_string("Warning: missmatched context"); }
 	}
 
-  mutable fun open(): void { this.envs.push(mutable Vector<Name>[]); }
+  mutable fun pushScope(): void { this.envs.push(mutable Vector<Name>[]); }
 
-	mutable fun close(): void { _ = this.envs.pop(); }
+	mutable fun popScope(): void { _ = this.envs.pop(); }
 
-	mutable fun addName(s: String, t: Tok, arity: Int): void {
+	mutable fun define(s: String, t: Tok, arity: Int): void {
 	  v = this.envs[this.envs.size() - 1]; n = Name(s, t, arity);	v.push(n);
 	}
 
-	mutable fun hasName(s: String): Bool {
-	  found = false; this.envs.each(v -> v.each(n -> if (s == n.name()) { !found = true }));	found
+	readonly fun isDefined(s: String): Bool {
+	  res = false; this.envs.each(v -> v.each(n -> if (s == n.name()) { !res = true })); res
   }
 
-  mutable fun hasCtxt(s: String): Int {
+  readonly fun hasArity(s: String): Int {
+	  res = -1; this.envs.each(v -> v.each(n -> if (s == n.name()) { !res = n.arity })); res
+  }
+
+  readonly fun hasCtx(s: String): Int {
 	  top = this.ctxts.size() - 1;
 		n = top;
 		while(n >= 0) { if (s == this.ctxts[n]) { return top - n; } else { !n = n - 1; }; };
     -1
 	}
+
+  readonly fun isTopLevel(): Bool {
+
+  }
 }
 
 fun createChecker(r: mutable Reader): mutable Checker { mutable Checker(createScope(), r) }
 
 mutable class Checker(env: mutable Scope, r: mutable Reader) {
-  mutable fun file(f: File): void {
-	  this.env.open();
+
+ mutable fun file(f: File): void {
+	  this.env.pushScope();
 	  f match {
 		| File{ decls, funs} -> {
-       this.env.ctxtOpen("decls");
-       decls.each(d -> this.decl(d) );
-			 this.env.ctxtClose("decls");
+       this.env.pushCtx("decls");
+       decls.each(d -> this.expression(d) );
+			 this.env.popCtx("decls");
        funs.each(f -> this.function(f) );
      }
 		};
-		this.env.close();
+		this.env.popScope();
 	}
 
-  mutable fun decl(d: Decl): void {
-	  this.check_add_name(d.name, d.tok, -1);
-  }
-
-  mutable fun check_add_name(name: String, t: Tok, arity: Int): void {
-	  if (this.env.hasName(name)) {
+  mutable fun checked_add(name: String, t: Tok, arity: Int): void {
+	  if (this.env.isDefined(name)) {
       this.r.fail(t, `name ${name} already defined, names cannot be shadowed`);
 		} else {
-      this.env.addName(name, t, arity);
+      this.env.define(name, t, arity);
+		}
+  }
+
+  mutable fun mustHave(name: String, t: Tok): Int {
+	  if (this.env.isDefined(name)) {
+      this.r.fail(t, `name ${name} not defined`);
+			-1
+		} else {
+		  this.env.hasArity(name)
 		}
   }
 
 	mutable fun function(f: Function): void {
-	  this.check_add_name(f.name, f.tok, f.params.size());
-    this.env.ctxtOpen("function");
-		this.env.open();
-		if (this.r.ok) { f.params.each(s -> this.check_add_name(s, f.tok, -1) ); };
+	  this.checked_add(f.name, f.tok, f.params.size());
+    this.env.pushCtx("function");
+		this.env.pushScope();
+		if (this.r.ok) { f.params.each(s -> this.checked_add(s, f.tok, -1) ); };
 		if (this.r.ok) { this.expression(f.body); };
-    this.env.close();
-    this.env.ctxtClose("function");
+    this.env.popScope();
+    this.env.popCtx("function");
   }
 
-	mutable fun expression(e: Expr): void {
-	  e match {
+	mutable fun expression(e0: Expr): void {
+	  e0 match {
     | Val(_t, _s) -> { void; }
     | Var(t, s) -> {
-			if (!this.env.hasName(s)) { this.r.fail(t, `name ${s} undefined`); };
+			if (!this.env.isDefined(s)) { this.r.fail(t, `name ${s} undefined`); };
 		}
-    | Decl(_t, _n, _e) -> { void; }
-    | Call(_t, _n, _es) -> { void; }
-    | Block(_t, _vs) -> { void; }
-    | While(_t, _e, _s) -> { void; }
-    | Cond(_t, _e, _s1, _s2) -> { void; }
+    | Decl(t, n, e) -> {
+			this.expression(e);
+      this.checked_add(n, t, -1);
+		}
+    | Call(t, n, es) -> {
+		  arity = this.mustHave(n,t);
+			if (arity != es.size()) {
+			  this.r.fail(t, `function ${n} defined with arity ${arity} is getting ${es.size()} argument(s)`);
+			};
+			if(n == "set!" && !this.env.isTopLevel()) {
+        this.r.fail(t, `function ${n} can only be called from a top-level context`);
+			};
+		}
+    | Block(_t, vs) -> {
+      this.env.pushCtx("block");
+			this.env.pushScope();
+			vs.each(e -> this.expression(e) );
+			this.env.popScope();
+			this.env.popCtx("block");
+		}
+    | While(_t, e, s) -> {
+		  this.expression(e);
+			this.expression(s);
+		}
+    | Cond(_t, e, s1, s2) -> {
+		  this.expression(e);
+			this.expression(s1);
+			this.expression(s2);
+		}
 		};
 	}
 }

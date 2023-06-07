@@ -1,0 +1,19 @@
+(module StdLib imports ())
+
+(vars ())
+
+(functions (
+  (function (set! (!x expr) 0)
+  (function (+ (x y) 0)
+  (function (- (x y) 0)
+  (function (* (x y) 0)
+  (function (/ (x y) 0)
+  (function (&& (x y) 0)
+  (function (|| (x y) 0)
+  (function (! (x ) 0)
+  (function (== (x y) 0)
+  (function (< (x y) 0)
+  (function (> (x y) 0)
+  (function (<= (x y) 0)
+  (function (>= (x y) 0)
+)
