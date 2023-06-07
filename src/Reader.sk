@@ -22,7 +22,12 @@ module Reader;
 // -------------------------------------------------------------------------------------
 // ---------------------- ABSTRACT SYNTAX TREE ------------------------------------------
 // -------------------------------------------------------------------------------------
-value class File{tok: Tok, name: String, imports: Vector<String>, decls: Vector<Decl>, funs: Vector<Function>} {
+value class File{tok: Tok,
+                 name: String,
+								 imports: Vector<String>,
+                 decls: Vector<Decl>,
+								 funs: Vector<Function>} {
+
 	fun toString(): String {
 		imports_str = toStringStrings(this.imports);
 		decls_str = toStringDecls(this.decls);
@@ -222,25 +227,53 @@ fun functions(r: mutable Reader): Vector<Function> {
 // ----------- CHECKING THE AST --------------------------------------------------------
 // -------------------------------------------------------------------------------------
 
-fun createScope(): mutable Scope { mutable Scope(mutable Vector<mutable Vector<String>>[]) }
+// Some rules:
+//
+// Statement-like expressions: (set!) (let) (if) (while) (begin) can only occur at the
+// `top-level`, i.e. body of a function, in a (begin), in the bodies of  (if) and (while).
+//
+// A single namespace for variables and functions with no shadowing.
+//
+// We can check the arity of functions as they are defined only once.
 
-mutable class Scope(envs: mutable Vector<mutable Vector<String>>) {
-  mutable fun open(): void {
-    v = mutable Vector<String>[];
-		this.envs.push(v);
-	}
-	mutable fun close(): void {
-    _ = this.envs.pop();
+value class Name(sym: String, tok: Tok, arity: Int) {
+	fun name(): String { this.sym }
+}
+
+fun createScope(): mutable Scope {
+    c = mutable Vector<String>[];
+		e = mutable Vector<mutable Vector<Name>>[];
+    mutable Scope(c, e)
   }
-	mutable fun add(s: String): void {
-	  v = this.envs[this.envs.size() - 1];
-		v.push(s);
+
+mutable class Scope(ctxts: mutable Vector<String>,
+                    envs: mutable Vector<mutable Vector<Name>>) {
+
+  mutable fun ctxtOpen(ctxt: String): void { this.ctxts.push(ctxt); }
+
+  mutable fun ctxtClose(ctxt: String): void {
+	  c = this.ctxts.pop();
+		if (c != ctxt) { print_string("Warning: missmatched context"); }
 	}
-	mutable fun has(s: String): Bool {
-	  found = false;
-    this.envs.each(v -> v.each(n -> if (s == n) { !found = true }));
-		found
+
+  mutable fun open(): void { this.envs.push(mutable Vector<Name>[]); }
+
+	mutable fun close(): void { _ = this.envs.pop(); }
+
+	mutable fun addName(s: String, t: Tok, arity: Int): void {
+	  v = this.envs[this.envs.size() - 1]; n = Name(s, t, arity);	v.push(n);
+	}
+
+	mutable fun hasName(s: String): Bool {
+	  found = false; this.envs.each(v -> v.each(n -> if (s == n.name()) { !found = true }));	found
   }
+
+  mutable fun hasCtxt(s: String): Int {
+	  top = this.ctxts.size() - 1;
+		n = top;
+		while(n >= 0) { if (s == this.ctxts[n]) { return top - n; } else { !n = n - 1; }; };
+    -1
+	}
 }
 
 fun createChecker(r: mutable Reader): mutable Checker { mutable Checker(createScope(), r) }
@@ -250,29 +283,50 @@ mutable class Checker(env: mutable Scope, r: mutable Reader) {
 	  this.env.open();
 	  f match {
 		| File{ decls, funs} -> {
+       this.env.ctxtOpen("decls");
        decls.each(d -> this.decl(d) );
-       funs.each(f -> this.func(f) );
+			 this.env.ctxtClose("decls");
+       funs.each(f -> this.function(f) );
      }
 		};
 		this.env.close();
 	}
 
   mutable fun decl(d: Decl): void {
-    d match {
-		| Decl(tok, name, _expr) -> {
-		   if (this.env.has(name)) {
-         this.r.fail(tok, `${name} already defined`);
-				 return void;
-			 };
-			 // expr
-			 this.env.add(name);
-		  }
+	  this.check_add_name(d.name, d.tok, -1);
+  }
+
+  mutable fun check_add_name(name: String, t: Tok, arity: Int): void {
+	  if (this.env.hasName(name)) {
+      this.r.fail(t, `name ${name} already defined, names cannot be shadowed`);
+		} else {
+      this.env.addName(name, t, arity);
 		}
   }
 
-	mutable fun func(_f: Function): void {
-void;
-}
+	mutable fun function(f: Function): void {
+	  this.check_add_name(f.name, f.tok, f.params.size());
+    this.env.ctxtOpen("function");
+		this.env.open();
+		if (this.r.ok) { f.params.each(s -> this.check_add_name(s, f.tok, -1) ); };
+		if (this.r.ok) { this.expression(f.body); };
+    this.env.close();
+    this.env.ctxtClose("function");
+  }
+
+	mutable fun expression(e: Expr): void {
+	  e match {
+    | Val(_t, _s) -> { void; }
+    | Var(t, s) -> {
+			if (!this.env.hasName(s)) { this.r.fail(t, `name ${s} undefined`); };
+		}
+    | Decl(_t, _n, _e) -> { void; }
+    | Call(_t, _n, _es) -> { void; }
+    | Block(_t, _vs) -> { void; }
+    | While(_t, _e, _s) -> { void; }
+    | Cond(_t, _e, _s1, _s2) -> { void; }
+		};
+	}
 }
 
 
