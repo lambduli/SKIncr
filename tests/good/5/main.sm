@@ -6,6 +6,11 @@
 ))
 
 (functions (
+
+  # this function will cause a runtime exception
+  (function fail (a b)
+    (set! a 23))
+
   (function main ()
     (begin
       (let seven 7)
@@ -13,7 +18,4 @@
     )
   )
 
-  # this function will cause a runtime exception
-  (function fail (a b)
-    (set! a 23))
 ))

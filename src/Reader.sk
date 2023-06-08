@@ -29,18 +29,18 @@ value class File{tok: Tok,
 								 funs: Vector<Function>} {
 
 	fun toString(): String {
-		imports_str = toStringStrings(this.imports);
-		decls_str = toStringDecls(this.decls);
-		functions_str = toStringFunctions(this.funs);
-	  `(module ${this.name} imports (${imports_str}))\n(vars (${decls_str}))\n(functions (${functions_str}))`
+		is = toStringStrings(this.imports);
+		ds = toStringDecls(this.decls);
+		fs = toStringFunctions(this.funs);
+	  `(module ${this.name} imports (${is}))\n(vars (${ds}))\n(functions (${fs}))`
 	}
 }
 
 value class Function{tok: Tok, name: String, params: Vector<String>, body: Expr} {
   fun toString(): String {
-		params_str = toStringStrings(this.params);
-		body_expr = toStringExpr(this.body);
-		`(function ${this.name} (${params_str}) ${body_expr})\n`;
+		ps = toStringStrings(this.params);
+		bs = toStringExpr(this.body);
+		`(function ${this.name} (${ps}) ${bs})\n`;
   }
 }
 
@@ -108,8 +108,8 @@ fun parseFile(r: mutable Reader): File {
 fun parseExpr(r: mutable Reader): Expr {
   tok = r.curToken();
   if (!r.ok) { return Val(tok, "ERR"); };
-  tok_s = tok.asString(r);
-  if (tok_s == "(") {
+  stok = tok.asString(r);
+  if (stok == "(") {
     r.nextToken().asString(r) match {
     |   "let" -> parseDecl(r)
     | "begin" -> parseBlock(r)
@@ -118,7 +118,7 @@ fun parseExpr(r: mutable Reader): Expr {
     |       _ -> parseCall(r)
     }
   } else {
-    if (tok.isValue(r)) {	r.advanceTok(); Val(tok, tok_s) } else Var(tok, r.identifier())
+    if (tok.isValue(r)) {	r.advanceTok(); Val(tok, stok) } else Var(tok, r.identifier())
   }
 }
 
@@ -380,11 +380,9 @@ mutable class Checker(env: mutable Scope, r: mutable Reader) {
 		}
     | Block(t, vs) -> { // check that (begin...) is at the top level, and the expressions are good
  			this.check_top_level("begin", t);
-      env.setTop(false);
 			env.pushScope();
 			vs.each(e -> this.expression(e) );
 			env.popScope();
-			env.setTop(old);
 		}
     | While(t, e, s) -> { //  check the expression as nested and the statement as top-level
 			this.check_top_level("while", t);
@@ -427,10 +425,12 @@ value class Tok(start: Int, end: Int, lines: Int, lineBreak: Int) {
   // booleans and integers are the only values supported so far. We should add strings and lists.
 	fun isValue(r: mutable Reader): Bool {
     txt = r.text;
-    isBool = (txt[0] == 't' && txt[1] == 't') || (txt[0] == 'f' && txt[1] == 'f');
-		if (isBool) { return true; };
 		start = this.start;
 		end = this.end;
+    isBool = start + 2 == end
+		     && ( (txt[start] == 't' && txt[start+1] == 't')
+				   || (txt[start] == 'f' && txt[start+1] == 'f'));
+		if (isBool) { return true; };
 		while (start < end) {
 		  c = txt[start];
 			if (!Chars.isDigit(c)) {

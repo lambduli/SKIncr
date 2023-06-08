@@ -4,16 +4,15 @@
   (let two 2)
   (let three 3)
   (let cond (< two three))
-  (let x (if cond 0 1)) # this is just to test that the if works, no real reason behind it
-  (let shouldContinue True)
+  (let x two)
+  # Does not work: (let x (if cond 0 1)) # this is just to test that the if works, no real reason behind it
+  (let shouldContinue tt)
 ))
 
 (functions (
-  (function main ()
-    (foo))
 
   (function not (bool)
-    (if bool False True))
+    (if bool ff tt))
 
   # no idea what this function does
   (function foo ()
@@ -24,11 +23,15 @@
           (let one 1)
           (let y (+ one x))
           (set! x y)
-          (let eq (= x a))
+          (let eq (== x a))
           (set! shouldContinue (not eq))
         )
       )
       x
     )
   )
+
+  (function main ()
+    (foo))
+
 ))

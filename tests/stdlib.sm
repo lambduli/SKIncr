@@ -16,4 +16,6 @@
   (function > (x y) 0)
   (function <= (x y) 0)
   (function >= (x y) 0)
+  (function write! (x) 0)
+  (function read! () 0)
 ))

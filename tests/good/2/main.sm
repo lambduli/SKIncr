@@ -3,20 +3,18 @@
 # this is a comment, it spans until the end of this line
 
 (vars (
-  (let two 2) #  these would make more sense as global constants
-  (let three 3) # ^ and this one
+  (let two 2)
+  (let three 3)
   (let cond (< two three))
   (let z 0)
   (let zz 0)
-  # this is just to test that the if works, no real reason behind it
-  # because of the limitations, all the mutable state must be global, unusual
-  (let x (if cond 0 1))
-  (let shouldContinue True)
+  (let x 1)
+  (let shouldContinue tt)
 ))
 
 (functions (
   (function not (bool)
-    (if bool False True))
+    (if bool ff tt))
 
   # no idea what this function does
   (function foo ()
@@ -27,7 +25,7 @@
           (let one 1)
           (let y (+ one x))
           (set! x y)
-          (let eq (= x a))
+          (let eq (== x a))
           (set! shouldContinue (not eq))
         )
       )
@@ -39,10 +37,10 @@
   # then consider the difference between them
   # and that many times multiply the second argument
   # that is what the `z` will be set to
-  (function bar (x y)
+  (function bar (xx y)
     (begin
       (set! z 0) # resets the `z` to 0 each time `foo` is called
-      (set! zz x)
+      (set! zz xx)
       (while (< z y)
         (begin
           (set! z (+ y z))
@@ -57,7 +55,7 @@
   (function simpler ()
     (let a 23)
   )
-  
+
   (function simple ()
     (begin
       (let a 23)

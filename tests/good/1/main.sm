@@ -10,22 +10,12 @@
 
 (functions (
   (function simpler ()
-    (let a 23)
+    (let d 23)
   )
 
   (function simple ()
     (begin
-      (let a 23)
-    )
-  )
-
-  (function main ()
-    (begin
-      (let a 23)
-      (let c 42)
-      (let b (foo a c)) # 42 - 23 = 19 ; 19 * 42 = 798
-      (let ignore (foo a b)) # never used anyway
-      (+ a b) # 23 + 798 = 821
+      (let d 23)
     )
   )
 
@@ -48,4 +38,15 @@
       z
     )
   )
+
+  (function main ()
+    (begin
+      (let d 23)
+      (let c 42)
+      (let e (foo d c)) # 42 - 23 = 19 ; 19 * 42 = 798
+      (let ignore (foo d e)) # never used anyway
+      (+ a b) # 23 + 798 = 821
+    )
+  )
+
 ))

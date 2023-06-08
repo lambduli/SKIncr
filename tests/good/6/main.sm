@@ -6,12 +6,6 @@
 ))
 
 (functions (
-  (function main ()
-    (begin
-      (let seven 7)
-      (square seven)
-    )
-  )
 
   # result is `y * y`
   (function square (y)
@@ -22,10 +16,17 @@
         (while (< x y) # x=0 < y
           (begin
             (let one 1)
-            (set! z (+ y z)) 
+            (set! z (+ y z))
             (set! x (+ x one))
         ) )
         z
+    )
+  )
+
+  (function main ()
+    (begin
+      (let seven 7)
+      (square seven)
     )
   )
 ))
