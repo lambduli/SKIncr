@@ -8,6 +8,8 @@ module Reader;
 //        the plus denotes multiplicity but is not part of the name
 //     -- add a (function prim (name args+) 0) function for calling all primitives
 //        thus we can define + as (function + (x y) (prim "+" x y))
+//     -- file descriptors and (open! path call
+//     -- add function name variables? or closure?
 // -----
 
 // Grammar
