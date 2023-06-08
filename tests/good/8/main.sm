@@ -1,4 +1,4 @@
-(module Main imports (Lib))
+(module Main imports (StdLib Lib))
 
 (vars (
   (let a 0)

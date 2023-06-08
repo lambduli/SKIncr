@@ -91,6 +91,7 @@ fun toStringExprs(v: Vector<Expr>): String {
 // Parse a file, always returns something. Clients check the Reader for an error.
 fun parseFile(r: mutable Reader): File {
   tok = r.curToken();
+	r.reportError();
   name = r.eat("(").eat("module").identifier();
   _ = r.eat("imports").eat("(");
   imports = identifiers(r);
@@ -236,71 +237,45 @@ fun functions(r: mutable Reader): Vector<Function> {
 //
 // We can check the arity of functions as they are defined only once.
 
-value class Name(sym: String, tok: Tok, arity: Int) {
-	fun name(): String { this.sym }
-}
+value class Name(name: String, tok: Tok, arity: Int) { }
 
-fun createScope(): mutable Scope {
-    c = mutable Vector<String>[];
-		e = mutable Vector<mutable Vector<Name>>[];
-    mutable Scope(c, e)
-  }
+fun createScope(): mutable Scope { mutable Scope(true, mutable Vector<mutable Vector<Name>>[]) }
 
-mutable class Scope(ctxts: mutable Vector<String>,
-                    envs: mutable Vector<mutable Vector<Name>>) {
-
-  mutable fun pushCtx(ctx: String): void { this.ctxts.push(ctx); }
-
-  mutable fun popCtx(ctx: String): void {
-	  c = this.ctxts.pop();
-		if (c != ctx) { print_string("Warning: missmatched context"); }
-	}
-
-  mutable fun pushScope(): void { this.envs.push(mutable Vector<Name>[]); }
-
-	mutable fun popScope(): void { _ = this.envs.pop(); }
+mutable class Scope(mutable top: Bool, env: mutable Vector<mutable Vector<Name>>) {
+  mutable fun setTop(isTop: Bool): void { this.!top = isTop; }
+	readonly fun isTop(): Bool { this.top }
+  mutable fun pushScope(): void { this.env.push(mutable Vector<Name>[]); }
+	mutable fun popScope(): void { _ = this.env.pop(); }
 
 	mutable fun define(s: String, t: Tok, arity: Int): void {
-	  v = this.envs[this.envs.size() - 1]; n = Name(s, t, arity);	v.push(n);
+	  v = this.env[this.env.size() - 1]; n = Name(s, t, arity);	v.push(n);
 	}
 
-	readonly fun isDefined(s: String): Bool {
-	  res = false; this.envs.each(v -> v.each(n -> if (s == n.name()) { !res = true })); res
-  }
+	readonly fun isDefined(s: String): Bool { this.hasArity(s) != -2 }
 
+	// return -2 if not found, -1 if not a function
   readonly fun hasArity(s: String): Int {
-	  res = -1; this.envs.each(v -> v.each(n -> if (s == n.name()) { !res = n.arity })); res
+	  res = -2; this.env.each(v -> v.each(n -> if (s == n.name) { !res = n.arity })); res
   }
 
-  readonly fun hasCtx(s: String): Int {
-	  top = this.ctxts.size() - 1;
-		n = top;
-		while(n >= 0) { if (s == this.ctxts[n]) { return top - n; } else { !n = n - 1; }; };
-    -1
-	}
-
-  readonly fun isTopLevel(): Bool {
-
+  readonly fun dbg_print(): void {
+	   print_string(`Scope:: top=${this.top}`);
+		 this.env.each(e -> e.each(n -> print_string(`${n.name}(${n.arity})`)));
+		 print_string("======================");
   }
 }
 
+// `createChecker` builds a new checker from a reader. Checker are mutable because they
+// update internal state as they walk over the AST.
 fun createChecker(r: mutable Reader): mutable Checker { mutable Checker(createScope(), r) }
 
+// -------------- Class Checker -----------------------------------------------------------
+// This class enforces some well-formdness rules over code. These require that we have
+// parsed all the imported files as we need their function definitions.
+// ----------------------------------------------------------------------------------------
 mutable class Checker(env: mutable Scope, r: mutable Reader) {
 
- mutable fun file(f: File): void {
-	  this.env.pushScope();
-	  f match {
-		| File{ decls, funs} -> {
-       this.env.pushCtx("decls");
-       decls.each(d -> this.expression(d) );
-			 this.env.popCtx("decls");
-       funs.each(f -> this.function(f) );
-     }
-		};
-		this.env.popScope();
-	}
-
+  // Add `name` to the environment, fail if already there
   mutable fun checked_add(name: String, t: Tok, arity: Int): void {
 	  if (this.env.isDefined(name)) {
       this.r.fail(t, `name ${name} already defined, names cannot be shadowed`);
@@ -309,57 +284,120 @@ mutable class Checker(env: mutable Scope, r: mutable Reader) {
 		}
   }
 
+  // Ensure that `name` is defined at this point, or fail
   mutable fun mustHave(name: String, t: Tok): Int {
-	  if (this.env.isDefined(name)) {
-      this.r.fail(t, `name ${name} not defined`);
-			-1
-		} else {
-		  this.env.hasArity(name)
+		arity = this.env.hasArity(name);
+	  if (arity == -2) { this.r.fail(t, `name ${name} not defined`); };
+		arity
+ }
+
+	// Check we are at the "top level", basically means we aren't in a nested expression.
+	mutable fun check_top_level(n: String, t: Tok): void {
+    if (this.env.isTop() == false) {
+        this.r.fail(t, `${n} can only be used a top-level context`);
 		}
   }
 
+	// Check a file definition
+  mutable fun file(file: File, fs: Vector<File>): void {
+	  if (file.name == "StdLib") { return void; }; // Assumed StdLib to be correct, do not check
+		// Check the import list: it should include StdLib and all imported files should be in `fs`
+		found = false;
+		file.imports.each(name -> if (name == "StdLib") { !found = true; });
+    if (!found) {
+		  this.r.fail(file.tok, `every file must import StdLib`);
+			return void;
+		};
+		failed = "";
+		file.imports.each(name -> {
+			missing = false;
+		  fs.each(f -> if (name == f.name) { !missing = true; });
+			if (missing == false) { !failed = name; }
+		});
+		if (failed != "") {
+		  this.r.fail(file.tok, `import ${failed} not found in the list of processed files`);
+			return void;
+		};
+		// Checking global variables
+    env = this.env;
+	  env.pushScope();
+    // Should we enforce that expressions in global decls do not call functions other than builtins?
+		// It is simpler to initialize all globals without worrying about circular import lists.
+		// By processing decls before functions we naturally do not have those in the environment.
+		// Perhaps we should just have access to basic StdLib functions?
+    env.setTop(true);
+	  fs.each(f -> if (f.name == "StdLib") {
+		  f.funs.each(func ->
+		    this.checked_add(func.name, func.tok, func.params.size()));
+    });
+    file.decls.each(d -> this.expression(d) );
+		// Here load the remaining imported function names
+		file.imports.each(name ->
+		  fs.each(f -> if (name == f.name && name != "StdLib") {
+			  f.funs.each(func ->
+  		    this.checked_add(func.name, func.tok, func.params.size()))
+			}));
+    // Checking function definitions
+    file.funs.each(f -> this.function(f) );
+		env.popScope();
+	}
+
+  // Check a function declaration
 	mutable fun function(f: Function): void {
 	  this.checked_add(f.name, f.tok, f.params.size());
-    this.env.pushCtx("function");
 		this.env.pushScope();
 		if (this.r.ok) { f.params.each(s -> this.checked_add(s, f.tok, -1) ); };
 		if (this.r.ok) { this.expression(f.body); };
     this.env.popScope();
-    this.env.popCtx("function");
   }
 
+	// Check an expression
 	mutable fun expression(e0: Expr): void {
+	  if (!this.r.ok) { return void; };
+	  env = this.env;
+		old = env.isTop();
 	  e0 match {
-    | Val(_t, _s) -> { void; }
+    | Val(_, _) -> { void; }
     | Var(t, s) -> {
-			if (!this.env.isDefined(s)) { this.r.fail(t, `name ${s} undefined`); };
+			if (!env.isDefined(s)) { this.r.fail(t, `name ${s} undefined`); };
 		}
-    | Decl(t, n, e) -> {
+    | Decl(t, n, e) -> { // check `e` is good; add `n` to environment
+			this.check_top_level("let", t);
+			env.setTop(false); // we are not at the top level in `e`
 			this.expression(e);
+			env.setTop(old); // reset top to what it was
       this.checked_add(n, t, -1);
 		}
-    | Call(t, n, es) -> {
-		  arity = this.mustHave(n,t);
+    | Call(t, n, es) -> { // Check function `n`'s arity matches number of arguments; Ensure `set!` is
+		  arity = this.mustHave(n,t); // called at top-level; check `es` is good.
 			if (arity != es.size()) {
-			  this.r.fail(t, `function ${n} defined with arity ${arity} is getting ${es.size()} argument(s)`);
+			  this.r.fail(t, `function ${n} defined with arity ${arity} got ${es.size()} argument(s)`);
 			};
-			if(n == "set!" && !this.env.isTopLevel()) {
-        this.r.fail(t, `function ${n} can only be called from a top-level context`);
-			};
+			if(n == "set!") { this.check_top_level(n, t); };
+			env.setTop(false);
+			es.each(e -> this.expression(e));
+		  env.setTop(old);
 		}
-    | Block(_t, vs) -> {
-      this.env.pushCtx("block");
-			this.env.pushScope();
+    | Block(t, vs) -> { // check that (begin...) is at the top level, and the expressions are good
+ 			this.check_top_level("begin", t);
+      env.setTop(false);
+			env.pushScope();
 			vs.each(e -> this.expression(e) );
-			this.env.popScope();
-			this.env.popCtx("block");
+			env.popScope();
+			env.setTop(old);
 		}
-    | While(_t, e, s) -> {
+    | While(t, e, s) -> { //  check the expression as nested and the statement as top-level
+			this.check_top_level("while", t);
+		  env.setTop(false);
 		  this.expression(e);
+			env.setTop(old);
 			this.expression(s);
 		}
-    | Cond(_t, e, s1, s2) -> {
+    | Cond(t, e, s1, s2) -> { // check the expression as nested and the statements as top-level
+			this.check_top_level("while", t);
+		  env.setTop(false);
 		  this.expression(e);
+			env.setTop(old);
 			this.expression(s1);
 			this.expression(s2);
 		}
@@ -368,17 +406,14 @@ mutable class Checker(env: mutable Scope, r: mutable Reader) {
 }
 
 
-
-
-
-
 // -------------------------------------------------------------------------------------
-// -----------------  SUPPOR STUFF -----------------------------------------------------
+// -----------------  SUPPORT STUFF ----------------------------------------------------
 // -------------------------------------------------------------------------------------
-
+// -------------------------------------------------------------------------------------
+// -------------------------------------------------------------------------------------
 
 // -------------------------------------------------------------------------------------------
-// Tok
+// class Tok: tokens with references into the source file
 // -------------------------------------------------------------------------------------------
 value class Tok(start: Int, end: Int, lines: Int, lineBreak: Int) {
 
@@ -421,7 +456,7 @@ value class Tok(start: Int, end: Int, lines: Int, lineBreak: Int) {
 				|| c == '%'
 				|| c == '<'
 				|| c == '>'
-				|| c == '='
+				|| c == '!'
 		 } else if (to - from == 2) {
 		 	  c =  r.text[from];
 				c2 = r.text[from+1];
@@ -432,6 +467,7 @@ value class Tok(start: Int, end: Int, lines: Int, lineBreak: Int) {
 	  			|| (c == '|' && c2 == '|')
   	  		|| (c == '<' && c2 == '=')
     			|| (c == '>' && c2 == '=')
+    			|| (c == '=' && c2 == '=')
 			 }
   	 } else {
 		   c = r.text[from];
@@ -543,21 +579,35 @@ mutable class .Reader{
     if (true /*FileSystem.exists(p)*/) {
  		  txt = FileSystem.readTextFile(p).chars();
       r = mutable Reader{ path => p, text => txt, tokens => toks };
-			r.!tokens = r.lex();
-			r
+      r.!tokens = r.lex();
+      r
    	} else {
    		mutable Reader{ path => p, text => Vector<Char>[], tokens => toks, ok => false,
                       error => `File ${p} not found` }
     }
   }
 
+  static fun process(paths: Vector<String>): (Vector<mutable Reader>, Vector<File>) {
+		rs = paths.map(p -> Reader::create(p)); // Readers
+		fs = rs.map(r -> parseFile(r)); // Files
+		fail = false;
+		rs.each(r -> if (!r.ok) { r.reportError(); !fail = true; });
+		if (fail) { return (rs,fs); };
+		cks = rs.map(r -> createChecker(r)); // Checkers
+		i = 0;
+		while (i < rs.size()) {
+			f = fs[i];
+			ck = cks[i];
+			ck.file(f, fs);
+      !i = i + 1;
+		};
+		(rs,fs)
+  }
+
   // ------------- PARSING -----------------------------------------------------
 
-	// Parse this file, clients must check if this was succesful as something is returned in all cases.
-	mutable fun parse(): File {	parseFile(this)	}
-
 	// Do we have more tokens?
-  readonly fun hasMoreTokens(): Bool { this.tokPos < this.tokens.size(); }
+  readonly fun hasMoreTokens(): Bool { this.ok && this.tokPos < this.tokens.size(); }
 
 	// Consume the requested token, or fail
 	mutable fun eat(s: String): mutable Reader {
@@ -601,7 +651,6 @@ mutable class .Reader{
 
   // Return an identifier and fail if this is not well-formed
 	mutable fun identifier(): String {
-		if (!this.ok) { return ""; };
 		if (!this.hasMoreTokens()) { this.fail(this.prevToken(), "premature end of file"); };
 		tok = this.curToken();
 		if (!tok.isIdentifier(this)) { this.fail(tok, "expected an identifier"); };
@@ -622,13 +671,13 @@ mutable class .Reader{
   }
 
   // If an error occured report it.
-  readonly fun error_report(): void {
+  readonly fun reportError(): void {
 		if (!this.ok) { print_string(this.error); }
 	}
 
 	// Identifiers and operators
   readonly fun isLetterOrOp(c: Char): Bool {
-	  Chars.isDigit(c) || this.isLetter(c) || c == '!' || c == '%' || c == '&' || c == '|'
+	  Chars.isDigit(c) || this.isLetter(c) || c == '!' || c == '%' || c == '&' || c == '|' || c == '/'
 		|| c == '-' || c == '+' || c == '*'  || c == '<' || c == '>' || c == '=' || c == '?' || c == '='
   }
 	readonly fun isLetter(c: Char): Bool { Chars.isUpperCaseLetter(c) || Chars.isLowerCaseLetter(c) || c == '_' }
@@ -644,7 +693,7 @@ mutable class .Reader{
 		 c
   }
 
-	readonly fun hasMore(): Bool {	this.pos < this.text.size()	}
+	readonly fun hasMore(): Bool {	this.ok && this.pos < this.text.size()	}
 
 	// Records that a line break happened, if we moved the cursor we need to
 	// set it back to where the linebreak character occured.
@@ -702,6 +751,7 @@ mutable class .Reader{
     };
 		tok = if (hasSeenChars) Tok(start, this.pos, this.lines, this.lineBreak) else Tok(0, -1, 0, 0);
 		this.skipSpaces();
+		if (tok.end == -1) { this.fail(Tok(0,0,0,0), `failed lexing`); };
 		tok
   }
 

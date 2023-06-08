@@ -1,4 +1,4 @@
-(module Main imports ())
+(module Main imports (StdLib))
 
 (vars (
   (let x 23)

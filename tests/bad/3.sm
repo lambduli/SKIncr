@@ -1,5 +1,5 @@
 # Missing stuff...
-(module Main imports ())
+(module Main imports (StdLib))
 
 (vars (x))
 
