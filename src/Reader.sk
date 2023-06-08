@@ -1,4 +1,14 @@
 module Reader;
+// ------
+// TODO:
+//     -- add support for string values "..." and for concatenation with conversion
+//     -- add support for lists with the only constant value [] for the empty list
+//        functions head and tail and ==.
+//     -- add support for varargs a function with a varag write its argument as x+
+//        the plus denotes multiplicity but is not part of the name
+//     -- add a (function prim (name args+) 0) function for calling all primitives
+//        thus we can define + as (function + (x y) (prim "+" x y))
+// -----
 
 // Grammar
 
@@ -392,7 +402,7 @@ mutable class Checker(env: mutable Scope, r: mutable Reader) {
 			this.expression(s);
 		}
     | Cond(t, e, s1, s2) -> { // check the expression as nested and the statements as top-level
-			this.check_top_level("while", t);
+			this.check_top_level("if", t);
 		  env.setTop(false);
 		  this.expression(e);
 			env.setTop(old);

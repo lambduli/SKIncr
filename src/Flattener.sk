@@ -1,0 +1,67 @@
+module Reader;
+
+// We want to extract all nested expressions such that
+//
+// (let x (+ 2 (- a b)))
+//
+// becomes
+//
+// (let t1 (- a b))
+// (let x (+ 2 t1))
+//
+// And:
+//
+// (if (< x y) E E')
+//
+// becomes
+//
+// (let t (< x y))
+// (if t (begin flatten E)
+//       (begin flatten E'))
+//
+// ... and so on.
+
+
+// The next step will be to translate all this to a simpler bytecode-like representation
+// (Though that is optional -- this may be good enough)
+
+fun flattenFile(file: File): void {
+	file.funs.each(f -> flattenFunction(f));
+}
+
+fun flattenFunction(f: Function): void {
+  flattenExpression(f.body);
+}
+
+fun flattenExpression(e0: Expr): mutable Vector<Expr> {
+  env = this.env;
+	ve  = mutable Vector<Expr>[];
+  e0 match {
+    | Val(_, _) -> { mutable Vector<Expr>[e0] }
+    | Var(_, _) -> { mutable Vector<Expr>[e0] }
+    | Decl(t, n, e) -> {
+ 	    v = flattenExpression(e);
+			v.push(Decl(t,n,e));
+		}
+    | Call(t, n, es) -> {
+			vs = es.map(e -> flattenExpression(e));
+		}
+    | Block(t, es) -> {
+			es.each(e -> this.expression(e) );
+		}
+    | While(t, e, s) -> {
+		  this.expression(e);
+			this.expression(s);
+		}
+    | Cond(t, e, s1, s2) -> {
+		  this.expression(e);
+			this.expression(s1);
+			this.expression(s2);
+		}
+ };
+	ve
+}
+
+
+
+module end;
