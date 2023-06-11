@@ -25,15 +25,16 @@ module Reader;
 // The next step will be to translate all this to a simpler bytecode-like representation
 // (Though that is optional -- this may be good enough)
 
-mutable class Flattener(mutable v: Int = 0) {
+mutable class .Flattener(mutable v: Int = 0) {
 
-  mutable fun file(file: File): void {
-  	file.funs.each(f -> this.function(f));
+  mutable fun file(f: File): File {
+  	funs2 = f.funs.map(f -> this.function(f));
+		File{tok=>f.tok, name=>f.name, imports=>f.imports, decls=>f.decls, funs=>funs2}
   }
 
-  mutable fun function(f: Function): void {
+  mutable fun function(f: Function): Function {
     (es,_e) = this.expression(f.body);
-		es.each( e -> print_string(e.toString()));
+		Function{tok=>f.tok, name=>f.name, params=>f.params, body=>Block(f.tok, es.chill())}
   }
 
   readonly fun undef(): Expr { Var(Tok(0,-1,0,0), " Error") }
@@ -60,14 +61,22 @@ mutable class Flattener(mutable v: Int = 0) {
 		}
     | Call(t, n, es) -> {
 		  es2 = mutable Vector<Expr>[];
-			es.each( e -> {
-			  (v2, e2) = this.expression(e);
-				es2.push(e2);
-				ve.extend(v2.chill());
-			});
-			varname = this.nextVar();
-			ve.push(Decl(t, varname, Call(t, n, es2.chill())));
-			(ve, Var(t,varname))
+		  if (n == "set!") {
+         exp = es[1];
+				 vname = es[0];
+				 (v2, e2) = this.expression(exp);
+				 args = Vector<Expr>[vname, e2];
+				 (v2, Call(t, n, args))
+      } else {
+   			es.each( e -> {
+			    (v2, e2) = this.expression(e);
+   				es2.push(e2);
+				  ve.extend(v2.chill());
+			  });
+ 			  varname = this.nextVar();
+			  ve.push(Decl(t, varname, Call(t, n, es2.chill())));
+			  (ve, Var(t,varname))
+			}
 		}
     | Block(_t, es) -> {
 			es.each(e -> {
@@ -95,6 +104,87 @@ mutable class Flattener(mutable v: Int = 0) {
   }
 }
 
+mutable class .PrettyPrint(mutable indent: Int = 0) {
 
+  readonly fun pad(): String {
+	  s = "";
+		n = this.indent;
+		while (n > 0) { !s = s + " "; !n = n - 1; };
+		s
+	}
+
+  mutable fun file(f: File): String {
+	   s = `(module ${f.name} imports (`;
+		 f.imports.each(s -> !s = s + s + " ");
+		 !s = `${s})\n(vars (`;
+		 if (f.decls.size() == 0) {
+		   !s = s + "))\n";
+  	 } else {
+		   this.inc();
+			 f.decls.each(d -> !s = s + "\n" + this.pad() + this.expression(d));
+       this.dec();
+			 !s = s + "\n))\n";
+		 };
+		 !s = s + `(functions (`;
+     if (f.funs.size() == 0) {
+		   !s = s + "))\n";
+		 } else {
+		   this.inc();
+			 f.funs.each(f -> !s = s + "\n" + this.pad() + this.function(f));
+ 		   !s = s + "\n))\n";
+			 this.dec();
+		 };
+		 s
+	}
+
+  mutable fun function(f: Function): String {
+	  s = `(function ${f.name}(`;
+		f.params.each(p -> !s = s + " " + p);
+		!s = s + ") (";
+		this.inc();
+		!s = s + this.expression(f.body);
+		this.dec();
+		!s = s + ")\n";
+		s
+	}
+
+  mutable fun expression(e0: Expr): String {
+    e0 match {
+    | Val(_, s) -> { s }
+    | Var(_, s) -> { s }
+    | Decl(_, n, e) -> {
+   		se = this.expression(e);
+ 	    `(let ${n} ${se})`
+		}
+    | Call(_, n, es) -> {
+		  s = `(${n} `;
+ 			es.each(e -> !s = s + " " + this.expression(e));
+			s + ")"
+		}
+    | Block(_t, es) -> {
+		  s = this.pad() + "(begin ";
+			this.inc();
+			es.each(e -> !s = "\n" + this.pad() + this.expression(e));
+			this.dec();
+			s + ")"
+		}
+    | While(_, e, s) -> {
+		  "(while " + this.expression(e) + " " + this.expression(s) + ")"
+		}
+    | Cond(_, e, s1, s2) -> {
+		  s = "(if " + this.expression(e) + "\n";
+			this.inc();
+		  !s = s + this.expression(s1) + "\n";
+		  !s = s + this.expression(s2) + ")";
+			this.dec();
+			s
+		}
+    }
+	}
+
+  mutable fun inc(): void { this.!indent = this.indent + 2; }
+  mutable fun dec(): void { this.!indent = this.indent - 2; }
+
+}
 
 module end;

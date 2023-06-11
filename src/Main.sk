@@ -33,8 +33,14 @@ fun test(): void {
 }
 
 fun good_test(p: Vector<String>): void {
-   (rs,_fs) = Reader::process(p);
+   (rs,fs) = Reader::process(p);
 	 rs.each(r -> if (r.ok) { print_string("."); } else { r.reportError(); });
+	 flat = mutable Flattener();
+	 flatFs = fs.map( f -> flat.file(f) );
+	 flatFs.each(f -> {
+	   pp = mutable PrettyPrint();
+		 if (f.name != "StdLib") { print_string(pp.file(f)); };
+	 });
 }
 
 fun bad_test(p: Vector<String>, _verbose: Bool): void {
