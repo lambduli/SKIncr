@@ -34,7 +34,7 @@ mutable class .Flattener(mutable v: Int = 0) {
 
   mutable fun function(f: Function): Function {
     (es,_e) = this.expression(f.body);
-		Function{tok=>f.tok, name=>f.name, params=>f.params, body=>Block(f.tok, es.chill())}
+		Function{tok=>f.tok, name=>f.name, params=>f.params, body=>this.veToBlock(f.tok, es)}
   }
 
   readonly fun undef(): Expr { Var(Tok(0,-1,0,0), " Error") }
@@ -46,9 +46,8 @@ mutable class .Flattener(mutable v: Int = 0) {
     varname
 	}
 
-  readonly fun veToBlock(t: Tok, es: mutable Vector<Expr>): Expr {
-    Block(t, es.chill())
-  }
+  readonly fun veToBlock(t: Tok, es: mutable Vector<Expr>): Expr {  Block(t, es.chill()) }
+
   mutable fun expression(e0: Expr): (mutable Vector<Expr>, Expr) {
   	ve  = mutable Vector<Expr>[];
     e0 match {
@@ -66,7 +65,8 @@ mutable class .Flattener(mutable v: Int = 0) {
 				 vname = es[0];
 				 (v2, e2) = this.expression(exp);
 				 args = Vector<Expr>[vname, e2];
-				 (v2, Call(t, n, args))
+				 v2.push(Call(t, n, args));
+				 (v2, this.undef())
       } else {
    			es.each( e -> {
 			    (v2, e2) = this.expression(e);
@@ -78,7 +78,7 @@ mutable class .Flattener(mutable v: Int = 0) {
 			  (ve, Var(t,varname))
 			}
 		}
-    | Block(_t, es) -> {
+    | Block(_, es) -> {
 			es.each(e -> {
 			  (v2, _e2) =  this.expression(e);
 				ve.extend(v2.chill());
