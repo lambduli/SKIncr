@@ -51,7 +51,7 @@ value class File{tok: Tok,
 value class Function{tok: Tok, name: String, params: Vector<String>, body: Expr} {
   fun toString(): String {
 		ps = toStringStrings(this.params);
-		bs = toStringExpr(this.body);
+		bs = this.body.toString();
 		`(function ${this.name} (${ps}) ${bs})\n`;
   }
 }
@@ -65,19 +65,19 @@ base class Expr {
   | Block(Tok, Vector<Expr>)
 	| While(Tok, Expr, Expr)
   | Cond(Tok, Expr, Expr, Expr)
-}
 
-fun toStringExpr(e : Expr): String {
-  e match {
-  | Val(_,s) -> s
-  | Var(_,s) -> s
-  | Decl(_, s, b) -> { b_s = toStringExpr(b); `(let ${s} ${b_s})` }
-  | Call(_, s, es) -> { es_s = toStringExprs(es); `(${s} ${es_s})`}
-  | Block(_, es) -> { es_s = toStringExprs(es); `(begin ${es_s})`}
-  | While(_, c, b) -> {  c_s = toStringExpr(c); b_s = toStringExpr(b); `(while ${c_s} ${b_s})`}
-  | Cond(_, c, t, f) -> {
-    (c_s, t_s, f_s) = (toStringExpr(c), toStringExpr(t), toStringExpr(f));
-    `(if ${c_s} ${t_s} ${f_s})`
+  fun toString(): String {
+    this match {
+    | Val(_,s) -> s
+    | Var(_,s) -> s
+    | Decl(_, s, b) -> { b_s = b.toString(); `(let ${s} ${b_s})` }
+    | Call(_, s, es) -> { es_s = toStringExprs(es); `(${s} ${es_s})`}
+    | Block(_, es) -> { es_s = toStringExprs(es); `(begin ${es_s})`}
+    | While(_, c, b) -> {  c_s = c.toString(); b_s = b.toString(); `(while ${c_s} ${b_s})`}
+    | Cond(_, c, t, f) -> {
+      (c_s, t_s, f_s) = (c.toString(), t.toString(), f.toString());
+      `(if ${c_s} ${t_s} ${f_s})`
+      }
     }
   }
 }
@@ -87,13 +87,13 @@ fun toStringStrings(v: Vector<String>): String {
 		s = "";	v.each(t -> !s = s+" "+t );	s.trimLeft()
 }
 fun toStringDecls(v: Vector<Decl>): String {
-		s = ""; v.each(t -> !s = s+" "+toStringExpr(t)); s.trimLeft()
+		s = ""; v.each(t -> !s = s+" "+t.toString()); s.trimLeft()
 }
 fun toStringFunctions(v: Vector<Function>): String {
 		s = "";	v.each(t -> !s = s+" "+t.toString()	); s.trimLeft()
 }
 fun toStringExprs(v: Vector<Expr>): String {
-		s = "";	v.each(t -> !s = s+" "+toStringExpr(t)); s.trimLeft()
+		s = "";	v.each(t -> !s = s+" "+t.toString()); s.trimLeft()
 }
 
 // -------------------------------------------------------------------------------------

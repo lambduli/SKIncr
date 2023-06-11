@@ -25,41 +25,74 @@ module Reader;
 // The next step will be to translate all this to a simpler bytecode-like representation
 // (Though that is optional -- this may be good enough)
 
-fun flattenFile(file: File): void {
-	file.funs.each(f -> flattenFunction(f));
-}
+mutable class Flattener(mutable v: Int = 0) {
 
-fun flattenFunction(f: Function): void {
-  flattenExpression(f.body);
-}
+  mutable fun file(file: File): void {
+  	file.funs.each(f -> this.function(f));
+  }
 
-fun flattenExpression(e0: Expr): mutable Vector<Expr> {
-  env = this.env;
-	ve  = mutable Vector<Expr>[];
-  e0 match {
-    | Val(_, _) -> { mutable Vector<Expr>[e0] }
-    | Var(_, _) -> { mutable Vector<Expr>[e0] }
+  mutable fun function(f: Function): void {
+    (es,_e) = this.expression(f.body);
+		es.each( e -> print_string(e.toString()));
+  }
+
+  readonly fun undef(): Expr { Var(Tok(0,-1,0,0), " Error") }
+	readonly fun isUndef(e : Expr): Bool { e match { | Var(_,s) -> s == " Error" | _ -> false } }
+
+  mutable fun nextVar(): String {
+	  varname = `%${this.v}`;
+		this.!v = this.v + 1;
+    varname
+	}
+
+  readonly fun veToBlock(t: Tok, es: mutable Vector<Expr>): Expr {
+    Block(t, es.chill())
+  }
+  mutable fun expression(e0: Expr): (mutable Vector<Expr>, Expr) {
+  	ve  = mutable Vector<Expr>[];
+    e0 match {
+    | Val(_, _) -> { (ve, e0) }
+    | Var(_, _) -> { (ve, e0) }
     | Decl(t, n, e) -> {
- 	    v = flattenExpression(e);
-			v.push(Decl(t,n,e));
+ 	    (v2,e2) = this.expression(e);
+			v2.push(Decl(t,n,e2));
+			(v2, this.undef())
 		}
     | Call(t, n, es) -> {
-			vs = es.map(e -> flattenExpression(e));
+		  es2 = mutable Vector<Expr>[];
+			es.each( e -> {
+			  (v2, e2) = this.expression(e);
+				es2.push(e2);
+				ve.extend(v2.chill());
+			});
+			varname = this.nextVar();
+			ve.push(Decl(t, varname, Call(t, n, es2.chill())));
+			(ve, Var(t,varname))
 		}
-    | Block(t, es) -> {
-			es.each(e -> this.expression(e) );
+    | Block(_t, es) -> {
+			es.each(e -> {
+			  (v2, _e2) =  this.expression(e);
+				ve.extend(v2.chill());
+		  });
+			(ve, this.undef())
 		}
     | While(t, e, s) -> {
-		  this.expression(e);
-			this.expression(s);
+		  (v2, e2) = this.expression(e);
+			ve.extend(v2.chill());
+			(v3, _e3) = this.expression(s);
+			ve.push(While(t, e2, this.veToBlock(t, v3)));
+			(ve, this.undef())
 		}
     | Cond(t, e, s1, s2) -> {
-		  this.expression(e);
-			this.expression(s1);
-			this.expression(s2);
+		  (v2, e2) = this.expression(e);
+			ve.extend(v2.chill());
+			(v3, _e3) = this.expression(s1);
+			(v4, _e4) = this.expression(s2);
+			ve.push(Cond(t, e2, this.veToBlock(t, v3), this.veToBlock(t, v4)));
+			(ve, this.undef())
 		}
- };
-	ve
+    }
+  }
 }
 
 
