@@ -33,8 +33,8 @@ mutable class .Flattener(mutable v: Int = 0) {
   }
 
   mutable fun function(f: Function): Function {
-    (es,_e) = this.expression(f.body);
-		Function{tok=>f.tok, name=>f.name, params=>f.params, body=>this.veToBlock(f.tok, es)}
+    (es, e) = this.expression(f.body);
+		Function{tok=>f.tok, name=>f.name, params=>f.params, body=>this.toBlock(f.tok, es, e)}
   }
 
   readonly fun undef(): Expr { Var(Tok(0,-1,0,0), " Error") }
@@ -46,17 +46,29 @@ mutable class .Flattener(mutable v: Int = 0) {
     varname
 	}
 
-  readonly fun veToBlock(t: Tok, es: mutable Vector<Expr>): Expr {  Block(t, es.chill()) }
+  readonly fun toBlock(t: Tok, es: mutable Vector<Expr>, e: Expr): Expr {
+	  if (!this.isUndef(e)) {
+ 		  es.push(e);
+		};
+	  if (es.size() > 1) {
+		  Block(t, es.chill())
+    } else if (es.size() == 1) {
+		  es[0]
+		} else {
+		  this.undef()
+		}
+ 	}
 
   mutable fun expression(e0: Expr): (mutable Vector<Expr>, Expr) {
   	ve  = mutable Vector<Expr>[];
+		undef = this.undef();
     e0 match {
     | Val(_, _) -> { (ve, e0) }
     | Var(_, _) -> { (ve, e0) }
     | Decl(t, n, e) -> {
- 	    (v2,e2) = this.expression(e);
-			v2.push(Decl(t,n,e2));
-			(v2, this.undef())
+ 	    (v2, e2) = this.expression(e);
+			v2.push(Decl(t, n, e2));
+			(v2, undef)
 		}
     | Call(t, n, es) -> {
 		  es2 = mutable Vector<Expr>[];
@@ -66,7 +78,7 @@ mutable class .Flattener(mutable v: Int = 0) {
 				 (v2, e2) = this.expression(exp);
 				 args = Vector<Expr>[vname, e2];
 				 v2.push(Call(t, n, args));
-				 (v2, this.undef())
+				 (v2, undef)
       } else {
    			es.each( e -> {
 			    (v2, e2) = this.expression(e);
@@ -79,26 +91,29 @@ mutable class .Flattener(mutable v: Int = 0) {
 			}
 		}
     | Block(_, es) -> {
+		  last = undef;
 			es.each(e -> {
-			  (v2, _e2) =  this.expression(e);
+			  (v2, e2) =  this.expression(e);
 				ve.extend(v2.chill());
+				!last = e2;
 		  });
-			(ve, this.undef())
+			(ve, last)
 		}
     | While(t, e, s) -> {
 		  (v2, e2) = this.expression(e);
 			ve.extend(v2.chill());
-			(v3, _e3) = this.expression(s);
-			ve.push(While(t, e2, this.veToBlock(t, v3)));
-			(ve, this.undef())
+			(v3, _) = this.expression(s);
+			v3.extend(v2.chill());
+			ve.push(While(t, e2, this.toBlock(t, v3,  undef)));
+			(ve, undef)
 		}
     | Cond(t, e, s1, s2) -> {
 		  (v2, e2) = this.expression(e);
 			ve.extend(v2.chill());
-			(v3, _e3) = this.expression(s1);
-			(v4, _e4) = this.expression(s2);
-			ve.push(Cond(t, e2, this.veToBlock(t, v3), this.veToBlock(t, v4)));
-			(ve, this.undef())
+			(v3, _) = this.expression(s1);
+			(v4, _) = this.expression(s2);
+			ve.push(Cond(t, e2, this.toBlock(t, v3, undef), this.toBlock(t, v4, undef)));
+			(ve, undef)
 		}
     }
   }
@@ -140,7 +155,7 @@ mutable class .PrettyPrint(mutable indent: Int = 0) {
   mutable fun function(f: Function): String {
 	  s = `(function ${f.name}(`;
 		f.params.each(p -> !s = s + " " + p);
-		!s = s + ") (";
+		!s = s + ") ";
 		this.inc();
 		!s = s + this.expression(f.body);
 		this.dec();
@@ -164,7 +179,7 @@ mutable class .PrettyPrint(mutable indent: Int = 0) {
     | Block(_t, es) -> {
 		  s = this.pad() + "(begin ";
 			this.inc();
-			es.each(e -> !s = "\n" + this.pad() + this.expression(e));
+			es.each(e -> !s = s + "\n" + this.pad() + this.expression(e));
 			this.dec();
 			s + ")"
 		}
