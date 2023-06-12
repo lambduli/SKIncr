@@ -115,7 +115,9 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate()) {
 		}
     | Decl(t, n, e) -> {
  	    (v2, e2) = this.expression(e, locals);
-			v2.push(Decl(t, n, e2));
+			varname = this.nextVar();
+			locals.add(n, varname);
+			v2.push(Decl(t, varname, e2));
 			(v2, undef)
 		}
     | Call(t, n, es) -> {
