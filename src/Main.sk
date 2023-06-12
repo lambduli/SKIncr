@@ -18,15 +18,16 @@ fun main(): void {
 }
 
 fun test(): void {
-	good_test(Vector<String>["tests/stdlib.sm", "tests/good/1/main.sm"]);
-/*	good_test(Vector<String>["tests/stdlib.sm", "tests/good/2/main.sm"]);
-	good_test(Vector<String>["tests/stdlib.sm", "tests/good/3/main.sm"]);
-  good_test(Vector<String>["tests/stdlib.sm", "tests/good/4/main.sm"]);
-	good_test(Vector<String>["tests/stdlib.sm", "tests/good/5/main.sm"]);
-	good_test(Vector<String>["tests/stdlib.sm", "tests/good/6/main.sm"]);
-  good_test(Vector<String>["tests/stdlib.sm", "tests/good/7/main.sm"]);
+
+//	good_test(Vector<String>["tests/stdlib.sm", "tests/good/1/main.sm"]);
+//	good_test(Vector<String>["tests/stdlib.sm", "tests/good/2/main.sm"]);
+//	good_test(Vector<String>["tests/stdlib.sm", "tests/good/3/main.sm"]);
+//  good_test(Vector<String>["tests/stdlib.sm", "tests/good/4/main.sm"]);
+//	good_test(Vector<String>["tests/stdlib.sm", "tests/good/5/main.sm"]);
+//	good_test(Vector<String>["tests/stdlib.sm", "tests/good/6/main.sm"]);
+//  good_test(Vector<String>["tests/stdlib.sm", "tests/good/7/main.sm"]);
   good_test(Vector<String>["tests/stdlib.sm", "tests/good/8/lib.sm", "tests/good/8/main.sm"]);
-*/
+
 //	bad_test(Vector<String>["tests/StdLib.sm", "tests/bad/1.sm"], true);
 //	bad_test(Vector<String>["tests/StdLib.sm", "tests/bad/2.sm"], false);
 //	bad_test(Vector<String>["tests/StdLib.sm", "tests/bad/3.sm"], true);

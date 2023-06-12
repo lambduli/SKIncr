@@ -25,63 +25,112 @@ module Reader;
 // The next step will be to translate all this to a simpler bytecode-like representation
 // (Though that is optional -- this may be good enough)
 
-mutable class .Flattener(mutable v: Int = 0) {
+type Strings = Vector<String>;
+type Funs = Vector<Fun>;
+type Statements = Vector<Stmt>;
+
+value class Module(name: String, imports: Strings, globs: Int, funs: Funs) {}
+value class Fun(name: String, params: Int, body: Code) {}
+value class Code(stmts: Statements) {}
+
+base class Stmt {
+  children =
+	| Set(String, Exp)
+	| Loop(Tok, Code, Code)
+  | Branch(Tok, Exp, Code, Code)
+}
+
+base class Exp {
+  children =
+	| VInt(Int)
+  | VBool(Bool)
+	| VString(String)
+	| Register(Int)
+	| Lookup(String)
+  | Invoke(String, Vector<Var>)
+}
+
+type VMap = mutable Map<String, String>;
+type MExprs = mutable Vector<Expr>;
+
+mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate()) {
 
   mutable fun file(f: File): File {
-  	funs2 = f.funs.map(f -> this.function(f));
-		File{tok=>f.tok, name=>f.name, imports=>f.imports, decls=>f.decls, funs=>funs2}
+	  this.glob.clear();
+    f.decls.each(d -> d match { | Decl(_, n, _) -> { this.glob.add(n, this.nextVar());}});
+    fs = f.funs.map(f -> this.function(f));
+		File{tok=>f.tok, name=>f.name, imports=>f.imports, decls=>f.decls, funs=>fs}
   }
 
   mutable fun function(f: Function): Function {
-    (es, e) = this.expression(f.body);
+	  locals : VMap = Map::mcreate();
+		this.!v = 0;
+		f.params.each(p -> locals.add(p, this.nextVar()));
+    (es, e) = this.expression(f.body, locals);
 		Function{tok=>f.tok, name=>f.name, params=>f.params, body=>this.toBlock(f.tok, es, e)}
   }
 
   readonly fun undef(): Expr { Var(Tok(0,-1,0,0), " Error") }
+
 	readonly fun isUndef(e : Expr): Bool { e match { | Var(_,s) -> s == " Error" | _ -> false } }
 
-  mutable fun nextVar(): String {
-	  varname = `%${this.v}`;
-		this.!v = this.v + 1;
-    varname
-	}
+  mutable fun nextVarId(): Int {
+ 	  id = this.v;
+    this.!v = this.v + 1;
+		id
+  }
 
-  readonly fun toBlock(t: Tok, es: mutable Vector<Expr>, e: Expr): Expr {
-	  if (!this.isUndef(e)) {
- 		  es.push(e);
-		};
-	  if (es.size() > 1) {
-		  Block(t, es.chill())
-    } else if (es.size() == 1) {
-		  es[0]
-		} else {
-		  this.undef()
-		}
+  mutable fun nextVar(): String { `%${this.nextVarId()}` }
+
+  readonly fun toBlock(t: Tok, es: MExprs, e: Expr): Expr {
+	  if (!this.isUndef(e)) { es.push(e);	};
+	  if (es.size() > 1) { Block(t, es.chill()) } else if (es.size() == 1) { es[0]} else { this.undef() }
  	}
 
-  mutable fun expression(e0: Expr): (mutable Vector<Expr>, Expr) {
-  	ve  = mutable Vector<Expr>[];
+  readonly fun toRegister(varname: String, locals: VMap): String {
+		if (locals.containsKey(varname)) {
+      locals.get(varname)
+		} else if (this.glob.containsKey(varname)) {
+      this.glob.get(varname)
+  	} else {
+      varname
+		}
+	}
+
+  mutable fun expression(e0: Expr, locals: VMap): (MExprs, Expr) {
+  	ve = mutable MExprs[];
 		undef = this.undef();
     e0 match {
     | Val(_, _) -> { (ve, e0) }
-    | Var(_, _) -> { (ve, e0) }
+    | Var(t, n) -> {
+		  vname = this.toRegister(n, locals);
+		  if (locals.containsKey(n)) {
+        (ve, Var(t, vname))
+			} else if (this.glob.containsKey(n)) {
+				// should be a lookup
+        (ve, Var(t, vname))
+			} else {
+        (ve, undef)
+			}
+		}
     | Decl(t, n, e) -> {
- 	    (v2, e2) = this.expression(e);
+ 	    (v2, e2) = this.expression(e, locals);
 			v2.push(Decl(t, n, e2));
 			(v2, undef)
 		}
     | Call(t, n, es) -> {
-		  es2 = mutable Vector<Expr>[];
+		  es2 = mutable MExprs[];
 		  if (n == "set!") {
-         exp = es[1];
-				 vname = es[0];
-				 (v2, e2) = this.expression(exp);
-				 args = Vector<Expr>[vname, e2];
+         (exp, vexp) = (es[1], es[0]);
+				 (tok, origVName) = vexp match {| Var(t2, nm) -> (t2, nm) | _ -> (t, "Error")};
+				 vname = this.toRegister(origVName, locals);
+				 (v2, e2) = this.expression(exp, locals);
+				 args = Vector<Expr>[Var(tok, vname), e2];
 				 v2.push(Call(t, n, args));
 				 (v2, undef)
       } else {
    			es.each( e -> {
-			    (v2, e2) = this.expression(e);
+			    (v2, e2) = this.expression(e, locals);
    				es2.push(e2);
 				  ve.extend(v2.chill());
 			  });
@@ -93,25 +142,25 @@ mutable class .Flattener(mutable v: Int = 0) {
     | Block(_, es) -> {
 		  last = undef;
 			es.each(e -> {
-			  (v2, e2) =  this.expression(e);
+			  (v2, e2) =  this.expression(e, locals);
 				ve.extend(v2.chill());
 				!last = e2;
 		  });
 			(ve, last)
 		}
     | While(t, e, s) -> {
-		  (v2, e2) = this.expression(e);
+		  (v2, e2) = this.expression(e, locals);
 			ve.extend(v2.chill());
-			(v3, _) = this.expression(s);
+			(v3, _) = this.expression(s, locals);
 			v3.extend(v2.chill());
 			ve.push(While(t, e2, this.toBlock(t, v3,  undef)));
 			(ve, undef)
 		}
     | Cond(t, e, s1, s2) -> {
-		  (v2, e2) = this.expression(e);
+		  (v2, e2) = this.expression(e, locals);
 			ve.extend(v2.chill());
-			(v3, _) = this.expression(s1);
-			(v4, _) = this.expression(s2);
+			(v3, _) = this.expression(s1, locals);
+			(v4, _) = this.expression(s2, locals);
 			ve.push(Cond(t, e2, this.toBlock(t, v3, undef), this.toBlock(t, v4, undef)));
 			(ve, undef)
 		}

@@ -1,5 +1,0 @@
-value class Program(modules: List<Module>) uses Show {
-  fun toString(): String {
-    `${this.modules}`
-  }
-}
