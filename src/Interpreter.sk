@@ -1,0 +1,216 @@
+module Interpreter;
+
+
+base class Val() {
+  children =
+  | ValInt(Int)
+  | ValBool(Bool)
+}
+
+
+
+type Strings = Vector<String>;
+type Funs = Vector<Fun>;
+type Statements = Vector<Stmt>;
+
+value class Module(name: String, imports: Strings, globs: Int, funs: Funs) {}
+value class Fun(name: String, params: Int, body: Statements) {}
+value class Code(stmts: Statements) {}
+
+base class Stmt {
+  children =
+	| Set(reg: Int, Reader.Exp)
+  | GSet(reg: Int, Reader.Exp)
+	| Branch(cond: Int, body: Int)
+  | CondJump(cond: Int, tgt: Int)
+	| Return(Reader.Exp)
+  | Jump(Int) // jump to the instruction at the `offset` from the bottom of the instruction stack
+}
+
+
+mutable class Linearize(cntr: Int) {
+  static fun mcreate(): mutable this {
+    mutable Linearize(0)
+  }
+
+  fun mod(m: Reader.Module): Module {
+    funs = m.funs.map(f -> this.function(f));
+    Module(m.name, m.imports, m.globs, funs)
+  }
+
+  fun function(f: Reader.Fun): Fun {
+    b = f.body.stmts.map(s -> this.statement(s)).flatten();
+    Fun(f.name, f.params, b)
+  }
+
+  fun statement(s: Reader.Stmt): Vector<Stmt> {
+    s match {
+      | Reader.Set(_regExpr, e) -> Vector[Set(0, e)] // FIX!
+      | Reader.GSet(_regExpr, e) -> Vector[GSet(0, e)] // FIX!
+      | Reader.Loop(_cndExpr, Reader.Code(stmtsR)) -> {
+        // TODO: the condition should be just a Code right?
+        // then it goes once before the condition and once at the end of the loop
+        // so that the actual CondJump can just check the register
+
+        startOfLoopCntr = this.cntr;
+        !this.cntr = this.cntr + 1; // the CondJump instruction is BEFORE all those
+
+        stmts = stmtsR.map(s -> this.statement(s)).flatten(); // body of the loop
+
+        backToTop = Jump(startOfLoopCntr); // jump back to the top at the end
+        !this.cntr = this.cntr + 1;
+
+        skip = CondJump(0, this.cntr); // FIX THE REGISTER!
+        // jump to skip the loop
+        
+        instructions: mutable Vector<Stmt> = mutable Vector[];
+        instructions.push(skip);
+        instructions.extend(stmts);
+        instructions.push(backToTop);
+
+        instructions.chill()
+      }
+      // | Reader.Branch(condExpr, Reader.Code(ifYes), Reader.Code(ifNo)) -> {
+      //   // TODO: the condition should be just a Code right?
+      //   // then it goes once before the condition and once at the end of the loop
+      //   // so that the actual Jump can just check the register
+// 
+      //   !this.cntr = this.cntr + 1; // the CondJump instr is BEFORE both branches
+// 
+      //   positive = ifYes.map(s -> this.statement(s)).flatten(); // body of the positive branch
+      //   // at the end of positive branch we need to skip to the end of the negative one
+      //   // so there's gonna be a Jump
+      //   !this.cntr = this.cntr + 1;
+      //   
+      //   beforeNegative = this.cntr;
+// 
+      //   cond = CondJump(0, beforeNegative);  // TODO: fix the condition register
+      //                   // skip the positive if the condition is false/zero
+// 
+      //   negative = ifNo.map(s -> this.statement(s)).flatten(); // body of the negative branch
+// 
+      //   afterNegative = this.cntr;
+// 
+      //   skipNegative = Jump(afterNegative);
+// 
+      //   instructions = (mutable Vector[cond]).extend(positive).push(skipNegative).extend(negative);
+// 
+      //   instructions
+      // }
+      | Reader.Return(expr) -> Vector[Return(expr)] // TODO: Fix!
+      // I should just compile the expression to Code right?
+      | _ -> invariant_violation("UFFF")
+    }
+  }
+
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+mutable class .Interpreter(globals: Vector<Val>, stack: Vector<(Int, Vector<Val>)>) {
+
+//  mutable fun toModule(f: Module): String {
+//	   s = `(module ${f.name} imports (`;
+//		 f.imports.each(s -> !s = s + s + " ");
+//		 !s = `${s})\n(vars (`;
+//		 !s = s + `(functions (`;
+//     if (f.funs.size() == 0) {
+//		   !s = s + "))\n";
+//		 } else {
+//		   this.inc();
+//			 f.funs.each(f -> !s = s + "\n" + this.pad() + this.function(f));
+// 		   !s = s + "\n))\n";
+//			 this.dec();
+//		 };
+//		 s
+//	}
+//
+//  mutable fun function(f: Fun): String {
+//	  s = `(function ${f.name}(${f.params}`;
+//		!s = s + ") ";
+//		this.inc();
+//		!s = s + this.code(f.body);
+//		this.dec();
+//		!s = s + ")\n";
+//		s
+//	}
+//
+//	mutable fun code(c: Code): String {
+//		res = "";
+//		c.stmts.each(s -> {
+//			!res = res + "\n" + this.pad() + this.statement(s);
+//		});
+//		res
+//	}
+//
+//  mutable fun expression(e0: Exp): String {
+//    e0 match {
+//    | VInt(i) -> `${i}`
+//		| VBool(i) -> `${i}`
+//		| VString(i) -> `${i}`
+//    | Register(s) -> { s }
+//		| Lookup(s) -> `lookup ${s}`
+//    | Invoke(n, es) -> {
+//		  s = `(${n} `;
+// 			es.each(e -> !s = s + " " + this.expression(e));
+//			s + ")"
+//		}
+//    }
+//	}
+//
+//	mutable fun statement(st: Stmt): String {
+//    st match {
+//    | Set(n, e) -> {
+//   		se = this.expression(e);
+//			ne = this.expression(n);
+// 	    `${ne} = ${se}`
+//		}
+//    | Loop(e, s) -> {
+//		  "while " + this.expression(e) + " " + this.code(s)
+//		}
+//    | Branch(e, s1, s2) -> {
+//		  s = "(if " + this.expression(e) + "\n";
+//			this.inc();
+//		  !s = s + this.code(s1) + "\n";
+//		  !s = s + this.code(s2) + ")";
+//			this.dec();
+//			s
+//		}
+//		| Return(e) -> {
+//			`return ${this.expression(e)}`
+//		}
+//    }
+//	}
+
+}
+
+
+
+module end;

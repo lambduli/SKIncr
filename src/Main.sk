@@ -7,14 +7,9 @@ fun main(): void {
 	paths = arguments();
 	if (paths.size() == 0) {
 		 test();
-//		 return void;
-	};
-  //_files = paths.map(p -> {
-//	  r = Reader::create(p);
-//  	f = r.parse();
-//		if (r.ok) { print_string(f.toString()); } else { r.error_report(); };
-//	  r
-// });
+	} else {
+		good_test(Vector::createFromItems(paths));
+	}
 }
 
 fun test(): void {
@@ -35,13 +30,20 @@ fun test(): void {
 
 fun good_test(p: Vector<String>): void {
    (rs,fs) = Reader::process(p);
-	 rs.each(r -> if (r.ok) { print_string("."); } else { r.reportError(); });
+	 rs.each(r -> if (!r.ok) { r.reportError(); });
 	 flat = mutable Flattener();
 	 flatFs = fs.map( f -> flat.file(f) );
 	 flatFs.each(f -> {
 	   pp = mutable PrettyPrint();
 		 if (f.name != "StdLib") { print_string(pp.file(f)); };
 	 });
+	 t = Translator();
+	 translated = flatFs.map(d -> t.file(d));
+	 translated.each(m -> {
+	 	p1 = mutable PrettyPrint2();
+		print_string(p1.toModule(m));
+	 });
+	 
 }
 
 fun bad_test(p: Vector<String>, _verbose: Bool): void {

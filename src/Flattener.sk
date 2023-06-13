@@ -35,9 +35,12 @@ value class Code(stmts: Statements) {}
 
 base class Stmt {
   children =
-	| Set(String, Exp)
-	| Loop(Tok, Code, Code)
-  | Branch(Tok, Exp, Code, Code)
+	| Set(Exp, Exp) // TODO: I think the first Exp should be just Int for Register
+	| GSet(Exp, Exp) // TODO: I think the first Exp should be just Int for Register
+	| Loop(Exp, Code)
+  | Branch(Exp, Code, Code)
+	| Return(Exp) // TODO: Return(Register)
+	// this means that the Flattener needs to turn the last expression in Function into a return (and store the result into the register first)
 }
 
 base class Exp {
@@ -45,10 +48,157 @@ base class Exp {
 	| VInt(Int)
   | VBool(Bool)
 	| VString(String)
-	| Register(Int)
+	| Register(String) // TODO: FIX!
 	| Lookup(String)
-  | Invoke(String, Vector<Var>)
+  | Invoke(String, Vector<Register>)
 }
+
+
+class .Translator() {
+	fun file(f: File): Module {
+		name = f.name;
+		imports = f.imports;
+		globals = f.decls.size();
+		funs = f.funs.map(f -> this.function(f));
+		Module(name, imports, globals, funs)
+	}
+
+	fun expression(e0: Expr): Exp {
+		e0 match {
+    | ValInt(_, i) -> VInt(i)
+		| ValBool(_, b) -> VBool(b)
+    | Var(_, s) -> Register(s) // TODO: FIX THIS!
+    | Call(_, n, es) -> {
+			args = es.map(e -> e match { | Var(_, n1) -> Register(n1) | _ -> Register("ERROR") });
+			Invoke(n, args)
+		}
+    | _ -> VInt(0)
+		}
+	}
+
+	fun statement(e0: Expr): Statements {
+		e0 match {
+		| Call(_, n, es) -> {
+			if (n == "set!" || n == "gset!") {
+				Statements[Set(this.expression(es[0]), this.expression(es[1]))]
+			} else {
+				Statements[Set(Register("ERROR"), VInt(0))]
+			}
+		}
+		| Decl(_, n, e) -> {
+			Statements[Set(Register(n), this.expression(e))]
+		}
+    | Block(_t, es) -> {
+			es.map(e -> this.statement(e)).flatten()
+		}
+    | While(_, e, s) -> {
+			Statements[Loop(this.expression(e), Code(this.statement(s)))]
+		}
+    | Cond(_, e, s1, s2) -> {
+			Statements[Branch(this.expression(e), Code(this.statement(s1)), Code(this.statement(s2)))]
+			}
+		| e -> Statements[Return(this.expression(e))]
+		}
+	}
+
+	fun function(f: Function): Fun {
+		c = Code(this.statement(f.body));
+		Fun(f.name, f.params.size(), c)
+	}
+}
+
+mutable class .PrettyPrint2(mutable indent: Int = 0) {
+
+  readonly fun pad(): String {
+	  s = "";
+		n = this.indent;
+		while (n > 0) { !s = s + " "; !n = n - 1; };
+		s
+	}
+
+  mutable fun toModule(f: Module): String {
+	   s = `(module ${f.name} imports (`;
+		 f.imports.each(s -> !s = s + s + " ");
+		 !s = `${s})\n(vars (`;
+		 !s = s + `(functions (`;
+     if (f.funs.size() == 0) {
+		   !s = s + "))\n";
+		 } else {
+		   this.inc();
+			 f.funs.each(f -> !s = s + "\n" + this.pad() + this.function(f));
+ 		   !s = s + "\n))\n";
+			 this.dec();
+		 };
+		 s
+	}
+
+  mutable fun function(f: Fun): String {
+	  s = `(function ${f.name}(${f.params}`;
+		!s = s + ") ";
+		this.inc();
+		!s = s + this.code(f.body);
+		this.dec();
+		!s = s + ")\n";
+		s
+	}
+
+	mutable fun code(c: Code): String {
+		res = "";
+		c.stmts.each(s -> {
+			!res = res + "\n" + this.pad() + this.statement(s);
+		});
+		res
+	}
+
+  mutable fun expression(e0: Exp): String {
+    e0 match {
+    | VInt(i) -> `${i}`
+		| VBool(i) -> `${i}`
+		| VString(i) -> `${i}`
+    | Register(s) -> { s }
+		| Lookup(s) -> `lookup ${s}`
+    | Invoke(n, es) -> {
+		  s = `(${n} `;
+ 			es.each(e -> !s = s + " " + this.expression(e));
+			s + ")"
+		}
+    }
+	}
+
+	mutable fun statement(st: Stmt): String {
+    st match {
+    | Set(n, e) -> {
+   		se = this.expression(e);
+			ne = this.expression(n);
+ 	    `${ne} = ${se}`
+		}
+		| GSet(n, e) -> {
+			se = this.expression(e);
+			ne = this.expression(n);
+ 	    `${ne} ^= ${se}`
+		}
+    | Loop(e, s) -> {
+		  "while " + this.expression(e) + " " + this.code(s)
+		}
+    | Branch(e, s1, s2) -> {
+		  s = "(if " + this.expression(e) + "\n";
+			this.inc();
+		  !s = s + this.code(s1) + "\n";
+		  !s = s + this.code(s2) + ")";
+			this.dec();
+			s
+		}
+		| Return(e) -> {
+			`return ${this.expression(e)}`
+		}
+    }
+	}
+
+  mutable fun inc(): void { this.!indent = this.indent + 2; }
+  mutable fun dec(): void { this.!indent = this.indent - 2; }
+
+}
+
 
 type VMap = mutable Map<String, String>;
 type MExprs = mutable Vector<Expr>;
@@ -58,7 +208,12 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate()) {
   mutable fun file(f: File): File {
 	  this.glob.clear();
     f.decls.each(d -> d match { | Decl(_, n, _) -> { this.glob.add(n, this.nextVar());}});
-    fs = f.funs.map(f -> this.function(f));
+		v = f.decls.map(d -> d match { | Decl(t, n, e) -> Call(t, "gset!", Vector<Expr>[Var(t, n), e])});
+		b = Block(f.tok, v.chill());
+		init = Function{tok=>f.tok, name=>"init", params=>Vector<String>[], body=>b};
+    funs = Vector::mcreateFromItems(f.funs);
+		funs.push(init);
+		fs = funs.map(f -> this.function(f));
 		File{tok=>f.tok, name=>f.name, imports=>f.imports, decls=>f.decls, funs=>fs}
   }
 
@@ -101,14 +256,18 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate()) {
   	ve = mutable MExprs[];
 		undef = this.undef();
     e0 match {
-    | Val(_, _) -> { (ve, e0) }
+    | ValInt(_, _) -> { (ve, e0) }
+		| ValBool(_, _) -> { (ve, e0) }
     | Var(t, n) -> {
 		  vname = this.toRegister(n, locals);
 		  if (locals.containsKey(n)) {
         (ve, Var(t, vname))
 			} else if (this.glob.containsKey(n)) {
-				// should be a lookup
-        (ve, Var(t, vname))
+				x = Call(t, "lookup", Vector<Expr>[Var(t, vname)]);
+				nvar = this.nextVar();
+				assign = Decl(t, nvar, x);
+				ve.push(assign);
+        (ve, Var(t, nvar))
 			} else {
         (ve, undef)
 			}
@@ -125,12 +284,20 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate()) {
 		  if (n == "set!") {
          (exp, vexp) = (es[1], es[0]);
 				 (tok, origVName) = vexp match {| Var(t2, nm) -> (t2, nm) | _ -> (t, "Error")};
+				 !n = if (this.glob.containsKey(origVName)) { "gset!" } else { "set!" };
 				 vname = this.toRegister(origVName, locals);
 				 (v2, e2) = this.expression(exp, locals);
 				 args = Vector<Expr>[Var(tok, vname), e2];
 				 v2.push(Call(t, n, args));
 				 (v2, undef)
-      } else {
+      } else if (n == "gset!") {
+				(tok, origVName) = es[0] match {| Var(t2, nm) -> (t2, nm) | _ -> (t, "Error")};
+				vname = this.toRegister(origVName, locals);
+				(v2, e2) = this.expression(es[1], locals);
+				args = Vector<Expr>[Var(tok, vname), e2];
+				v2.push(Call(t, n, args));
+				(v2, undef)
+			} else {
    			es.each( e -> {
 			    (v2, e2) = this.expression(e, locals);
    				es2.push(e2);
@@ -216,7 +383,8 @@ mutable class .PrettyPrint(mutable indent: Int = 0) {
 
   mutable fun expression(e0: Expr): String {
     e0 match {
-    | Val(_, s) -> { s }
+    | ValInt(_, i) -> `${i}`
+		| ValBool(_, b) -> `${b}`
     | Var(_, s) -> { s }
     | Decl(_, n, e) -> {
    		se = this.expression(e);

@@ -1,0 +1,145 @@
+module Reader;
+
+// -------------------------------------------------------------------------------------
+// ---------------------  PARSING THE AST ----------------------------------------------
+// -------------------------------------------------------------------------------------
+
+// Parse a file, always returns something. Clients check the Reader for an error.
+fun parseFile(r: mutable Reader): File {
+  tok = r.curToken();
+	r.reportError();
+  name = r.eat("(").eat("module").identifier();
+  _ = r.eat("imports").eat("(");
+  imports = identifiers(r);
+  _ = r.eat(")").eat(")").eat("(").eat("vars").eat("(");
+  decls = declarations(r);
+  _ = r.eat(")").eat(")").eat("(").eat("functions").eat("(");
+  funs = functions(r);
+ 	tik = r.curToken();
+  _ = r.eat(")").eat(")");
+	token = Tok(tok.start, tik.end, tok.lines, tok.lineBreak);
+  File{ tok => token, name => name, imports => imports, decls => decls, funs => funs }
+}
+
+fun parseExpr(r: mutable Reader): Expr {
+  tok = r.curToken();
+  if (!r.ok) { return Var(tok, "ERR"); };
+  stok = tok.asString(r);
+  if (stok == "(") {
+    r.nextToken().asString(r) match {
+    |   "let" -> parseDecl(r)
+    | "begin" -> parseBlock(r)
+    | "while" -> parseWhile(r)
+    |    "if" -> parseCond(r)
+    |       _ -> parseCall(r)
+    }
+  } else {
+    if (tok.isInt(r)) {	r.advanceTok(); ValInt(tok, tok.asInt(r)) }
+    else if (tok.isBool(r)) {	r.advanceTok(); ValBool(tok, tok.asBool(r)) }
+    else Var(tok, r.identifier())
+  }
+}
+
+fun parseFun(r: mutable Reader): Function {
+  tok = r.curToken();
+  name = r.eat("(").eat("function").identifier();
+  _ = r.eat("(");
+  params = identifiers(r);
+  _ = r.eat(")");
+  expr = parseExpr(r);
+	tik = r.curToken();
+  _ = r.eat(")");
+	token = Tok(tok.start, tik.end, tok.lines, tok.lineBreak);
+	 Function{ tok => token, name => name, params => params, body => expr }
+}
+
+fun parseDecl(r: mutable Reader): Decl {
+  tok = r.curToken();
+  name = r.eat("(").eat("let").identifier();
+  expr = parseExpr(r);
+	tik = r.curToken();
+  _ = r.eat(")");
+	token = Tok(tok.start, tik.end, tok.lines, tok.lineBreak);
+  Decl(token, name, expr)
+}
+
+fun parseBlock(r: mutable Reader): Block {
+  tok = r.curToken();
+  _ = r.eat("(").eat("begin");
+  exprs = expressions(r);
+	tik = r.curToken();
+  _ = r.eat(")");
+	token = Tok(tok.start, tik.end, tok.lines, tok.lineBreak);
+  Block(token, exprs)
+}
+
+fun parseWhile(r: mutable Reader): While {
+  tok = r.curToken();
+  _ = r.eat("(").eat("while");
+  e = parseExpr(r);
+  b = parseExpr(r);
+	tik = r.curToken();
+  _ = r.eat(")");
+	token = Tok(tok.start, tik.end, tok.lines, tok.lineBreak);
+  While(token, e, b)
+}
+
+fun parseCond(r: mutable Reader): Cond {
+  tok = r.curToken();
+  _ = r.eat("(").eat("if");
+  c = parseExpr(r);
+  t = parseExpr(r);
+  f = parseExpr(r);
+	tik = r.curToken();
+  _ = r.eat(")");
+	token = Tok(tok.start, tik.end, tok.lines, tok.lineBreak);
+  Cond(token, c, t, f)
+}
+
+fun parseCall(r: mutable Reader): Call {
+  tok = r.curToken();
+  name = r.eat("(").identifier();
+  exprs = expressions(r);
+	tik = r.curToken();
+  _ = r.eat(")");
+	token = Tok(tok.start, tik.end, tok.lines, tok.lineBreak);
+  Call(token, name, exprs)
+}
+
+fun identifiers(r: mutable Reader): Vector<String> {
+  vec = mutable Vector<String>[];
+  while (r.hasMoreTokens()) {
+    if (r.curToken().asString(r) == ")") { break void; };
+    vec.push(r.identifier());
+  };
+  vec.chill()
+}
+
+fun expressions(r: mutable Reader): Vector<Expr> {
+  vec = mutable Vector<Expr>[];
+  while (r.hasMoreTokens()) {
+    if (r.curToken().asString(r) == ")") { break void; };
+    vec.push(parseExpr(r));
+  };
+  vec.chill()
+}
+
+fun declarations(r: mutable Reader): Vector<Decl> {
+  vec = mutable Vector<Decl>[];
+  while (r.hasMoreTokens()) {
+    if (r.curToken().asString(r) == ")") { break void; };
+    vec.push(parseDecl(r));
+  };
+  vec.chill()
+}
+
+fun functions(r: mutable Reader): Vector<Function> {
+  vec = mutable Vector<Function>[];
+  while (r.hasMoreTokens()) {
+    if (r.curToken().asString(r) == ")") { break void; };
+    vec.push(parseFun(r));
+  };
+  vec.chill()
+}
+
+module end;
