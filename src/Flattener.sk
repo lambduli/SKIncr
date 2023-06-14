@@ -210,11 +210,11 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate()) {
     f.decls.each(d -> d match { | Decl(_, n, _) -> { this.glob.add(n, this.nextVar());}});
 		v = f.decls.map(d -> d match { | Decl(t, n, e) -> Call(t, "gset!", Vector<Expr>[Var(t, n), e])});
 		b = Block(f.tok, v.chill());
-		init = Function{tok=>f.tok, name=>"init", params=>Vector<String>[], body=>b};
+		init = Function(f.tok, "init", Vector<String>[], b);
     funs = Vector::mcreateFromItems(f.funs);
 		funs.push(init);
 		fs = funs.map(f -> this.function(f));
-		File{tok=>f.tok, name=>f.name, imports=>f.imports, decls=>f.decls, funs=>fs}
+		File(f.tok, f.name, f.imports, f.decls, fs)
   }
 
   mutable fun function(f: Function): Function {
@@ -222,7 +222,7 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate()) {
 		this.!v = 0;
 		f.params.each(p -> locals.add(p, this.nextVar()));
     (es, e) = this.expression(f.body, locals);
-		Function{tok=>f.tok, name=>f.name, params=>f.params, body=>this.toBlock(f.tok, es, e)}
+		Function(f.tok, f.name, f.params, this.toBlock(f.tok, es, e))
   }
 
   readonly fun undef(): Expr { Var(Tok(0,-1,0,0), " Error") }

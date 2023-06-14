@@ -13,118 +13,14 @@ value class Tok(start: Int, end: Int, lines: Int, lineBreak: Int) {
 
 	// return the token as a string, or ERROR if ill-formed
   fun asString(r: mutable Reader): String {
-		s = this.start;
-		e = this.end;
+		(s, e) = (this.start, this.end);
 		if (e > s) String::fromChars(r.text.slice(s, e).toArray()) else "ERROR"
 	}
 
-  // booleans and integers are the only values supported so far. We should add strings and lists.
-	fun isValue(r: mutable Reader): Bool {
-    txt = r.text;
-		start = this.start;
-		end = this.end;
-    isBool = start + 2 == end
-		     && ( (txt[start] == 't' && txt[start+1] == 't')
-				   || (txt[start] == 'f' && txt[start+1] == 'f'));
-		if (isBool) { return true; };
-		while (start < end) {
-		  c = txt[start];
-			if (!Chars.isDigit(c)) {
-			  return false;
-			};
-			!start = start + 1;
-		};
-		true
-	}
-
-	fun isBool(r: mutable Reader): Bool {
-    txt = r.text;
-		start = this.start;
-		end = this.end;
-    isBool = start + 2 == end
-		     && ( (txt[start] == 't' && txt[start+1] == 't')
-				   || (txt[start] == 'f' && txt[start+1] == 'f'));
-		isBool
-	}
-
-	fun isInt(r: mutable Reader): Bool {
-    txt = r.text;
-		start = this.start;
-		end = this.end;
-		while (start < end) {
-		  c = txt[start];
-			if (!Chars.isDigit(c)) {
-			  return false;
-			};
-			!start = start + 1;
-		};
-		true
-	}
-
-
-	fun asBool(r: mutable Reader): Bool {
-    txt = r.text;
-		start = this.start;
-		(txt[start] == 't' && txt[start+1] == 't')		
-	}
-
-	fun asInt(r: mutable Reader): Int {
-    this.asString(r).toInt()		
-	}
-
-
-
-  // Some examples of valid identifiers:  a, a!, a?, _, _a, a1, +, <=
-	fun isIdentifier(r: mutable Reader): Bool {
-	   if (this.isValue(r)) { return false; };
-		 from = this.start;
-		 to = this.end;
-		 if (to - from == 1) {
-		 		c =  r.text[from];
-				r.isLetter(c)
-				|| c == '+'
-				|| c == '*'
-  			|| c == '-'
-				|| c == '/'
-				|| c == '%'
-				|| c == '<'
-				|| c == '>'
-				|| c == '!'
-		 } else if (to - from == 2) {
-		 	  c =  r.text[from];
-				c2 = r.text[from+1];
-				if (r.isLetter(c)) {
-				  c2 == '!' || c2 == '?' || Chars.isDigit(c) || r.isLetter(c)
-				} else {
-  				   (c == '&' && c2 == '&')
-	  			|| (c == '|' && c2 == '|')
-  	  		|| (c == '<' && c2 == '=')
-    			|| (c == '>' && c2 == '=')
-    			|| (c == '=' && c2 == '=')
-			 }
-  	 } else {
-		   c = r.text[from];
-			 if (!r.isLetter(c)) { return false; };
-			 !from = from + 1;
-		 	 while(from < to) {
-		     ch = r.text[from];
-				 b = r.isLetter(ch) || ch == '!' || ch == '?';
-				 if (!b) { return false; };
-				!from = from + 1;
-	 	   };
-			 true
- 	  }
-	}
-
-  fun print(r: mutable Reader, msg: String): void {
-			print_string(this.error_message(r, msg));
-	}
-
 	fun error_message(r: mutable Reader, msg: String): String {
+	  l = this.lines;
 		s1 = `File ${r.path} at line ${this.lines}`;
-		s2 = this.print_line(this.lines-2,r);
-		s3 = this.print_line(this.lines-1,r);
-		s4 = this.print_line(this.lines,r);
+		(s2, s3, s4) = (this.print_line(l-2, r), this.print_line(l-1, r), this.print_line(l, r));
 		s5 = this.print_carret(r, msg);
 		`${s1}\n${s2}\n${s3}\n${s4}\n${s5}\n`
 	}
@@ -135,7 +31,7 @@ value class Tok(start: Int, end: Int, lines: Int, lineBreak: Int) {
 		line_start = this.start;
 		txt = r.text;
 		while (line_start > 0) {
-					c = txt[line_start];
+			c = txt[line_start];
 			if (r.isLineBreak(c)) {
 			  !line_start = line_start + 1;
 				break void;
@@ -155,24 +51,19 @@ value class Tok(start: Int, end: Int, lines: Int, lineBreak: Int) {
 	// Given a line number, print the corresponding line in the file with line number prepended
 	fun print_line(line: Int, r: mutable Reader): String {
 		if (line < 0) { return ""; };
-		start = 0;
-		end = 0;
-		lineSeen = 0;
+		(start, end, lineSeen) = (0, 0, 0);
 		txt = r.text;
 		while(end < txt.size()) {
 		  c = txt[end];
 			!end = end + 1;
 			if (r.isLineBreak(c)) {
 			   !lineSeen = lineSeen + 1;
-				 if (lineSeen == line + 1) {
-				 		break void;
-				};
+				 if (lineSeen == line + 1) { break void; };
 				!start = end;
 			};
   	};
 		s = String::fromChars(r.text.slice(start, end - 1).toArray());
-		num = this.pad(line);
-		`${num}| ${s}`
+		`${this.pad(line)}| ${s}`
  }
 }
 
