@@ -29,11 +29,17 @@ value class .Tok(start: Int = 0,
 	  Tok(tok.start, end, tok.lines, tok.lineBreak, r.path, r.text)
 	}
 
+  static fun createRange(start: Int, end: Int, r: mutable Reader): Tok {
+	  Tok(start, end, r.lines, r.lineBreak, r.path, r.text)
+	}
+
   // A bad token should not be used.
   fun isBad(): Bool { this.end == -1 }
 
   // Return the token as a string, or "BADTOKEN" if bad.
-  fun asString(): String { if (this.isBad()) "BADTOKEN" else this.stringFromSlice(this.start, this.end) }
+  fun asString(): String {
+	  if (this.isBad()) "BADTOKEN" else this.stringFromSlice(this.start, this.end)
+	}
 
   // Print the name of the file, the line number, the last three lines
 	// and a carret followed by the error message.

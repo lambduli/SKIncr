@@ -94,8 +94,3 @@
 ))
 # so can there be something?
 # can I end the file without a newline?
-# seems like I can
-# I think the parser does not care if there is something after the functions declaration section ends
-# let's test it
-foo bar True + 23
-# it works just fine, maybe unusual for a language

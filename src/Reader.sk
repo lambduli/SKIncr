@@ -49,13 +49,13 @@ value class Function(tok: Tok, name: String, params: StringVec, body: Expr) {}
 
 base class Expr {
   children =
-	| ValInt(Tok, Int)
+  | ValInt(Tok, Int)
   | ValBool(Tok, Bool)
   | Var(Tok, String)
-	| Decl(Tok, String, Expr)
+  | Decl(Tok, String, Expr)
   | Call(Tok, String, Expressions)
   | Block(Tok, Expressions)
-	| While(Tok, Expr, Expr)
+  | While(Tok, Expr, Expr)
   | Cond(Tok, Expr, Expr, Expr)
 }
 
@@ -84,7 +84,7 @@ mutable class .Reader{
 
   // create: returns a new reader for the provided file.
   static fun create(p: String): mutable Reader {
-    if (true /*FileSystem.exists(p)*/) {  // TODO: the call to exists fails to compile, unclear why. ?
+    if (true /*FileSystem.exists(p)*/) {  // TODO: exists() fails to compile, unclear why. ?
       txt = FileSystem.readTextFile(p).chars();
       r = mutable Reader{path=>p, text=>txt, tokens=>mutable Tokens[]};
       r.!tokens = r.lex();
@@ -208,7 +208,7 @@ mutable class .Reader{
     vec.chill()
   }
 
-	mutable fun isNext(s: String): Bool { this.hasMoreTokens() && this.curToken().asString() == s }
+  mutable fun isNext(s: String): Bool { this.hasMoreTokens() && this.curToken().asString() == s }
 
   // Do we have more tokens?
   readonly fun hasMoreTokens(): Bool { this.ok && this.tokPos < this.tokens.size(); }
@@ -262,40 +262,61 @@ mutable class .Reader{
     tok.asString()
   }
 
-  // -------------- LEXING -----------------------------------------------------
-
-  // Process a file breaking it into tokens
-  mutable fun lex(): mutable Tokens {
-    toks = mutable Tokens[];
-    while(this.hasMore()) { toks.push(this.token()); };
-    toks
-  }
-
   // If an error occured report it.
   readonly fun reportError(): void { if (!this.ok) print_string(this.error); }
 
-  // Identifiers and operators
-  readonly fun isLetterOrOp(c: Char): Bool {
-    Chars.isDigit(c) || this.isLetter(c) || c == '!' || c == '%' || c == '&' || c == '|' || c == '/'
-    || c == '-' || c == '+' || c == '*'  || c == '<' || c == '>' || c == '=' || c == '?' || c == '='
-  }
-  readonly fun isLetter(c: Char): Bool { Chars.isUpperCaseLetter(c) || Chars.isLowerCaseLetter(c) || c == '_' }
-  readonly fun isDelimiter(c: Char): Bool { c == '(' || c == ')' }
-  readonly fun isLineBreak(c: Char): Bool { c == '\n' }
-  readonly fun isSpace(c: Char): Bool { c == ' ' || c == '\t' }
-  readonly fun isComment(c: Char): Bool { c == '#' }
 
-  // return the current char and advance the position
+  // -------------- LEXING -----------------------------------------------------
+
+  // Return the current char and advance cursor.
   mutable fun charNext(): Char {
      c = this.text[this.pos];
      this.!pos = this.pos + 1;
      c
   }
 
+  // Unreads the last character
+  mutable fun unread():void {  if (this.pos > 0) this.!pos = this.pos - 1; }
+
+  // Reader is ok and there is at least one more char.
   readonly fun hasMore(): Bool {  this.ok && this.pos < this.text.size()  }
 
-  // Records that a line break happened, if we moved the cursor we need to
-  // set it back to where the linebreak character occured.
+  // Process a file breaking it into tokens
+  mutable fun lex(): mutable Tokens {
+    toks = mutable Tokens[];
+    this.skipSpaces();
+    (cur, prev) = (Tok(), Tok());
+    while(this.hasMore()) {
+      !prev = cur;
+      !cur = this.token();
+      this.skipSpaces();
+      if (!cur.isBad()) toks.push(cur) else this.fail(prev, "lexing failed");
+    };
+    toks
+  }
+
+  // Identifiers and operators
+  readonly fun isLetterOrOp(c: Char): Bool {
+    Chars.isDigit(c) || this.isLetter(c)
+    || c == '!' || c == '%' || c == '&'
+    || c == '|' || c == '/' || c == '-'
+    || c == '+' || c == '*' || c == '<'
+    || c == '>' || c == '=' || c == '?'
+    || c == '='
+  }
+
+  readonly fun isLetter(c: Char): Bool {
+    Chars.isUpperCaseLetter(c) || Chars.isLowerCaseLetter(c) || c == '_'
+  }
+  readonly fun isDelimiter(c: Char): Bool   { c == '(' || c == ')' }
+  readonly fun isLineBreak(c: Char): Bool   { c == '\n' }
+  readonly fun isSpace(c: Char): Bool       { c == ' ' || c == '\t' }
+  readonly fun isComment(c: Char): Bool     { c == '#' }
+  readonly fun isSingleQuote(c: Char): Bool { c == '\'' }
+  readonly fun isDoubleQuote(c: Char): Bool { c == '\"' }
+
+
+  // Records the position of the line break and increase the number of lines seen
   mutable fun recordLineBreak(lastPos: Int): void {
     this.!lines = this.lines + 1;
     this.!lineBreak = lastPos;
@@ -304,118 +325,137 @@ mutable class .Reader{
   // Skip a whole comment assuming we already read the leading #
   mutable fun skipComment(): void {
     while (this.hasMore()) {
-      c = this.charNext();
-      if (this.isLineBreak(c)) {
-        this.recordLineBreak(this.pos - 1);
-        break void;
-      }
+      if (this.isLineBreak(this.charNext())) { this.recordLineBreak(this.pos - 1); break void; };
     }
   }
 
-  // Unreads the last character
-  mutable fun unread():void {  if (this.pos > 0) this.!pos = this.pos - 1; }
-
-  // Move past comments and white spaces, while keep track of lines
+  // Move past comments and white spaces, while keeping track of line breaks.
   mutable fun skipSpaces(): void {
     while (this.hasMore()) {
       c = this.charNext();
-      if (this.isComment(c)) {
-        this.skipComment();
-      } else if (this.isLineBreak(c))  {
-        this.recordLineBreak(this.pos - 1);
-      } else if (!this.isSpace(c)) {
-        this.unread();
+      if (this.isComment(c)) this.skipComment()
+      else if (this.isLineBreak(c)) this.recordLineBreak(this.pos - 1)
+      else if (!this.isSpace(c)) {
+        this.unread(); // we read one too many, return it back to the stream
         break void;
-      }
-    }
+      };
+    };
   }
 
-  // Returns the next token
   mutable fun token(): Tok {
-    this.skipSpaces();
     start = this.pos;
-    hasSeenChars = false;
+    c = this.charNext();
+    if (Chars.isDigit(c)) this.readNumber(start)
+    else if (this.isDelimiter(c)) Tok::createRange(start, start+1, this)
+    else if (this.isSingleQuote(c)) this.readChar(start)
+    else if (this.isDoubleQuote(c)) this.readString(start)
+    else if (this.isLetterOrOp(c)) this.readIdentifier(start)
+    else Tok()
+  }
+
+  // Todo: add support for escape sequences
+  mutable fun readChar(start: Int): Tok {
+    if (!this.hasMore()) return Tok();
+     _ = this.charNext();
+    if (!this.hasMore()) return Tok();
+     c = this.charNext();
+    if (this.isSingleQuote(c)) Tok::createRange(start, start + 2, this) else Tok()
+  }
+
+  mutable fun readNumber(start: Int): Tok {
     while(this.hasMore()) {
       c = this.charNext();
       if (this.isDelimiter(c)) {
-        if (hasSeenChars) { this.unread(); };
-        !hasSeenChars = true;
-        break void;
-      } else if (this.isLetterOrOp(c)) {
-        !hasSeenChars = true;
-      } else {
-        this.unread();
-        break void;
-      }
+         this.unread();
+         break void;
+      }  else if (!Chars.isDigit(c)) return Tok();
     };
-    tok = if (hasSeenChars) Tok(start, this.pos, this.lines, this.lineBreak, this.path, this.text) else Tok();
-    this.skipSpaces();
-    if (tok.isBad()) { this.fail(Tok(), `failed lexing`); };
-    tok
+    Tok::createRange(start, this.pos, this)
+ }
+
+  mutable fun readString(start: Int): Tok {
+    while(this.hasMore()) {
+      c = this.charNext();
+      if (this.isDoubleQuote(c)) break void
+      else if (this.isLineBreak(c)) return Tok();
+    };
+    Tok::createRange(start, this.pos, this)
+  }
+
+  mutable fun readIdentifier(start: Int): Tok {
+    while(this.hasMore()) {
+      c = this.charNext();
+      if (!this.isLetterOrOp(c) && !Chars.isDigit(c)) { this.unread(); break void };
+    };
+    Tok::createRange(start, this.pos, this)
   }
 
 
-   // booleans and integers are the only values supported so far. We should add strings and lists.
-	mutable fun isValue(t: Tok): Bool { this.isBool(t) || this.isInt(t) }
+  // Supports booleans, integers, strings, and characters
+  mutable fun isValue(t: Tok): Bool {
+    this.isBool(t) || this.isInt(t) || this.isChar(t) || this.isString(t)
+  }
 
-	mutable fun isBool(t: Tok): Bool {
-    if (t.start + 2 != t.end) { return false; };
-		txt = this.text;
-		(a, b) =  (txt[t.start], txt[t.start+1]);
-     (a == 't' && b == 't') || (a == 'f' && b == 'f')
-	}
+  // A Bool value is either tt or ff
+  mutable fun isBool(t: Tok): Bool {
+    if (t.start + 2 != t.end) return false;
+    txt = this.text;
+    (a, b) =  (txt[t.start], txt[t.start+1]);
+    (a == 't' && b == 't') || (a == 'f' && b == 'f')
+  }
 
-	mutable fun isInt(t: Tok): Bool {
-    (txt, start, end) = (this.text, t.start, t.end);
-		while (start < end) {
-			if (!Chars.isDigit(txt[start])) { return false; } else { !start = start + 1; };
-		};
-		true
-	}
+  // An integer starts with a digit (not that we don't support identifers starting with a digit)
+  mutable fun isInt(t: Tok): Bool { Chars.isDigit(this.text[t.start]) }
 
-	mutable fun asBool(t: Tok): Bool { this.text[t.start] == 't' && this.text[t.start+1] == 't'	}
+  // A character is 'a'
+  mutable fun isChar(t: Tok): Bool { this.isSingleQuote(this.text[t.start]) }
 
-	mutable fun asInt(t: Tok): Int { t.asString().toInt() }
+  // A string is "aa"
+  mutable fun isString(t: Tok): Bool { this.isDoubleQuote(this.text[t.start]) }
+
+  mutable fun asBool(t: Tok): Bool { this.text[t.start] == 't' && this.text[t.start+1] == 't' }
+
+  mutable fun asInt(t: Tok): Int { t.asString().toInt() }
 
   // Some examples of valid identifiers:  a, a!, a?, _, _a, a1, +, <=
-	mutable fun isIdentifier(t: Tok): Bool {
-	   if (this.isValue(t)) { return false; };
-		 (from, to) = (t.start, t.end);
-		 if (to - from == 1) {
-		 		c =  this.text[from];
-				this.isLetter(c)
-				|| c == '+'
-				|| c == '*'
-  			|| c == '-'
-				|| c == '/'
-				|| c == '%'
-				|| c == '<'
-				|| c == '>'
-				|| c == '!'
-		 } else if (to - from == 2) {
-		 	  (c, c2) =  (this.text[from], this.text[from+1]);
-				if (this.isLetter(c)) {
-				  c2 == '!' || c2 == '?' || Chars.isDigit(c) || this.isLetter(c)
-				} else {
-  				   (c == '&' && c2 == '&')
-	  			|| (c == '|' && c2 == '|')
-  	  		|| (c == '<' && c2 == '=')
-    			|| (c == '>' && c2 == '=')
-    			|| (c == '=' && c2 == '=')
-			 }
-  	 } else {
-		   c = this.text[from];
-			 if (!this.isLetter(c)) { return false; };
-			 !from = from + 1;
-		 	 while(from < to) {
-		     ch = this.text[from];
-				 b = this.isLetter(ch) || ch == '!' || ch == '?';
-				 if (!b) { return false; };
-				!from = from + 1;
-	 	   };
-			 true
- 	  }
-	}
+  mutable fun isIdentifier(t: Tok): Bool {
+     if (this.isValue(t)) { return false; };
+     (from, to) = (t.start, t.end);
+     if (to - from == 1) {
+         c =  this.text[from];
+        this.isLetter(c)
+        || c == '+'
+        || c == '*'
+        || c == '-'
+        || c == '/'
+        || c == '%'
+        || c == '<'
+        || c == '>'
+        || c == '!'
+     } else if (to - from == 2) {
+         (c, c2) =  (this.text[from], this.text[from+1]);
+        if (this.isLetter(c)) {
+          c2 == '!' || c2 == '?' || Chars.isDigit(c) || this.isLetter(c)
+        } else {
+             (c == '&' && c2 == '&')
+          || (c == '|' && c2 == '|')
+          || (c == '<' && c2 == '=')
+          || (c == '>' && c2 == '=')
+          || (c == '=' && c2 == '=')
+       }
+     } else {
+       c = this.text[from];
+       if (!this.isLetter(c)) { return false; };
+       !from = from + 1;
+        while(from < to) {
+         ch = this.text[from];
+         b = this.isLetter(ch) || ch == '!' || ch == '?';
+         if (!b) { return false; };
+        !from = from + 1;
+        };
+       true
+     }
+  }
 
 }
 
