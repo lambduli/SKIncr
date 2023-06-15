@@ -199,7 +199,7 @@ mutable class Checker(env: mutable Scope, r: mutable Reader) {
       }
 
       | While(t, _, _) -> this.r.fail(t, `All functions must return! This while loop is a last term in the function '${fName}' but it does not evaluate to a value.`)
-      | Decl(Tok, _, _) -> this.r.fail(t, `All functions must return! This declaration is a last term in the function '${fName}' but it does not evaluate to a value.`)
+      | Decl(t, _, _) -> this.r.fail(t, `All functions must return! This declaration is a last term in the function '${fName}' but it does not evaluate to a value.`)
     }
   }
 
