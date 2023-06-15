@@ -100,12 +100,11 @@ mutable class .Reader{
     fs = rs.map(r -> r.file()); // Files
     fail = false;
     rs.each(r -> if (!r.ok) { r.reportError(); !fail = true; });
-    if (fail) { return (rs,fs); };
+    if (fail) return (rs,fs);
     cks = rs.map(r -> Checker::create(r)); // Checkers
     i = 0;
     while (i < rs.size()) {
-      f = fs[i];
-      ck = cks[i];
+      (f, ck) = (fs[i], cks[i]);
       ck.file(f, fs);
       !i = i + 1;
     };
@@ -118,118 +117,98 @@ mutable class .Reader{
   // Parse a file, always returns something. Clients check the Reader for an error.
   mutable fun file(): File {
     tok = this.curToken();
-    this.reportError();
     (name, _) = (this.eat("(").eat("module").identifier(), this.eat("imports").eat("("));
     (imports, _) = (this.identifiers(), this.eat(")").eat(")").eat("(").eat("vars").eat("("));
     (decls, _) = (this.declarations(), this.eat(")").eat(")").eat("(").eat("functions").eat("("));
     (funs, _) = (this.functions(), this.eat(")").eat(")"));
-    tik = this.curToken();
-    token = Tok(tok.start, tik.end, tok.lines, tok.lineBreak);
-    File(token, name, imports, decls, funs)
+    File(Tok::createFrom(tok, this.curToken().end, this), name, imports, decls, funs)
   }
 
+  // Parse an expression.
   mutable fun expression(): Expr {
     tok = this.curToken();
-    if (!this.ok) { return Var(tok, "ERR"); };
-    stok = tok.asString(this);
-    if (stok == "(") {
-      this.nextToken().asString(this) match {
+    if (!this.ok) return Var(tok, "ERR");
+    stok = tok.asString();
+    if (stok == "(")
+      this.nextToken().asString() match {
       |   "let" -> this.declaration()
       | "begin" -> this.block()
       | "while" -> this.whileLoop()
       |    "if" -> this.cond()
       |       _ -> this.call()
       }
-    } else {
+    else {
       if (this.isInt(tok)) {  this.advanceTok(); ValInt(tok, this.asInt(tok)) }
       else if (this.isBool(tok)) {  this.advanceTok(); ValBool(tok, this.asBool(tok)) }
       else Var(tok, this.identifier())
     }
   }
 
+  // Parse a function declaration: (function name (params...) exp)
   mutable fun function(): Function {
     tok = this.curToken();
     (name, _) = (this.eat("(").eat("function").identifier(), this.eat("("));
     (params, _, expr, _) = (this.identifiers(), this.eat(")"), this.expression(), this.eat(")"));
-    tik = this.curToken();
-    token = Tok(tok.start, tik.end, tok.lines, tok.lineBreak);
-    Function(token, name, params, expr)
+    Function(Tok::createFrom(tok, this.curToken().end, this), name, params, expr)
   }
 
+  // Parse a let binding: (let name exp)
   mutable fun declaration(): Decl {
     tok = this.curToken();
     (name, expr, _) = (this.eat("(").eat("let").identifier(), this.expression(), this.eat(")"));
-		tik = this.curToken();
-    token = Tok(tok.start, tik.end, tok.lines, tok.lineBreak);
-    Decl(token, name, expr)
+    Decl(Tok::createFrom(tok, this.curToken().end, this), name, expr)
   }
 
   mutable fun block(): Block {
     tok = this.curToken();
     (_, exprs, _) = (this.eat("(").eat("begin"), this.expressions(), this.eat(")"));
-    tik = this.curToken();
-    token = Tok(tok.start, tik.end, tok.lines, tok.lineBreak);
-    Block(token, exprs)
+    Block(Tok::createFrom(tok, this.curToken().end, this), exprs)
   }
 
   mutable fun whileLoop(): While {
     tok = this.curToken();
     (_, e, b, _) = (this.eat("(").eat("while"), this.expression(), this.expression(), this.eat(")"));
-    tik = this.curToken();
-    token = Tok(tok.start, tik.end, tok.lines, tok.lineBreak);
-    While(token, e, b)
+    While(Tok::createFrom(tok, this.curToken().end, this), e, b)
   }
 
   mutable fun cond(): Cond {
     tok = this.curToken();
     _ = this.eat("(").eat("if");
     (c, t, f, _) = (this.expression(), this.expression(), this.expression(), this.eat(")"));
-    tik = this.curToken();
-    token = Tok(tok.start, tik.end, tok.lines, tok.lineBreak);
-    Cond(token, c, t, f)
+    Cond(Tok::createFrom(tok, this.curToken().end, this), c, t, f)
   }
 
   mutable fun call(): Call {
     tok = this.curToken();
     (name, exprs, _) = (this.eat("(").identifier(), this.expressions(), this.eat(")"));
-    tik = this.curToken();
-    token = Tok(tok.start, tik.end, tok.lines, tok.lineBreak);
-    Call(token, name, exprs)
+    Call(Tok::createFrom(tok, this.curToken().end, this), name, exprs)
   }
 
   mutable fun identifiers(): StringVec {
     vec = mutable StringVec[];
-    while (this.hasMoreTokens() && this.curToken().asString(this) != ")") {
-      vec.push(this.identifier());
-    };
+    while (!this.isNext(")")) vec.push(this.identifier());
     vec.chill()
   }
 
   mutable fun expressions(): Expressions {
     vec = mutable Expressions[];
-    while (this.isNext(")")) {
-      vec.push(this.expression());
-    };
+    while (!this.isNext(")")) vec.push(this.expression());
     vec.chill()
   }
 
   mutable fun declarations(): Declarations {
     vec = mutable Declarations[];
-    while (!this.isNext(")")) {
-      vec.push(this.declaration());
-    };
+    while (!this.isNext(")")) vec.push(this.declaration());
     vec.chill()
   }
 
   mutable fun functions(): Functions {
     vec = mutable Functions[];
-    while (!this.isNext(")")) {
-      vec.push(this.function());
-    };
+    while (!this.isNext(")")) vec.push(this.function());
     vec.chill()
   }
 
-	mutable fun isNext(s: String): Bool { this.hasMoreTokens() && this.curToken().asString(this) == s }
+	mutable fun isNext(s: String): Bool { this.hasMoreTokens() && this.curToken().asString() == s }
 
   // Do we have more tokens?
   readonly fun hasMoreTokens(): Bool { this.ok && this.tokPos < this.tokens.size(); }
@@ -238,7 +217,7 @@ mutable class .Reader{
   mutable fun eat(s: String): mutable Reader {
     if (this.hasMoreTokens()) {
        tok = this.curToken();
-      if (tok.asString(this) != s) { this.fail(tok, `expected ${s}`); };
+      if (tok.asString() != s) this.fail(tok, `expected ${s}`);
       this.advanceTok();
     };
     this
@@ -248,7 +227,7 @@ mutable class .Reader{
   mutable fun fail(tok: Tok, msg: String): void {
     this.!ok = false;
     this.!tokPos = this.tokens.size();
-    this.!error = tok.error_message(this, msg);
+    this.!error = tok.error_message(msg);
   }
 
   // Return the previous token or the current one (approximate at the edge)
@@ -258,7 +237,7 @@ mutable class .Reader{
 
   // Return the current token, or a bad token if we are not in a good place
   readonly fun curToken(): Tok {
-    if (this.ok && this.hasMoreTokens()) { this.tokens[this.tokPos] } else { Tok(0,-1,0,0) }
+    if (this.ok && this.hasMoreTokens()) this.tokens[this.tokPos] else Tok()
   }
 
   // Returns the next token if available, otherwise fail and return garbage
@@ -276,11 +255,11 @@ mutable class .Reader{
 
   // Return an identifier and fail if this is not well-formed
   mutable fun identifier(): String {
-    if (!this.hasMoreTokens()) { this.fail(this.prevToken(), "premature end of file"); };
+    if (!this.hasMoreTokens()) this.fail(this.prevToken(), "premature end of file");
     tok = this.curToken();
-    if (!this.isIdentifier(tok)) { this.fail(tok, "expected an identifier"); };
+    if (!this.isIdentifier(tok)) this.fail(tok, "expected an identifier");
     this.advanceTok();
-    tok.asString(this)
+    tok.asString()
   }
 
   // -------------- LEXING -----------------------------------------------------
@@ -293,7 +272,7 @@ mutable class .Reader{
   }
 
   // If an error occured report it.
-  readonly fun reportError(): void { if (!this.ok) { print_string(this.error); } }
+  readonly fun reportError(): void { if (!this.ok) print_string(this.error); }
 
   // Identifiers and operators
   readonly fun isLetterOrOp(c: Char): Bool {
@@ -334,7 +313,7 @@ mutable class .Reader{
   }
 
   // Unreads the last character
-  mutable fun unread():void {  if (this.pos > 0) {  this.!pos = this.pos - 1; }; }
+  mutable fun unread():void {  if (this.pos > 0) this.!pos = this.pos - 1; }
 
   // Move past comments and white spaces, while keep track of lines
   mutable fun skipSpaces(): void {
@@ -369,9 +348,9 @@ mutable class .Reader{
         break void;
       }
     };
-    tok = if (hasSeenChars) Tok(start, this.pos, this.lines, this.lineBreak) else Tok(0, -1, 0, 0);
+    tok = if (hasSeenChars) Tok(start, this.pos, this.lines, this.lineBreak, this.path, this.text) else Tok();
     this.skipSpaces();
-    if (tok.end == -1) { this.fail(Tok(0,0,0,0), `failed lexing`); };
+    if (tok.isBad()) { this.fail(Tok(), `failed lexing`); };
     tok
   }
 
@@ -396,7 +375,7 @@ mutable class .Reader{
 
 	mutable fun asBool(t: Tok): Bool { this.text[t.start] == 't' && this.text[t.start+1] == 't'	}
 
-	mutable fun asInt(t: Tok): Int { t.asString(this).toInt() }
+	mutable fun asInt(t: Tok): Int { t.asString().toInt() }
 
   // Some examples of valid identifiers:  a, a!, a?, _, _a, a1, +, <=
 	mutable fun isIdentifier(t: Tok): Bool {

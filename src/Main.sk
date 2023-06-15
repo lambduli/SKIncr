@@ -5,30 +5,25 @@
 //
 fun main(): void {
 	paths = arguments();
-	if (paths.size() == 0) {
-		 test();
-	} else {
-		good_test(Vector::createFromItems(paths));
-	}
+	if (paths.size() == 0)  test() else	good(Vector::createFromItems(paths));
 }
 
 fun test(): void {
-
-	good_test(Vector<String>["tests/stdlib.sm", "tests/good/1/main.sm"]);
-	good_test(Vector<String>["tests/stdlib.sm", "tests/good/2/main.sm"]);
-	good_test(Vector<String>["tests/stdlib.sm", "tests/good/3/main.sm"]);
-  good_test(Vector<String>["tests/stdlib.sm", "tests/good/4/main.sm"]);
-	good_test(Vector<String>["tests/stdlib.sm", "tests/good/5/main.sm"]);
-	good_test(Vector<String>["tests/stdlib.sm", "tests/good/6/main.sm"]);
-  good_test(Vector<String>["tests/stdlib.sm", "tests/good/7/main.sm"]);
-  good_test(Vector<String>["tests/stdlib.sm", "tests/good/8/lib.sm", "tests/good/8/main.sm"]);
+	good(Vector<String>["tests/stdlib.sm", "tests/good/1/main.sm"]);
+	good(Vector<String>["tests/stdlib.sm", "tests/good/2/main.sm"]);
+	good(Vector<String>["tests/stdlib.sm", "tests/good/3/main.sm"]);
+  good(Vector<String>["tests/stdlib.sm", "tests/good/4/main.sm"]);
+	good(Vector<String>["tests/stdlib.sm", "tests/good/5/main.sm"]);
+	good(Vector<String>["tests/stdlib.sm", "tests/good/6/main.sm"]);
+  good(Vector<String>["tests/stdlib.sm", "tests/good/7/main.sm"]);
+  good(Vector<String>["tests/stdlib.sm", "tests/good/8/lib.sm", "tests/good/8/main.sm"]);
 
 //	bad_test(Vector<String>["tests/StdLib.sm", "tests/bad/1.sm"], true);
 //	bad_test(Vector<String>["tests/StdLib.sm", "tests/bad/2.sm"], false);
 //	bad_test(Vector<String>["tests/StdLib.sm", "tests/bad/3.sm"], true);
 }
 
-fun good_test(p: Vector<String>): void {
+fun good(p: Vector<String>): void {
    (rs,fs) = Reader::process(p);
 	 rs.each(r -> if (!r.ok) { r.reportError(); });
 	 flat = mutable Flattener();
@@ -43,7 +38,6 @@ fun good_test(p: Vector<String>): void {
 	 	p1 = mutable PrettyPrint2();
 		print_string(p1.toModule(m));
 	 });
-	 
 }
 
 fun bad_test(p: Vector<String>, _verbose: Bool): void {
