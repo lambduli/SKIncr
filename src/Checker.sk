@@ -105,18 +105,12 @@ mutable class Checker(env: mutable Scope, r: mutable Reader) {
 
   // (R8)
   mutable fun initAbsent(funs: Vector<Function>): void {
-    funs.each(f -> {
-      if (f.name == "init") {
-        this.r.fail(f.tok, `Forbidden user-defined function 'init'`);
-      }
-    })
+    funs.each(f -> if (f.name == "init") this.r.fail(f.tok, `Forbidden user-defined function 'init'`))
   }
 
   // (R9)
   mutable fun mainPresent(f: File): void {
-    if (! this.env.isDefined("main")) {
-      this.r.fail(f.tok, `A required function 'main' is not present`);
-    }
+    if (! this.env.isDefined("main")) this.r.fail(f.tok, `No function 'main' in program`);
   }
 
   // Check a file definition
