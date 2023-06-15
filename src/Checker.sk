@@ -4,24 +4,63 @@ module Reader;
 // ----------- CHECKING THE AST --------------------------------------------------------
 // -------------------------------------------------------------------------------------
 
-// Some rules:
+// The semantics rules for our language are as follows:
 //
-// Statement-like expressions: (set!) (let) (if) (while) (begin) can only occur at the
-// `top-level`, i.e. body of a function, in a (begin), in the bodies of  (if) and (while).
+// A program is a collection of `File`s, (R1) each `File` must have a unique name.
 //
-// A single namespace for variables and functions with no shadowing.
+// Each `File`, exports its functions and keeps its global variables private.
 //
-// We can check the arity of functions as they are defined only once.
+// Each `File` imports other `File`s and `StdLib`.
+//
+// (R2) Two imported files cannot export the same function name, or shadow a local function.
+//
+// (R3) Variable names in scope cannot shadow.
+//
+// (R4) All variable references must refer to previously defined variables.
+//
+// (R5) All function calls must be to defined functions with the correct arity.
+//
+// The language has a number of special forms that are handled differently that other expressions:
+//
+// Statement-like terms: (let), (set!), (while) do not return a value and can only occur
+// at the top-level.
+//
+// Terms: (if) and (begin) can have a return value, but still must occur at the top level.
+//
+// The `top-level` refers to the body of a function, the branches of an if, or the body of a loop.
+//
+// (begin  (if a (begin (set! x 1) x) (+ z 2))) is fine
+//
+// but (if (if x y z) ...) is not because the guard of an if is not top-level.
+//
+// (R6) (let), (set!), (while), (if), (begin) must occur at the top-level.
+//
+// Every function should return a value. Thus every top-level code path must end in an expression
+// or a value-returning term.
+//
+// (R7) Check that functions are not terminated by non-value-returning terms.
+//
+// (R8) Each file cannot have an `init` function (one will be provided)
+//
+// (R9) Each program must have a single `main` function.
+
+// At this point we are missing checks for R1, R7, R8, R9.  There may be more rules to be added.
+
+type Names = Vector<Name>;
 
 value class Name(name: String, tok: Tok, arity: Int) { }
 
 // TODO: Would splitting it into GlobalScope and LocalScope work?
-mutable class Scope(mutable top: Bool, env: mutable Vector<mutable Vector<Name>>) {
-	static fun create(): mutable Scope { mutable Scope(true, mutable Vector<mutable Vector<Name>>[]) }
+mutable class Scope(mutable top: Bool, env: mutable Vector<mutable Names>) {
+
+  static fun create(): mutable Scope { mutable Scope(true, mutable Vector<mutable Names>[]) }
 
   mutable fun setTop(isTop: Bool): void { this.!top = isTop; }
-	readonly fun isTop(): Bool { this.top }
-  mutable fun pushScope(): void { this.env.push(mutable Vector<Name>[]); }
+
+  readonly fun isTop(): Bool { this.top }
+
+  mutable fun pushScope(): void { this.env.push(mutable Names[]); }
+
 	mutable fun popScope(): void { _ = this.env.pop(); }
 
 	mutable fun define(s: String, t: Tok, arity: Int): void {
