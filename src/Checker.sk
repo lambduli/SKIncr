@@ -29,8 +29,8 @@ module Reader;
 // or a value-returning term.
 //
 // (R7) Check that functions are not terminated by non-value-returning terms.
-// (R8) Each file cannot have an `init` function (one will be provided)
-// (R9) Each program must have a single `main` function.
+// ✔ (R8) Each file cannot have an `init` function (one will be provided)
+// ✔ (R9) Each program must have a single `main` function.
 //
 // At this point we are missing checks for R1, R7, R8, R9.  There may be more rules to be added.
 
@@ -103,6 +103,22 @@ mutable class Checker(env: mutable Scope, r: mutable Reader) {
     }
   }
 
+  // (R8)
+  mutable fun initAbsent(funs: Vector<Function>): void {
+    funs.each(f -> {
+      if (f.name == "init") {
+        this.r.fail(f.tok, `Forbidden user-defined function 'init'`);
+      }
+    })
+  }
+
+  // (R9)
+  mutable fun mainPresent(f: File): void {
+    if (! this.env.isDefined("main")) {
+      this.r.fail(f.tok, `A required function 'main' is not present`);
+    }
+  }
+
   // Check a file definition
   mutable fun file(file: File, fs: Vector<File>): void {
     if (file.name == "StdLib") { return void; }; // Assumed StdLib to be correct, do not check
@@ -142,8 +158,16 @@ mutable class Checker(env: mutable Scope, r: mutable Reader) {
         f.funs.each(func ->
           this.checked_add(func.name, func.tok, func.params.size()))
       }));
+
     // Checking function definitions
     file.funs.each(f -> this.function(f) );
+
+    // confirm the absence of `init` function in the File for (R8)
+    this.initAbsent(file.funs);
+
+    // confirm the existence of `main` function in the File for (R9)
+    this.mainPresent(file);
+
     env.popScope();
   }
 
