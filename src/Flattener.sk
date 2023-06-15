@@ -40,7 +40,9 @@ base class Stmt {
 	| Loop(Exp, Code)
   | Branch(Exp, Code, Code)
 	| Return(Exp) // TODO: Return(Register)
-	// this means that the Flattener needs to turn the last expression in Function into a return (and store the result into the register first)
+	// this means that the Flattener needs to turn the last expression in Function into a
+	// return (and store the result into the register first).  This will be helped when we check
+	// sanity of function definitions. See comment on top of Checker.sk
 }
 
 base class Exp {
@@ -48,19 +50,18 @@ base class Exp {
 	| VInt(Int)
   | VBool(Bool)
 	| VString(String)
-	| Register(String) // TODO: FIX!
+	| Register(String) // TODO: FIX!  Should be an int?
 	| Lookup(String)
   | Invoke(String, Vector<Register>)
 }
 
 
 class .Translator() {
-	fun file(f: File): Module {
-		name = f.name;
-		imports = f.imports;
+
+  fun file(f: File): Module {
 		globals = f.decls.size();
 		funs = f.funs.map(f -> this.function(f));
-		Module(name, imports, globals, funs)
+		Module(f.name, f.imports, globals, funs)
 	}
 
 	fun expression(e0: Expr): Exp {
@@ -79,32 +80,18 @@ class .Translator() {
 	fun statement(e0: Expr): Statements {
 		e0 match {
 		| Call(_, n, es) -> {
-			if (n == "set!" || n == "gset!") {
-				Statements[Set(this.expression(es[0]), this.expression(es[1]))]
-			} else {
-				Statements[Set(Register("ERROR"), VInt(0))]
-			}
+			if (n == "set!" || n == "gset!") Statements[Set(this.expression(es[0]), this.expression(es[1]))]
+			 else Statements[Set(Register("ERROR"), VInt(0))]
 		}
-		| Decl(_, n, e) -> {
-			Statements[Set(Register(n), this.expression(e))]
-		}
-    | Block(_t, es) -> {
-			es.map(e -> this.statement(e)).flatten()
-		}
-    | While(_, e, s) -> {
-			Statements[Loop(this.expression(e), Code(this.statement(s)))]
-		}
-    | Cond(_, e, s1, s2) -> {
-			Statements[Branch(this.expression(e), Code(this.statement(s1)), Code(this.statement(s2)))]
-			}
+		| Decl(_, n, e) -> Statements[Set(Register(n), this.expression(e))]
+    | Block(_t, es) -> es.map(e -> this.statement(e)).flatten()
+    | While(_, e, s) -> Statements[Loop(this.expression(e), Code(this.statement(s)))]
+    | Cond(_, e, s1, s2) ->	Statements[Branch(this.expression(e), Code(this.statement(s1)), Code(this.statement(s2)))]
 		| e -> Statements[Return(this.expression(e))]
 		}
 	}
 
-	fun function(f: Function): Fun {
-		c = Code(this.statement(f.body));
-		Fun(f.name, f.params.size(), c)
-	}
+	fun function(f: Function): Fun { Fun(f.name, f.params.size(), Code(this.statement(f.body)))	}
 }
 
 mutable class .PrettyPrint2(mutable indent: Int = 0) {
@@ -167,30 +154,17 @@ mutable class .PrettyPrint2(mutable indent: Int = 0) {
 
 	mutable fun statement(st: Stmt): String {
     st match {
-    | Set(n, e) -> {
-   		se = this.expression(e);
-			ne = this.expression(n);
- 	    `${ne} = ${se}`
-		}
-		| GSet(n, e) -> {
-			se = this.expression(e);
-			ne = this.expression(n);
- 	    `${ne} ^= ${se}`
-		}
-    | Loop(e, s) -> {
-		  "while " + this.expression(e) + " " + this.code(s)
-		}
+    | Set(n, e) -> `${this.expression(n)} = ${this.expression(e)}`
+		| GSet(n, e) -> `${this.expression(e)} ^= ${this.expression(n)}`
+    | Loop(e, s) -> "while " + this.expression(e) + " " + this.code(s)
     | Branch(e, s1, s2) -> {
 		  s = "(if " + this.expression(e) + "\n";
 			this.inc();
-		  !s = s + this.code(s1) + "\n";
-		  !s = s + this.code(s2) + ")";
+		  !s = s + this.code(s1) + "\n" + this.code(s2) + ")";
 			this.dec();
 			s
 		}
-		| Return(e) -> {
-			`return ${this.expression(e)}`
-		}
+		| Return(e) -> `return ${this.expression(e)}`
     }
 	}
 
@@ -225,7 +199,7 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate()) {
 		Function(f.tok, f.name, f.params, this.toBlock(f.tok, es, e))
   }
 
-  readonly fun undef(): Expr { Var(Tok(0,-1,0,0), " Error") }
+  readonly fun undef(): Expr { Var(Tok(), " Error") }
 
 	readonly fun isUndef(e : Expr): Bool { e match { | Var(_,s) -> s == " Error" | _ -> false } }
 
