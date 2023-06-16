@@ -109,12 +109,12 @@ mutable class Checker(env: mutable Scope, r: mutable Reader) {
   }
 
   // (R9)
-  mutable fun uniqueMain(funs: Vector<Function>, files: Vector<File>): void {
+  mutable fun uniqueMain(funs: Vector<Function>, thisFile: File, files: Vector<File>): void {
     funs.find(fn -> fn.name == "main") match {
       | None() -> void;
       | Some(main) -> {
           // check that no other file has `main`
-          files.find(fl -> fl.funs.find(fn -> fn.name == "main").isSome()) match {
+          files.find(fl -> fl.name != thisFile.name && fl.funs.find(fn -> fn.name == "main").isSome()) match {
             | None() -> void;
             | Some(_) -> {
               // this `main` is not the only one
@@ -172,7 +172,7 @@ mutable class Checker(env: mutable Scope, r: mutable Reader) {
     this.initAbsent(file.funs);
 
     // confirm that if there is a `main` function, it is unique for (R9)
-    this.uniqueMain(file.funs, fs);
+    this.uniqueMain(file.funs, file, fs);
 
     env.popScope();
   }

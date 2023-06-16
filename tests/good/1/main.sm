@@ -10,12 +10,16 @@
 
 (functions (
   (function simpler ()
-    (let d 23)
+    (begin
+      (let d 23)
+      d
+    )
   )
 
   (function simple ()
     (begin
       (let d 23)
+      d
     )
   )
 
