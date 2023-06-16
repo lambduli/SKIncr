@@ -19,14 +19,27 @@ value class Code(stmts: Statements) {}
 
 base class Stmt {
   children =
-	| Set(reg: Int, Reader.Exp)
-  | GSet(reg: Int, Reader.Exp)
+	| Store(reg: Int, Expr)
+  | GStore(reg: Int, Expr)
 	| Branch(cond: Int, body: Int)
   | CondJump(cond: Int, tgt: Int)
-	| Return(Reader.Exp)
+	| Return(Expr) // must be either a constant or a register (local) or Load, never 
   | Jump(Int) // jump to the instruction at the `offset` from the bottom of the instruction stack
 }
 
+base class Expr {
+  children =
+  // C for Constant
+  // Basically load immediate
+  | CInt(Int)
+  | CBool(Bool)
+	| CString(String)
+	| CChar(Char)
+  //
+	| Register(Int)
+  | Invoke(String, Vector<Int>)
+  | Load(source: Int)
+}
 
 mutable class Linearize(cntr: Int) {
   static fun mcreate(): mutable this {
@@ -43,10 +56,44 @@ mutable class Linearize(cntr: Int) {
     Fun(f.name, f.params, b)
   }
 
+  fun expression(e: Reader.Exp): Expr {
+    e match {
+      | Reader.VInt(i) -> CInt(i)
+      | Reader.VBool(b) -> CBool(b)
+      | Reader.VString(s) -> CString(s)
+      | Reader.VChar(ch) -> CChar(ch)
+      | Reader.Register(_str) -> {
+        // TODO: parse the number of the register from the string
+        i = 0;
+        Register(i)
+      }
+      | Reader.Load(_str) -> {
+        // TODO: parse the number of the register from the string
+        i = 0;
+        Load(i)
+      }
+      | Reader.Invoke(fname, argRegs) -> {
+        regs = argRegs.map(r -> this.register(r));
+        Invoke(fname, regs)
+      }
+    }
+  }
+
+  fun register(_r: Reader.Register): Int {
+    // TODO: parse the string and return the number
+    0
+  }
+
   fun statement(s: Reader.Stmt): Vector<Stmt> {
     s match {
-      | Reader.Set(_regExpr, e) -> Vector[Set(0, e)] // FIX!
-      | Reader.GSet(_regExpr, e) -> Vector[GSet(0, e)] // FIX!
+      | Reader.Set(_regExpr, e) -> {
+        ex = this.expression(e);
+        Vector[Store(0, ex)]
+      }
+      | Reader.GSet(_regExpr, e) -> {
+        ex = this.expression(e);
+        Vector[GStore(0, ex)]
+      }
       | Reader.Loop(_cndExpr, Reader.Code(stmtsR)) -> {
         // TODO: the condition should be just a Code right?
         // then it goes once before the condition and once at the end of the loop
@@ -70,7 +117,7 @@ mutable class Linearize(cntr: Int) {
 
         instructions.chill()
       }
-      // | Reader.Branch(condExpr, Reader.Code(ifYes), Reader.Code(ifNo)) -> {
+      | Reader.Branch(_condExpr, Reader.Code(_ifYes), Reader.Code(_ifNo)) -> {
       //   // TODO: the condition should be just a Code right?
       //   // then it goes once before the condition and once at the end of the loop
       //   // so that the actual Jump can just check the register
@@ -96,9 +143,13 @@ mutable class Linearize(cntr: Int) {
       //   instructions = (mutable Vector[cond]).extend(positive).push(skipNegative).extend(negative);
 // 
       //   instructions
-      // }
-      | Reader.Return(expr) -> Vector[Return(expr)] // TODO: Fix!
-      | _ -> invariant_violation("UFFF")
+      invariant_violation("TODO: implement")
+      }
+      | Reader.Return(_expr) -> {
+        // Vector[Return(expr)] // TODO: Fix!
+        invariant_violation("TODO: implement")
+      }
+      // | _ -> invariant_violation("UFFF")
     }
   }
 
