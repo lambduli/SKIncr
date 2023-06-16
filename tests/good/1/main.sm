@@ -11,7 +11,8 @@
 (functions (
   (function simpler ()
     (begin
-      (let d 23)
+      (set! a 0)
+      (let d a)
       d
     )
   )
@@ -21,6 +22,10 @@
       (let d 23)
       d
     )
+  )
+
+  (function fun ()
+    (simple)
   )
 
   # if the first argument is smaller than the second argument
