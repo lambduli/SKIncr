@@ -109,8 +109,20 @@ mutable class Checker(env: mutable Scope, r: mutable Reader) {
   }
 
   // (R9)
-  fun hasMain(f: File): Bool {
-    this.env.isDefined("main")
+  mutable fun uniqueMain(funs: Vector<Function>, files: Vector<File>): void {
+    funs.find(fn -> fn.name == "main") match {
+      | None() -> void;
+      | Some(main) -> {
+          // check that no other file has `main`
+          files.find(fl -> fl.funs.find(fn -> fn.name == "main").isSome()) match {
+            | None() -> void;
+            | Some(_) -> {
+              // this `main` is not the only one
+              this.r.fail(main.tok, `The 'main' function is not unique.`);
+            }
+          }
+      }
+    }
   }
 
   // Check a file definition
@@ -159,6 +171,9 @@ mutable class Checker(env: mutable Scope, r: mutable Reader) {
     // confirm the absence of `init` function in the File for (R8)
     this.initAbsent(file.funs);
 
+    // confirm that if there is a `main` function, it is unique for (R9)
+    this.uniqueMain(file.funs, fs);
+
     env.popScope();
   }
 
@@ -180,17 +195,21 @@ mutable class Checker(env: mutable Scope, r: mutable Reader) {
     e match {
       | ValInt(_, _)
       | ValBool(_, _)
-      | Var(_, _)
-      | Call(_, _, _) -> void
+      | Var(_, _) -> void;
+      | Call(t, n, _) -> {
+        if (n == "set!") {
+          this.r.fail(t, `All functions must return! This 'set!' expression is a last term in the function '${fName}' but it does not evaluate to a value.`);
+        }
+      }
 
-      | Block(_, exprs) -> exprs.each(e -> this.producesValue(fName, e));
+      | Block(_, exprs) -> this.producesValue(fName, exprs[exprs.size() - 1]);
       | Cond(_, _, positive, negative) -> {
         this.producesValue(fName, positive);
         this.producesValue(fName, negative);
       }
 
-      | While(t, _, _) -> this.r.fail(t, `All functions must return! This while loop is a last term in the function '${fName}' but it does not evaluate to a value.`)
-      | Decl(t, _, _) -> this.r.fail(t, `All functions must return! This declaration is a last term in the function '${fName}' but it does not evaluate to a value.`)
+      | While(t, _, _) -> this.r.fail(t, `All functions must return! This while loop is a last term in the function '${fName}' but it does not evaluate to a value.`);
+      | Decl(t, _, _) -> this.r.fail(t, `All functions must return! This declaration is a last term in the function '${fName}' but it does not evaluate to a value.`);
     }
   }
 
