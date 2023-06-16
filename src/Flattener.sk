@@ -50,8 +50,9 @@ base class Exp {
 	| VInt(Int)
   | VBool(Bool)
 	| VString(String)
+	| VChar(Char)
 	| Register(String)
-	| Lookup(String)
+	| Load(String)
   | Invoke(String, Vector<Register>)
 }
 
@@ -68,7 +69,7 @@ class .Translator() {
 		e0 match {
     | ValInt(_, i) -> VInt(i)
 		| ValBool(_, b) -> VBool(b)
-    | Var(_, s) -> Register(s) // TODO: how do we know if it's local lookup or global lookup?
+    | Var(_, s) -> Register(s)
     | Call(_, n, es) -> {
 			args = es.map(e -> e match { | Var(_, n1) -> Register(n1) | _ -> Register("ERROR") });
 			Invoke(n, args)
@@ -153,10 +154,11 @@ mutable class .PrettyPrint2(mutable indent: Int = 0) {
   mutable fun expression(e0: Exp): String {
     e0 match {
     | VInt(i) -> `${i}`
-		| VBool(i) -> `${i}`
-		| VString(i) -> `${i}`
+		| VBool(b) -> `${b}`
+		| VString(s) -> `${s}`
+		| VChar(ch) -> `${ch}`
     | Register(s) -> s
-		| Lookup(s) -> `lookup ${s}`
+		| Load(s) -> `load ${s}`
     | Invoke(n, es) -> {
 		  s = `(${n} `;
  			es.each(e -> !s = s + " " + this.expression(e));
@@ -252,7 +254,7 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate()) {
 		  if (locals.containsKey(n)) {
         (ve, Var(t, vname))
 			} else if (this.glob.containsKey(n)) {
-				x = Call(t, "lookup", Vector<Expr>[Var(t, vname)]);
+				x = Call(t, "load", Vector<Expr>[Var(t, vname)]);
 				nvar = this.nextVar();
 				assign = Decl(t, nvar, x);
 				ve.push(assign);
@@ -271,7 +273,7 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate()) {
     | Call(t, n, es) -> {
 		  es2 = mutable MExprs[];
 		  if (n == "set!") {
-         (exp, vexp) = (es[1], es[0]);
+         (vexp, exp) = (es[0], es[1]);
 				 (tok, origVName) = vexp match {| Var(t2, nm) -> (t2, nm) | _ -> (t, "Error")};
 				 !n = if (this.glob.containsKey(origVName)) { "gset!" } else { "set!" };
 				 vname = this.toRegister(origVName, locals);
