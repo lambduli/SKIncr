@@ -51,6 +51,8 @@ base class Expr {
   children =
   | ValInt(Tok, Int)
   | ValBool(Tok, Bool)
+  | ValString(Tok, String)
+  | ValChar(Tok, Char)
   | Var(Tok, String)
   | Decl(Tok, String, Expr)
   | Call(Tok, String, Expressions)
@@ -141,6 +143,8 @@ mutable class .Reader{
     else {
       if (this.isInt(tok)) {  this.advanceTok(); ValInt(tok, this.asInt(tok)) }
       else if (this.isBool(tok)) {  this.advanceTok(); ValBool(tok, this.asBool(tok)) }
+      else if (this.isChar(tok)) { this.advanceTok(); ValChar(tok, this.asChar(tok)) }
+      else if (this.isString(tok)) { this.advanceTok(); ValString(tok, this.asString(tok)) }
       else Var(tok, this.identifier())
     }
   }
@@ -417,6 +421,14 @@ mutable class .Reader{
   mutable fun asBool(t: Tok): Bool { this.text[t.start] == 't' && this.text[t.start+1] == 't' }
 
   mutable fun asInt(t: Tok): Int { t.asString().toInt() }
+
+  mutable fun asString(t: Tok): String {
+    t.stringFromSlice(t.start + 1, t.end - 1)
+  }
+
+  mutable fun asChar(t: Tok): Char {
+    t.stringFromSlice(t.start + 1, t.end - 1).chars()[0]
+  }
 
   // Some examples of valid identifiers:  a, a!, a?, _, _a, a1, +, <=
   mutable fun isIdentifier(t: Tok): Bool {

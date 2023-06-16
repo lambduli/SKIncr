@@ -230,8 +230,10 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate()) {
   	ve = mutable MExprs[];
 		undef = this.undef();
     e0 match {
-    | ValInt(_, _) -> { (ve, e0) }
-		| ValBool(_, _) -> { (ve, e0) }
+    | ValInt(_, _) -> (ve, e0)
+		| ValBool(_, _) -> (ve, e0)
+		| ValChar(_, _) -> (ve, e0)
+		| ValString(_, _) -> (ve, e0)
     | Var(t, n) -> {
 		  vname = this.toRegister(n, locals);
 		  if (locals.containsKey(n)) {
@@ -359,6 +361,8 @@ mutable class .PrettyPrint(mutable indent: Int = 0) {
     e0 match {
     | ValInt(_, i) -> `${i}`
 		| ValBool(_, b) -> `${b}`
+		| ValChar(_, ch) -> `'${ch}'`
+		| ValString(_, str) -> `"${str}"`
     | Var(_, s) -> { s }
     | Decl(_, n, e) -> {
    		se = this.expression(e);

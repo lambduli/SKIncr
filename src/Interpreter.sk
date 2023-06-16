@@ -98,7 +98,6 @@ mutable class Linearize(cntr: Int) {
       //   instructions
       // }
       | Reader.Return(expr) -> Vector[Return(expr)] // TODO: Fix!
-      // I should just compile the expression to Code right?
       | _ -> invariant_violation("UFFF")
     }
   }

@@ -195,6 +195,8 @@ mutable class Checker(env: mutable Scope, r: mutable Reader) {
     e match {
       | ValInt(_, _)
       | ValBool(_, _)
+      | ValChar(_, _)
+      | ValString(_, _)
       | Var(_, _) -> void;
       | Call(t, n, _) -> {
         if (n == "set!") {
@@ -219,8 +221,10 @@ mutable class Checker(env: mutable Scope, r: mutable Reader) {
     env = this.env;
     old = env.isTop();
     e0 match {
-    | ValInt(_, _) -> { void; }
-    | ValBool(_, _) -> { void; }
+    | ValInt(_, _) -> void
+    | ValBool(_, _) -> void
+    | ValChar(_, _) -> void
+    | ValString(_, _) -> void
     | Var(t, s) -> {
       if (!env.isDefined(s)) { this.r.fail(t, `name ${s} undefined`); };
     }
