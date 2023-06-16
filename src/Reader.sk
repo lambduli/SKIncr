@@ -106,6 +106,7 @@ mutable class .Reader{
     while (i < rs.size()) {
       (f, ck) = (fs[i], cks[i]);
       ck.file(f, fs);
+
       !i = i + 1;
     };
     (rs,fs)

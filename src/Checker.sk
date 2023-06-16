@@ -113,10 +113,8 @@ mutable class Checker(env: mutable Scope, r: mutable Reader) {
   }
 
   // (R9)
-  mutable fun mainPresent(f: File): void {
-    if (! this.env.isDefined("main")) {
-      this.r.fail(f.tok, `A required function 'main' is not present`);
-    }
+  fun hasMain(f: File): Bool {
+    this.env.isDefined("main")
   }
 
   // Check a file definition
@@ -164,9 +162,6 @@ mutable class Checker(env: mutable Scope, r: mutable Reader) {
 
     // confirm the absence of `init` function in the File for (R8)
     this.initAbsent(file.funs);
-
-    // confirm the existence of `main` function in the File for (R9)
-    this.mainPresent(file);
 
     env.popScope();
   }
