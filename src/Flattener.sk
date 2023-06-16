@@ -35,8 +35,8 @@ value class Code(stmts: Statements) {}
 
 base class Stmt {
   children =
-	| Set(Exp, Exp) // TODO: I think the first Exp should be just Int for Register
-	| GSet(Exp, Exp) // TODO: I think the first Exp should be just Int for Register
+	| Set(Register, Exp)
+	| GSet(Register, Exp) 
 	| Loop(Exp, Code)
   | Branch(Exp, Code, Code)
 	| Return(Exp) // TODO: Return(Register)
@@ -50,7 +50,7 @@ base class Exp {
 	| VInt(Int)
   | VBool(Bool)
 	| VString(String)
-	| Register(String) // TODO: FIX!  Should be an int?
+	| Register(String)
 	| Lookup(String)
   | Invoke(String, Vector<Register>)
 }
@@ -68,7 +68,7 @@ class .Translator() {
 		e0 match {
     | ValInt(_, i) -> VInt(i)
 		| ValBool(_, b) -> VBool(b)
-    | Var(_, s) -> Register(s) // TODO: FIX THIS!
+    | Var(_, s) -> Register(s) // TODO: how do we know if it's local lookup or global lookup?
     | Call(_, n, es) -> {
 			args = es.map(e -> e match { | Var(_, n1) -> Register(n1) | _ -> Register("ERROR") });
 			Invoke(n, args)
@@ -80,7 +80,13 @@ class .Translator() {
 	fun statement(e0: Expr): Statements {
 		e0 match {
 		| Call(_, n, es) -> {
-			if (n == "set!" || n == "gset!") Statements[Set(this.expression(es[0]), this.expression(es[1]))]
+			if (n == "set!") {
+				reg = this.var(es[0]);
+				Statements[Set(reg, this.expression(es[1]))]
+			} else if (n == "gset!") {
+				reg = this.var(es[0]);
+				Statements[GSet(reg, this.expression(es[1]))]
+			}
 			 else Statements[Set(Register("ERROR"), VInt(0))]
 		}
 		| Decl(_, n, e) -> Statements[Set(Register(n), this.expression(e))]
@@ -88,6 +94,13 @@ class .Translator() {
     | While(_, e, s) -> Statements[Loop(this.expression(e), Code(this.statement(s)))]
     | Cond(_, e, s1, s2) ->	Statements[Branch(this.expression(e), Code(this.statement(s1)), Code(this.statement(s2)))]
 		| e -> Statements[Return(this.expression(e))]
+		}
+	}
+
+	fun var(e: Expr): Register {
+		e match {
+			| Var(_, str) -> Register(str)
+			| _ -> Register("ERROR")
 		}
 	}
 
@@ -142,7 +155,7 @@ mutable class .PrettyPrint2(mutable indent: Int = 0) {
     | VInt(i) -> `${i}`
 		| VBool(i) -> `${i}`
 		| VString(i) -> `${i}`
-    | Register(s) -> { s }
+    | Register(s) -> s
 		| Lookup(s) -> `lookup ${s}`
     | Invoke(n, es) -> {
 		  s = `(${n} `;
@@ -155,7 +168,7 @@ mutable class .PrettyPrint2(mutable indent: Int = 0) {
 	mutable fun statement(st: Stmt): String {
     st match {
     | Set(n, e) -> `${this.expression(n)} = ${this.expression(e)}`
-		| GSet(n, e) -> `${this.expression(e)} ^= ${this.expression(n)}`
+		| GSet(n, e) -> `${this.expression(n)} ^= ${this.expression(e)}`
     | Loop(e, s) -> "while " + this.expression(e) + " " + this.code(s)
     | Branch(e, s1, s2) -> {
 		  s = "(if " + this.expression(e) + "\n";
