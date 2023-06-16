@@ -105,11 +105,7 @@ mutable class Checker(env: mutable Scope, r: mutable Reader) {
 
   // (R8)
   mutable fun initAbsent(funs: Vector<Function>): void {
-    funs.each(f -> {
-      if (f.name == "init") {
-        this.r.fail(f.tok, `Forbidden user-defined function 'init'`);
-      }
-    })
+    funs.each(f -> if (f.name == "init") this.r.fail(f.tok, `Forbidden user-defined function 'init'`))
   }
 
   // (R9)
