@@ -52,7 +52,7 @@ base class Exp {
 	| VString(String)
 	| VChar(Char)
 	| Register(String)
-	| Load(String)
+	| Load(String) // TODO: can I make all loads into statements? would make expr simpler, but we already have invoke
   | Invoke(String, Vector<Register>)
 }
 
