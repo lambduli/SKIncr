@@ -51,7 +51,7 @@ base class Exp {
   | VBool(Bool)
 	| VString(String)
 	| VChar(Char)
-	| Register(String)
+	| Register(name: String)
 	| Load(String) // TODO: can I make all loads into statements? would make expr simpler, but we already have invoke
   | Invoke(String, Vector<Register>)
 }
@@ -245,10 +245,13 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate()) {
   	ve = mutable MExprs[];
 		undef = this.undef();
     e0 match {
-    | ValInt(_, _) -> (ve, e0)
-		| ValBool(_, _) -> (ve, e0)
-		| ValChar(_, _) -> (ve, e0)
-		| ValString(_, _) -> (ve, e0)
+    | ValInt(t, _)
+		| ValBool(t, _)
+		| ValChar(t, _)
+		| ValString(t, _) -> {
+			varname = this.nextVar();
+			(mutable Vector<Expr>[Decl(t, varname, e0)], Var(t, varname))
+		}
     | Var(t, n) -> {
 		  vname = this.toRegister(n, locals);
 		  if (locals.containsKey(n)) {

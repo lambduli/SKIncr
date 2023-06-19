@@ -36,8 +36,8 @@ base class Expr {
 	| CString(String)
 	| CChar(Char)
   //
-	| Register(Int)
-  | Invoke(String, Vector<Int>)
+	| Register(r: Int)
+  | Invoke(fname: String, args: Vector<Int>)
   | Load(source: Int)
 }
 
@@ -62,14 +62,12 @@ mutable class Linearize(cntr: Int) {
       | Reader.VBool(b) -> CBool(b)
       | Reader.VString(s) -> CString(s)
       | Reader.VChar(ch) -> CChar(ch)
-      | Reader.Register(_str) -> {
-        // TODO: parse the number of the register from the string
-        i = 0;
+      | Reader.Register(str) -> {
+        i = str.stripPrefix("%").toInt();
         Register(i)
       }
-      | Reader.Load(_str) -> {
-        // TODO: parse the number of the register from the string
-        i = 0;
+      | Reader.Load(str) -> {
+        i = str.stripPrefix("%").toInt();
         Load(i)
       }
       | Reader.Invoke(fname, argRegs) -> {
@@ -79,9 +77,20 @@ mutable class Linearize(cntr: Int) {
     }
   }
 
-  fun register(_r: Reader.Register): Int {
-    // TODO: parse the string and return the number
-    0
+  fun register(r: Reader.Register): Int {
+    r.name.stripPrefix("%").toInt()
+  }
+
+  // INVARIANT: I expect that the Reader.Exp for condition in WHILE
+  // will be Register in ALL CASES
+  fun condition(e: Reader.Exp): Register {
+    e match {
+      | Reader.Register(str) -> {
+        i = str.stripPrefix("%").toInt();
+        Register(i)
+      }
+      | _ -> Register(-1) // means error!
+    }
   }
 
   fun statement(s: Reader.Stmt): Vector<Stmt> {
@@ -94,10 +103,12 @@ mutable class Linearize(cntr: Int) {
         ex = this.expression(e);
         Vector[GStore(0, ex)]
       }
-      | Reader.Loop(_cndExpr, Reader.Code(stmtsR)) -> {
+      | Reader.Loop(cndExpr, Reader.Code(stmtsR)) -> {
         // TODO: the condition should be just a Code right?
         // then it goes once before the condition and once at the end of the loop
         // so that the actual CondJump can just check the register
+
+        cExpr = this.condition(cndExpr); // cndExpr has to be Register
 
         startOfLoopCntr = this.cntr;
         !this.cntr = this.cntr + 1; // the CondJump instruction is BEFORE all those
@@ -107,7 +118,7 @@ mutable class Linearize(cntr: Int) {
         backToTop = Jump(startOfLoopCntr); // jump back to the top at the end
         !this.cntr = this.cntr + 1;
 
-        skip = CondJump(0, this.cntr); // FIX THE REGISTER!
+        skip = CondJump(cExpr.r, this.cntr);
         // jump to skip the loop
         
         instructions: mutable Vector<Stmt> = mutable Vector[];

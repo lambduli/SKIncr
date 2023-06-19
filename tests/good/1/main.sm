@@ -37,7 +37,7 @@
       (set! z 0) # resets the `z` to 0 each time `foo` is called
       (set! x f)
       # (let z 10) # the question is, should this be allowed?
-      (while (< x y)
+      (while tt # (< x y)
         (begin
           (set! z (+ y z))
           (let one 1)
