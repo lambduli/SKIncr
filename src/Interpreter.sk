@@ -22,8 +22,8 @@ base class Stmt {
 	| Store(reg: Int, Expr)
   | GStore(reg: Int, Expr)
 	| Branch(cond: Int, body: Int)
-  | CondJump(cond: Int, tgt: Int)
-	| Return(Expr) // must be either a constant or a register (local) or Load, never 
+  | CondJump(cond: Int, tgt: Int) // if the cond is true evaluation continues from the next instruction, if false it jumps
+	| Return(Expr) // must be either a constant or a register (local) or Load, NEVER Invoke
   | Jump(Int) // jump to the instruction at the `offset` from the bottom of the instruction stack
 }
 
@@ -97,18 +97,14 @@ mutable class Linearize(cntr: Int) {
     s match {
       | Reader.Set(_regExpr, e) -> {
         ex = this.expression(e);
-        Vector[Store(0, ex)]
+        Vector<Stmt>[Store(0, ex)]
       }
       | Reader.GSet(_regExpr, e) -> {
         ex = this.expression(e);
         Vector[GStore(0, ex)]
       }
       | Reader.Loop(cndExpr, Reader.Code(stmtsR)) -> {
-        // TODO: the condition should be just a Code right?
-        // then it goes once before the condition and once at the end of the loop
-        // so that the actual CondJump can just check the register
-
-        cExpr = this.condition(cndExpr); // cndExpr has to be Register
+        cExpr = this.condition(cndExpr); // cndExpr has to be a Register
 
         startOfLoopCntr = this.cntr;
         !this.cntr = this.cntr + 1; // the CondJump instruction is BEFORE all those
@@ -128,39 +124,38 @@ mutable class Linearize(cntr: Int) {
 
         instructions.chill()
       }
-      | Reader.Branch(_condExpr, Reader.Code(_ifYes), Reader.Code(_ifNo)) -> {
-      //   // TODO: the condition should be just a Code right?
-      //   // then it goes once before the condition and once at the end of the loop
-      //   // so that the actual Jump can just check the register
-// 
-      //   !this.cntr = this.cntr + 1; // the CondJump instr is BEFORE both branches
-// 
-      //   positive = ifYes.map(s -> this.statement(s)).flatten(); // body of the positive branch
-      //   // at the end of positive branch we need to skip to the end of the negative one
-      //   // so there's gonna be a Jump
-      //   !this.cntr = this.cntr + 1;
-      //   
-      //   beforeNegative = this.cntr;
-// 
-      //   cond = CondJump(0, beforeNegative);  // TODO: fix the condition register
-      //                   // skip the positive if the condition is false/zero
-// 
-      //   negative = ifNo.map(s -> this.statement(s)).flatten(); // body of the negative branch
-// 
-      //   afterNegative = this.cntr;
-// 
-      //   skipNegative = Jump(afterNegative);
-// 
-      //   instructions = (mutable Vector[cond]).extend(positive).push(skipNegative).extend(negative);
-// 
-      //   instructions
-      invariant_violation("TODO: implement")
+      | Reader.Branch(cndExpr, Reader.Code(ifYes), Reader.Code(ifNo)) -> {
+        cExpr = this.condition(cndExpr); // cndExpr has to be a Register
+
+        !this.cntr = this.cntr + 1; // the CondJump instr is BEFORE both branches
+
+        positive = ifYes.map(s -> this.statement(s)).flatten(); // body of the positive branch
+        // at the end of positive branch we need to skip to the end of the negative one
+        // so there's gonna be a Jump
+        !this.cntr = this.cntr + 1;
+        
+        beforeNegative = this.cntr;
+
+        cond = CondJump(cExpr.r, beforeNegative); // skip the positive if the condition is false/zero
+
+        negative = ifNo.map(s -> this.statement(s)).flatten(); // body of the negative branch
+
+        afterNegative = this.cntr;
+
+        skipNegative = Jump(afterNegative);
+
+        instrs = (mutable Vector<Stmt>[cond]);
+        instrs.extend(positive);
+        instrs.push(skipNegative);
+        instrs.extend(negative);
+
+        instrs.chill()
       }
-      | Reader.Return(_expr) -> {
-        // Vector[Return(expr)] // TODO: Fix!
-        invariant_violation("TODO: implement")
+      | Reader.Return(expr) -> {
+        e = this.expression(expr); // is expected to be either a constant, load from a global register or a (local) register
+        
+        Vector<Stmt>[Return(e)].chill()
       }
-      // | _ -> invariant_violation("UFFF")
     }
   }
 
