@@ -5,6 +5,8 @@ base class Val() {
   children =
   | ValInt(Int)
   | ValBool(Bool)
+  | ValChar(Char)
+  | ValString(String)
 }
 
 
@@ -337,18 +339,7 @@ mutable class Interpreter(modules: Vector<Module>,
 
 
   mutable fun pushFrameFor(fn: Fun, inv: Invoke): void {
-    // this function constructs the call-frame for the corresponding function call
-    // it pushes that frame on to the call stack
-
-    // that means it needs to initialize all the argument registers
-    // we don't know how many local variables/registers will be used
-    // so the instructions for local store needs to be somewhat aware
-
-
     args = inv.args;
-    // i need to get the data in those registers (in the current frame-context)
-    // and store those in the new frame
-    // 
 
     pCntr = 0;
     locRegs = mutable Vector<Val>[];
@@ -373,6 +364,41 @@ mutable class Interpreter(modules: Vector<Module>,
     (_, store, _) = this.callStack[this.callStack.size() - 1];
     store[reg]
   }
+
+
+
+  mutable fun run(): Val {
+    // TODO: IMPLEMENT
+
+    // run forever—or rather until we don't have any more code to run (return from `main`)
+    loop {
+      // TODO: get the current instruction and perform a case analysis on it
+      (pCntr, locals, code) = this.callStack[this.callStack.size() - 1];
+
+      instr = code[pCntr];
+
+      // TODO: match on it
+      instr match {
+        | Store(reg, expr) -> todo()
+        | GStore(reg, expr) -> todo()
+        | Branch(condReg, bodyReg) -> todo()
+        | CondJump(condReg, tgtReg) -> todo()
+        | Return(expr) -> todo()
+        | Jump(reg) -> todo()
+      }
+
+    };
+
+    ValString("RUN is not implemented yet!")
+  }
+
+
+
+}
+
+
+fun todo<A>(): A {
+  invariant_violation("TODO: IMPLEMENT!")
 }
 
 
