@@ -1,3 +1,4 @@
+
 // The entry point for the interpreter and analyzer.
 //
 // main() expects a list of files, one of which should be module `Main`, with a function
@@ -37,7 +38,9 @@ fun good(p: Vector<String>): void {
 	 translated.each(m -> {
 	 	p1 = mutable PrettyPrint2();
 		print_string(p1.toModule(m));
-	 });
+	});
+	// l = Interpreter.Linearize::mcreate();
+	// _linearized = translated.map(m -> l.mod(m));
 }
 
 fun bad_test(p: Vector<String>, _verbose: Bool): void {

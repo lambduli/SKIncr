@@ -120,7 +120,7 @@ mutable class .PrettyPrint2(mutable indent: Int = 0) {
   mutable fun toModule(f: Module): String {
 	   s = `(module ${f.name} imports (`;
 		 f.imports.each(s -> !s = s + s + " ");
-		 !s = `${s})\n(vars (`;
+		 // !s = `${s})\n(vars (`;
 		 !s = s + `(functions (`;
      if (f.funs.size() == 0) {
 		   !s = s + "))\n";
