@@ -6,6 +6,7 @@ base class Val() uses Show {
   | ValBool(Bool)
   | ValChar(Char)
   | ValString(String)
+  | NullVal()
 
   fun toString(): String {
     this match {
@@ -13,6 +14,7 @@ base class Val() uses Show {
       | ValBool(b) -> `Bool(${b})`
       | ValChar(ch) -> `Char(${ch})`
       | ValString(str) -> `String(${str})`
+      | NullVal() -> `<NULL VALUE>`
     }
   }
 }
@@ -139,12 +141,7 @@ mutable class Linearize(cntr: Int) {
 // ======================================================================================
 mutable class Frame(globals: mutable Vals, locals: mutable Vals, mutable pc: Int, code: Statements) {
 
-  static fun mcreate(globals: mutable Vals, args: Vals, locals: mutable Vals, code: Statements): mutable Frame {
-	  i = 0;
-		while (i < args.size()) {
-      locals![i] = args[i];
-			!i = i + 1;
-		};
+  static fun mcreate(globals: mutable Vals, locals: mutable Vals, code: Statements): mutable Frame {
     mutable Frame(globals, locals, 0, code)
   }
 
@@ -169,7 +166,7 @@ type GlobMap = Map<String, mutable Vals>;  // From module name to module global 
 // Example runner
 fun runProgram(modules: Modules): Result<Expr, String> {
   eval = Interpreter::mcreate(modules);
-	eval.call("main", Vals[]);
+	eval.call("main", mutable Vals[]);
 	eval.run();
 }
 
@@ -190,11 +187,10 @@ mutable class Interpreter(modules: Modules, globals: mutable GlobMap, stack: mut
 
 	// Calling function `fname` with arguments `args` causes the interpreter to push a new frame on its stack.
 	// The frame has the shared globals and its new locals.
-  mutable fun call(fname: String, _args: Vals): void {
+  mutable fun call(fname: String, args: mutable Vals): void {
     func = this.functionFor(fname); // the function, which we exists
 		globs = this.globalsFor(fname); // the global registers
-		locals = Vector::mcreate(func.params); // pre-allocate the local registers
-		this.stack.push(Frame::mcreate(globs, Vals[], locals, func.body))
+		this.stack.push(Frame::mcreate(globs, args, func.body))
   }
 
   // Returns the globals register for a function `fname`
@@ -243,7 +239,8 @@ mutable class Interpreter(modules: Modules, globals: mutable GlobMap, stack: mut
 	  | Register(r) -> this.top().getLocal(r)
     | Load(r) -> this.top().getGlobal(r)
     | Invoke(fname, args) -> {
-       argVals = args.map(r -> this.top().getLocal(r)); // get the values of the arguments vector
+       argVals = Vector::mcreate();
+       argVals.extend(args.map(r -> this.top().getLocal(r))); // get the values of the arguments vector
 			 this.call(fname, argVals); // push a new frame on the stack
        ValInt(0) // placeholder value to be overwritten at return
 		}
