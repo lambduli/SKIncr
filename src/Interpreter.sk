@@ -1,11 +1,20 @@
 module Interpreter;
 
-base class Val() {
+base class Val() uses Show {
   children =
   | ValInt(Int)
   | ValBool(Bool)
   | ValChar(Char)
   | ValString(String)
+
+  fun toString(): String {
+    this match {
+      | ValInt(i) -> `Int(${i})`
+      | ValBool(b) -> `Bool(${b})`
+      | ValChar(ch) -> `Char(${ch})`
+      | ValString(str) -> `String(${str})`
+    }
+  }
 }
 
 type Strings = Vector<String>;
@@ -65,7 +74,7 @@ mutable class Linearize(cntr: Int) {
       | Reader.VChar(ch) -> CChar(ch)
       | Reader.Register(str) -> strToReg(str)
       | Reader.Load(str) -> strToLoad(str)
-      | Reader.Invoke(fn, args) -> Invoke(fname, args.map(r -> strToReg(r.name)))
+      | Reader.Invoke(fname, args) -> Invoke(fname, args.map(r -> strToReg(r.name).r))
     }
   }
 
@@ -79,14 +88,16 @@ mutable class Linearize(cntr: Int) {
       | Reader.Set(_regExpr, e) -> Statements[Store(0, this.expression(e))]
       | Reader.GSet(_regExpr, e) -> Vector[GStore(0, this.expression(e))]
       | Reader.Loop(cnd, Reader.Code(body)) -> {
+        cexpr = this.condition(cnd);
         topOfLoop = this.cntr;
         !this.cntr = this.cntr + 1; // the CondJump instruction is BEFORE all those
         stmts = body.map(s -> this.statement(s)).flatten(); // body of the loop
-        !this.cntr = this.cntr + 1;
+        !this.cntr = this.cntr + 1; // for jump to loop's top
         instrs = mutable Statements[];
-        instrs.push(CondJump(this.condition(cnd).r, this.cntr));
+        instrs.push(CondJump(cexpr.r, this.cntr));
         instrs.extend(stmts);
-        instrs.push(Jump(topOfLoop))
+        instrs.push(Jump(topOfLoop));
+        instrs
       }
       | Reader.Branch(cndExpr, Reader.Code(ifYes), Reader.Code(ifNo)) -> {
         cExpr = this.condition(cndExpr); // cndExpr has to be a Register
@@ -104,6 +115,7 @@ mutable class Linearize(cntr: Int) {
         instrs.extend(positive);
         instrs.push(skipNegative);
         instrs.extend(negative);
+        instrs
       }
       | Reader.Return(expr) ->  Vector<Stmt>[Return(this.expression(expr))]
 			// either a constant, load from a global register or a (local) register
@@ -127,10 +139,10 @@ mutable class Linearize(cntr: Int) {
 // ======================================================================================
 mutable class Frame(globals: mutable Vals, locals: mutable Vals, mutable pc: Int, code: Statements) {
 
-  mutable fun mcreate(globals: mutable Vals, args: Vals, locals: mutable Vals, code: Statements): mutable Frame {
+  static fun mcreate(globals: mutable Vals, args: Vals, locals: mutable Vals, code: Statements): mutable Frame {
 	  i = 0;
 		while (i < args.size()) {
-      !locals[i] = args[i];
+      locals![i] = args[i];
 			!i = i + 1;
 		};
     mutable Frame(globals, locals, 0, code)
@@ -140,12 +152,12 @@ mutable class Frame(globals: mutable Vals, locals: mutable Vals, mutable pc: Int
 	mutable fun incPC(): void { this.!pc = this.pc + 1; }
 
   readonly fun getLocal(r: Int): Val { this.locals[r] }
-  mutable fun setLocal(r: Int, v: Val): void { this.!locals[r] = v; }
+  mutable fun setLocal(r: Int, v: Val): void { this.locals![r] = v; }
 
   readonly fun getGlobal(r: Int): Val { this.locals[r] }
-  mutable fun setGlobal(r: Int, v: Val): void { this.!locals[r] = v; }
+  mutable fun setGlobal(r: Int, v: Val): void { this.locals![r] = v; }
 
-  readonly fun instruction(): Stmt { this.statements[this.pc] }
+  readonly fun instruction(): Stmt { this.code[this.pc] }
 
 }
 
@@ -155,7 +167,7 @@ type Vals = Vector<Val>;
 type GlobMap = Map<String, mutable Vals>;  // From module name to module global registers
 
 // Example runner
-fun runProgram(modules: Modules): void {
+fun runProgram(modules: Modules): Result<Expr, String> {
   eval = Interpreter::mcreate(modules);
 	eval.call("main", Vals[]);
 	eval.run();
@@ -178,7 +190,7 @@ mutable class Interpreter(modules: Modules, globals: mutable GlobMap, stack: mut
 
 	// Calling function `fname` with arguments `args` causes the interpreter to push a new frame on its stack.
 	// The frame has the shared globals and its new locals.
-  mutable fun call(fname: String, args: Vals): void {
+  mutable fun call(fname: String, _args: Vals): void {
     func = this.functionFor(fname); // the function, which we exists
 		globs = this.globalsFor(fname); // the global registers
 		locals = Vector::mcreate(func.params); // pre-allocate the local registers
@@ -187,7 +199,7 @@ mutable class Interpreter(modules: Modules, globals: mutable GlobMap, stack: mut
 
   // Returns the globals register for a function `fname`
 	// Relies on the uniqueness of function names.
-  readonly fun globalsFor(fname: String): mutable Vals {
+  mutable fun globalsFor(fname: String): mutable Vals {
     this.globals.get(this.moduleFor(fname).name)
   }
 
@@ -200,8 +212,8 @@ mutable class Interpreter(modules: Modules, globals: mutable GlobMap, stack: mut
 			  if (f.name == fname)
 				  return f;
    		}
-		}
-		// unreachable TODO
+		};
+		invariant_violation(`## IMPOSSIBLE ## There is no function named '${fname}'.`)
 	}
 
   // Returns the Fun for a function `fname`
@@ -213,14 +225,14 @@ mutable class Interpreter(modules: Modules, globals: mutable GlobMap, stack: mut
 			  if (f.name == fname)
 				  return m;
    		}
-		}
-		// unreachable TODO
+		};
+		invariant_violation(`## IMPOSSIBLE ## There is no function named '${fname}'.`)
 	}
 
   // Returns the top of call stack.
 	// Relies on the fact that stack is never empty
-  readonly fun top(): Frame { this.stack[this.stack.size() - 1] }
-  readonly fun prev(): Frame { this.stack[this.stack.size() - 2] }
+  mutable fun top(): mutable Frame { this.stack[this.stack.size() - 1] }
+  mutable fun prev(): mutable Frame { this.stack[this.stack.size() - 2] }
 
   mutable fun expression(e: Expr): Val {
    e match {
@@ -231,15 +243,19 @@ mutable class Interpreter(modules: Modules, globals: mutable GlobMap, stack: mut
 	  | Register(r) -> this.top().getLocal(r)
     | Load(r) -> this.top().getGlobal(r)
     | Invoke(fname, args) -> {
-       argVals = args.map(r -> this.getLocal(r)); // get the values of the arguments vector
+       argVals = args.map(r -> this.top().getLocal(r)); // get the values of the arguments vector
 			 this.call(fname, argVals); // push a new frame on the stack
        ValInt(0) // placeholder value to be overwritten at return
 		}
  	}
  }
 
-  mutable fun isTrue(v: Val): Bool {
-	 // deal with the case it is not a bool
+  mutable fun isTrue(v: Val): Result<Bool, String> {
+	 v match {
+    | ValBool(b) -> Success(b)
+    | _ -> Failure(`The value '${v}' can not be used as a boolean!`)
+   }
+
 	}
 
   // The main interpreter run loop. It terminates when we return from stack of size 1 (i.e. return from main)
@@ -248,31 +264,36 @@ mutable class Interpreter(modules: Modules, globals: mutable GlobMap, stack: mut
 	//
 	// Function calls push a new frame, to the next time the loop comes to the top it picks up the top frame.
 	//
-  mutable fun run(): void {
+  mutable fun run(): Result<Expr, String> {
     loop {
       frame = this.top();
       instr = frame.instruction();
       instr match {
         | Store(r, e) -> frame.setLocal(r, this.expression(e))
-        | GStore(r, expr) -> frame.setGlobal(r, this.expression(e))
-        | CondJump(r, tgt) -> if this.isTrue(frame.getLocal(r)) frame.setPC(tgt) else frame.incPC()
+        | GStore(r, expr) -> frame.setGlobal(r, this.expression(expr))
+        | CondJump(r, tgt) ->
+            this.isTrue(frame.getLocal(r)) match {
+              | Success(true) -> frame.setPC(tgt)
+              | Success(false) -> frame.incPC()
+              | Failure(m) -> return Failure(m)
+            }
         | Jump(tgt) -> frame.setPC(tgt)
         | Return(expr) -> {
-				  if (this.stack.size() == 1) return; // main is finished, we are done
+				  if (this.stack.size() == 1) return Success(expr) // main is finished, we are done
 					else {
 					  prevFrame = this.prev();
 						callInstr = prevFrame.instruction();
-						retVal = this.expression(exp);
+						retVal = this.expression(expr);
 						callInstr match {
 						 | Store(r, _) -> prevFrame.setLocal(r, retVal)
 						 | GStore(r, _) -> prevFrame.setLocal(r, retVal)
-						 | _ -> {}
+						 | _ -> { return Failure("## IMPOSSIBLE ## A function call wasn't done as a Store or GStore!") }
 	  				 };
 						_ = this.stack.pop();
 					}
 				}
       };
-			frame.invPC(); // This may be wrong in case of a jump (unless we jump at target-1)
+			frame.incPC(); // This may be wrong in case of a jump (unless we jump at target-1)
     };
   }
 }

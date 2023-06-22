@@ -28,7 +28,7 @@ base class Exp {
   | VChar(Char)
   | Register(name: String)
   | Load(String) // TODO: can all loads be statements? would make expr simpler, but we already have invoke
-    | Invoke(String, Vector<Register>)
+  | Invoke(String, Vector<Register>)
 }
 
 
