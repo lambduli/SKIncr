@@ -1,6 +1,5 @@
 module Interpreter;
 
-
 base class Val() {
   children =
   | ValInt(Int)
@@ -8,8 +7,6 @@ base class Val() {
   | ValChar(Char)
   | ValString(String)
 }
-
-
 
 type Strings = Vector<String>;
 type Funs = Vector<Fun>;
@@ -23,30 +20,31 @@ base class Stmt {
   children =
 	| Store(reg: Int, Expr)
   | GStore(reg: Int, Expr)
-	| Branch(cond: Int, body: Int)
-  | CondJump(cond: Int, tgt: Int) // if the cond is true evaluation continues from the next instruction, if false it jumps
-	| Return(Expr) // must be either a constant or a register (local) or Load, NEVER Invoke
+  | CondJump(cond: Int, tgt: Int) // if cond true continue from the next instruction, if false jump
   | Jump(Int) // jump to the instruction at the `offset` from the bottom of the instruction stack
+	| Return(Expr) //either a constant or a register (local) or Load, NEVER Invoke
 }
 
+// Expressions include immediate constants, variable lookup and function call
 base class Expr {
   children =
-  // C for Constant
-  // Basically load immediate
   | CInt(Int)
   | CBool(Bool)
 	| CString(String)
 	| CChar(Char)
-  //
 	| Register(r: Int)
   | Invoke(fname: String, args: Vector<Int>)
-  | Load(source: Int)
+  | Load(r: Int)
 }
 
+// Return a register/load built by stripping off the string's prefix
+fun strToReg(r: String) : Register { Register(r.stripPrefix("%").toInt()) }
+fun strToLoad(r: String) : Load { Load(r.stripPrefix("%").toInt()) }
+
+// ===================== Linearize ===================================================
 mutable class Linearize(cntr: Int) {
-  static fun mcreate(): mutable this {
-    mutable Linearize(0)
-  }
+
+ static fun mcreate(): mutable this {  mutable Linearize(0) }
 
   mutable fun mod(m: Reader.Module): Module {
     funs = m.funs.map(f -> this.function(f));
@@ -65,342 +63,303 @@ mutable class Linearize(cntr: Int) {
       | Reader.VBool(b) -> CBool(b)
       | Reader.VString(s) -> CString(s)
       | Reader.VChar(ch) -> CChar(ch)
-      | Reader.Register(str) -> {
-        i = str.stripPrefix("%").toInt();
-        Register(i)
-      }
-      | Reader.Load(str) -> {
-        i = str.stripPrefix("%").toInt();
-        Load(i)
-      }
-      | Reader.Invoke(fname, argRegs) -> {
-        regs = argRegs.map(r -> this.register(r));
-        Invoke(fname, regs)
-      }
+      | Reader.Register(str) -> strToReg(str)
+      | Reader.Load(str) -> strToLoad(str)
+      | Reader.Invoke(fn, args) -> Invoke(fname, args.map(r -> strToReg(r.name)))
     }
   }
 
-  readonly fun register(r: Reader.Register): Int {
-    r.name.stripPrefix("%").toInt()
-  }
-
-  // INVARIANT: I expect that the Reader.Exp for condition in WHILE
-  // will be Register in ALL CASES
+  // Reader.Exp for the condition in a  WHILE is a Register or return -1
   mutable fun condition(e: Reader.Exp): Register {
-    e match {
-      | Reader.Register(str) -> {
-        i = str.stripPrefix("%").toInt();
-        Register(i)
-      }
-      | _ -> Register(-1) // means error!
-    }
+    e match { | Reader.Register(s) -> strToReg(s) | _ -> Register(-1) }
   }
 
-  mutable fun statement(s: Reader.Stmt): Vector<Stmt> {
-    s match {
-      | Reader.Set(_regExpr, e) -> {
-        ex = this.expression(e);
-        Vector<Stmt>[Store(0, ex)]
-      }
-      | Reader.GSet(_regExpr, e) -> {
-        ex = this.expression(e);
-        Vector[GStore(0, ex)]
-      }
-      | Reader.Loop(cndExpr, Reader.Code(stmtsR)) -> {
-        cExpr = this.condition(cndExpr); // cndExpr has to be a Register
-
-        startOfLoopCntr = this.cntr;
+  mutable fun statement(s: Reader.Stmt): Statements {
+    is = s match {
+      | Reader.Set(_regExpr, e) -> Statements[Store(0, this.expression(e))]
+      | Reader.GSet(_regExpr, e) -> Vector[GStore(0, this.expression(e))]
+      | Reader.Loop(cnd, Reader.Code(body)) -> {
+        topOfLoop = this.cntr;
         !this.cntr = this.cntr + 1; // the CondJump instruction is BEFORE all those
-
-        stmts = stmtsR.map(s -> this.statement(s)).flatten(); // body of the loop
-
-        backToTop = Jump(startOfLoopCntr); // jump back to the top at the end
+        stmts = body.map(s -> this.statement(s)).flatten(); // body of the loop
         !this.cntr = this.cntr + 1;
-
-        skip = CondJump(cExpr.r, this.cntr);
-        // jump to skip the loop
-        
-        instructions: mutable Vector<Stmt> = mutable Vector[];
-        instructions.push(skip);
-        instructions.extend(stmts);
-        instructions.push(backToTop);
-
-        instructions.chill()
+        instrs = mutable Statements[];
+        instrs.push(CondJump(this.condition(cnd).r, this.cntr));
+        instrs.extend(stmts);
+        instrs.push(Jump(topOfLoop))
       }
       | Reader.Branch(cndExpr, Reader.Code(ifYes), Reader.Code(ifNo)) -> {
         cExpr = this.condition(cndExpr); // cndExpr has to be a Register
-
         !this.cntr = this.cntr + 1; // the CondJump instr is BEFORE both branches
-
         positive = ifYes.map(s -> this.statement(s)).flatten(); // body of the positive branch
         // at the end of positive branch we need to skip to the end of the negative one
         // so there's gonna be a Jump
         !this.cntr = this.cntr + 1;
-        
         beforeNegative = this.cntr;
-
         cond = CondJump(cExpr.r, beforeNegative); // skip the positive if the condition is false/zero
-
         negative = ifNo.map(s -> this.statement(s)).flatten(); // body of the negative branch
-
         afterNegative = this.cntr;
-
         skipNegative = Jump(afterNegative);
-
         instrs = (mutable Vector<Stmt>[cond]);
         instrs.extend(positive);
         instrs.push(skipNegative);
         instrs.extend(negative);
-
-        instrs.chill()
       }
-      | Reader.Return(expr) -> {
-        e = this.expression(expr); // is expected to be either a constant, load from a global register or a (local) register
-        
-        Vector<Stmt>[Return(e)].chill()
-      }
-    }
+      | Reader.Return(expr) ->  Vector<Stmt>[Return(this.expression(expr))]
+			// either a constant, load from a global register or a (local) register
+    };
+		is.chill()
   }
 }
 
 
 
+// =======================================================================================
+// Frame represents one function's execution state, it has:
+//   - globals: a reference to the module's shared array of global registers
+//   - locals:  its own private array of locals registers
+//   - pc: a program counter indicating what is the next instruction to execute
+//   - code: the array of statements to execute
+//
+// Both locals and globals are fixed sized arrays, modified as new values are computed.
+//
+// Frame are mutable as we perform updates to the state in place.
+// ======================================================================================
+mutable class Frame(globals: mutable Vals, locals: mutable Vals, mutable pc: Int, code: Statements) {
 
-
-
-
-
-
-
-
-
-
-
-
-// mutable class PrettyPrint(mutable indent: Int = 0) {
-// 
-//   readonly fun pad(): String {
-// 	  s = "";
-// 		n = this.indent;
-// 		while (n > 0) { !s = s + " "; !n = n - 1; };
-// 		s
-// 	}
-// 
-//   mutable fun toModule(f: Module): String {
-// 	   s = `(module ${f.name} imports (`;
-// 		 f.imports.each(s -> !s = s + s + " ");
-// 		 !s = `${s})\n(vars (`;
-// 		 !s = s + `(functions (`;
-//      if (f.funs.size() == 0) {
-// 		   !s = s + "))\n";
-// 		 } else {
-// 		   this.inc();
-// 			 f.funs.each(f -> !s = s + "\n" + this.pad() + this.function(f));
-//  		   !s = s + "\n))\n";
-// 			 this.dec();
-// 		 };
-// 		 s
-// 	}
-// 
-//   mutable fun function(f: Fun): String {
-// 	  s = `(function ${f.name}(${f.params}`;
-// 		!s = s + ") ";
-// 		this.inc();
-// 		!s = s + this.code(f.body);
-// 		this.dec();
-// 		!s = s + ")\n";
-// 		s
-// 	}
-// 
-// 	mutable fun code(c: Code): String {
-// 		res = "";
-// 		c.stmts.each(s -> {
-// 			!res = res + "\n" + this.pad() + this.statement(s);
-// 		});
-// 		res
-// 	}
-// 
-//   mutable fun expression(e0: Exp): String {
-//     e0 match {
-//     | VInt(i) -> `${i}`
-// 		| VBool(b) -> `${b}`
-// 		| VString(s) -> `${s}`
-// 		| VChar(ch) -> `${ch}`
-//     | Register(s) -> s
-// 		| Load(s) -> `load ${s}`
-//     | Invoke(n, es) -> {
-// 		  s = `(${n} `;
-//  			es.each(e -> !s = s + " " + this.expression(e));
-// 			s + ")"
-// 		}
-//     }
-// 	}
-// 
-// 	mutable fun statement(st: Stmt): String {
-//     st match {
-//     | Set(n, e) -> `${this.expression(n)} = ${this.expression(e)}`
-// 		| GSet(n, e) -> `${this.expression(n)} ^= ${this.expression(e)}`
-//     | Loop(e, s) -> "while " + this.expression(e) + " " + this.code(s)
-//     | Branch(e, s1, s2) -> {
-// 		  s = "(if " + this.expression(e) + "\n";
-// 			this.inc();
-// 		  !s = s + this.code(s1) + "\n" + this.code(s2) + ")";
-// 			this.dec();
-// 			s
-// 		}
-// 		| Return(e) -> `return ${this.expression(e)}`
-//     }
-// 	}
-// 
-//   mutable fun inc(): void { this.!indent = this.indent + 2; }
-//   mutable fun dec(): void { this.!indent = this.indent - 2; }
-// 
-// }
-// 
-// 
-// 
-// 
-
-
-
-
-
-
-
-
-
-
-
-
-
-type Frame = (Int, mutable Vector<Val>, Vector<Stmt>);
-
-
-mutable class Interpreter(modules: Vector<Module>,
-                          allGlobals: mutable Map<String, mutable Vector<Val>>,
-                          currentModule: Int, // index to the store for the current (the module of the current function) global registers
-                          callStack: mutable Vector<Frame>) {
-                          // Vector of call-frames
-                          // call-frame contains an instruction counter and local store (registers)
-
-  // so when a function gets called we need to look it up in one of the modules
-  //    switch context:
-  // switch to a correct global-store (for global registers)
-  // initialize the call-frame and push it onto the call-stack
-  // recursively call "evaluate" within this context
-  // when that concludes I should get a value
-  // I pop from the call-stack and increment the instruction-counter
-  // where do I put the value I got?
-  // I think it should always be a part of the store instruction
-  // so this Expression-evaluation related stuff will only happen as a part of a statement
-
-  static fun mcreate(program: Vector<Module>): mutable this {
-    allGlobals = static::constructRegisters(program);
-
-    (entryIndx, main) = static::moduleWithMain(program);
-    currentModule = entryIndx;
-    
-    callStack = mutable Vector<Frame>[];
-    // TODO: starting with empty call stack, but I'll need to push there a call-frame for the `main`
-
-    inter = mutable Interpreter(program, allGlobals, currentModule, callStack);
-
-    inter.pushFrameFor(main, Invoke("main", Vector<Int>[]));
-
-    inter
+  mutable fun mcreate(globals: mutable Vals, args: Vals, locals: mutable Vals, code: Statements): mutable Frame {
+	  i = 0;
+		while (i < args.size()) {
+      !locals[i] = args[i];
+			!i = i + 1;
+		};
+    mutable Frame(globals, locals, 0, code)
   }
 
+  mutable fun setPC(pc: Int): void { this.!pc = pc; }
+	mutable fun incPC(): void { this.!pc = this.pc + 1; }
 
-  static fun constructRegisters(program: Vector<Module>): mutable Map<String, mutable Vector<Val>> {
-    items = program.map(m -> {
-      name = m.name;
-      vec = Vector::mcreate(m.globs); // the assumptions is - every global register will first be stored-to and only then loaded-from
-      // or I could zero them with constants (?) w/e
-      (name, vec)
-    });
-    Map::mcreateFromItems(items);
+  readonly fun getLocal(r: Int): Val { this.locals[r] }
+  mutable fun setLocal(r: Int, v: Val): void { this.!locals[r] = v; }
+
+  readonly fun getGlobal(r: Int): Val { this.locals[r] }
+  mutable fun setGlobal(r: Int, v: Val): void { this.!locals[r] = v; }
+
+  readonly fun instruction(): Stmt { this.statements[this.pc] }
+
+}
+
+type Frames = Vector<mutable Frame>;
+type Modules = Vector<Module>;
+type Vals = Vector<Val>;
+type GlobMap = Map<String, mutable Vals>;  // From module name to module global registers
+
+// Example runner
+fun runProgram(modules: Modules): void {
+  eval = Interpreter::mcreate(modules);
+	eval.call("main", Vals[]);
+	eval.run();
+}
+
+// ========================= INTERPRETER ================================================
+//
+// class Interpreter
+//   -- modules : all modules in the program
+//   -- globals : the globals for each module
+//   -- stack   : the stack of active functions invocations
+// ======================================================================================
+mutable class Interpreter(modules: Modules, globals: mutable GlobMap, stack: mutable Frames) {
+
+  // Creates a fresh interpreter given a set of modules, one of which contains main().
+  static fun mcreate(mods: Modules): mutable this {
+    globals = Map::mcreateFromItems(mods.map(m -> (m.name, Vector::mcreate(m.globs))));
+    mutable Interpreter(mods, globals, mutable Frames[])
   }
 
-
-  static fun moduleWithMain(program: Vector<Module>): (Int, Fun) {
-    i = 0;
-    for (mod in program) {
-      mod.funs.find(f -> f.name == "name") match {
-        | None() -> void;
-        | Some(fn) -> return (i, fn);
-      };
-
-      !i = i + 1;
-    };
-
-    // should never get here
-    invariant_violation("### IMPOSSIBLE ERROR ###  We have lost the `main` function during the compilation!")
+	// Calling function `fname` with arguments `args` causes the interpreter to push a new frame on its stack.
+	// The frame has the shared globals and its new locals.
+  mutable fun call(fname: String, args: Vals): void {
+    func = this.functionFor(fname); // the function, which we exists
+		globs = this.globalsFor(fname); // the global registers
+		locals = Vector::mcreate(func.params); // pre-allocate the local registers
+		this.stack.push(Frame::mcreate(globs, Vals[], locals, func.body))
   }
 
-
-  mutable fun pushFrameFor(fn: Fun, inv: Invoke): void {
-    args = inv.args;
-
-    pCntr = 0;
-    locRegs = mutable Vector<Val>[];
-    argVals = this.locLoadManyInternal(args);
-    locRegs.extend(argVals);
-    newFrame = (pCntr, locRegs, fn.body);
-
-    this.callStack.push(newFrame);
-
-    
+  // Returns the globals register for a function `fname`
+	// Relies on the uniqueness of function names.
+  readonly fun globalsFor(fname: String): mutable Vals {
+    this.globals.get(this.moduleFor(fname).name)
   }
 
+  // Returns the Fun for a function `fname`
+	// Relies on the uniqueness of function names and the fact that previous passes have
+	// checked that all called functions are defined.
+  readonly fun functionFor(fname: String): Fun {
+	  for (m in this.modules) {
+		  for (f in m.funs) {
+			  if (f.name == fname)
+				  return f;
+   		}
+		}
+		// unreachable TODO
+	}
 
-  mutable fun locLoadManyInternal(regs: Vector<Int>): mutable Vector<Val> {
-    _ = regs.map(reg -> this.loadLocal(reg));
-    
-    
-    mutable Vector<Val>[];
-  }
+  // Returns the Fun for a function `fname`
+	// Relies on the uniqueness of function names and the fact that previous passes have
+	// checked that all called functions are defined.
+  readonly fun moduleFor(fname: String): Module {
+	  for (m in this.modules) {
+		  for (f in m.funs) {
+			  if (f.name == fname)
+				  return m;
+   		}
+		}
+		// unreachable TODO
+	}
 
-  readonly fun loadLocal(reg: Int): Val {
-    (_, store, _) = this.callStack[this.callStack.size() - 1];
-    store[reg]
-  }
+  // Returns the top of call stack.
+	// Relies on the fact that stack is never empty
+  readonly fun top(): Frame { this.stack[this.stack.size() - 1] }
+  readonly fun prev(): Frame { this.stack[this.stack.size() - 2] }
 
+  mutable fun expression(e: Expr): Val {
+   e match {
+    | CInt(v) ->  ValInt(v)
+    | CBool(v) -> ValBool(v)
+	  | CString(v) -> ValString(v)
+	  | CChar(v) -> ValChar(v)
+	  | Register(r) -> this.top().getLocal(r)
+    | Load(r) -> this.top().getGlobal(r)
+    | Invoke(fname, args) -> {
+       argVals = args.map(r -> this.getLocal(r)); // get the values of the arguments vector
+			 this.call(fname, argVals); // push a new frame on the stack
+       ValInt(0) // placeholder value to be overwritten at return
+		}
+ 	}
+ }
 
+  mutable fun isTrue(v: Val): Bool {
+	 // deal with the case it is not a bool
+	}
 
-  mutable fun run(): Val {
-    // TODO: IMPLEMENT
-
-    // run forever—or rather until we don't have any more code to run (return from `main`)
+  // The main interpreter run loop. It terminates when we return from stack of size 1 (i.e. return from main)
+	// The loop work with the top of stack, the current frame. It reads the current instruction, decodes and
+	// executes it. Then advances the program counter on that frame.
+	//
+	// Function calls push a new frame, to the next time the loop comes to the top it picks up the top frame.
+	//
+  mutable fun run(): void {
     loop {
-      // TODO: get the current instruction and perform a case analysis on it
-      (pCntr, locals, code) = this.callStack[this.callStack.size() - 1];
-
-      instr = code[pCntr];
-
-      // TODO: match on it
+      frame = this.top();
+      instr = frame.instruction();
       instr match {
-        | Store(reg, expr) -> todo()
-        | GStore(reg, expr) -> todo()
-        | Branch(condReg, bodyReg) -> todo()
-        | CondJump(condReg, tgtReg) -> todo()
-        | Return(expr) -> todo()
-        | Jump(reg) -> todo()
-      }
-
+        | Store(r, e) -> frame.setLocal(r, this.expression(e))
+        | GStore(r, expr) -> frame.setGlobal(r, this.expression(e))
+        | CondJump(r, tgt) -> if this.isTrue(frame.getLocal(r)) frame.setPC(tgt) else frame.incPC()
+        | Jump(tgt) -> frame.setPC(tgt)
+        | Return(expr) -> {
+				  if (this.stack.size() == 1) return; // main is finished, we are done
+					else {
+					  prevFrame = this.prev();
+						callInstr = prevFrame.instruction();
+						retVal = this.expression(exp);
+						callInstr match {
+						 | Store(r, _) -> prevFrame.setLocal(r, retVal)
+						 | GStore(r, _) -> prevFrame.setLocal(r, retVal)
+						 | _ -> {}
+	  				 };
+						_ = this.stack.pop();
+					}
+				}
+      };
+			frame.invPC(); // This may be wrong in case of a jump (unless we jump at target-1)
     };
-
-    ValString("RUN is not implemented yet!")
   }
-
-
-
 }
-
-
-fun todo<A>(): A {
-  invariant_violation("TODO: IMPLEMENT!")
-}
-
 
 
 module end;
+
+// mutable class PrettyPrint(mutable indent: Int = 0) {
+//
+//   readonly fun pad(): String {
+// 	  s = "";
+//     n = this.indent;
+//     while (n > 0) { !s = s + " "; !n = n - 1; };
+//     s
+//   }
+//
+//   mutable fun toModule(f: Module): String {
+//      s = `(module ${f.name} imports (`;
+//      f.imports.each(s -> !s = s + s + " ");
+//      !s = `${s})\n(vars (`;
+//      !s = s + `(functions (`;
+//      if (f.funs.size() == 0) {
+//        !s = s + "))\n";
+//      } else {
+//        this.inc();
+//        f.funs.each(f -> !s = s + "\n" + this.pad() + this.function(f));
+//         !s = s + "\n))\n";
+//        this.dec();
+//      };
+//      s
+//   }
+//
+//   mutable fun function(f: Fun): String {
+//     s = `(function ${f.name}(${f.params}`;
+//     !s = s + ") ";
+//     this.inc();
+//     !s = s + this.code(f.body);
+//     this.dec();
+//     !s = s + ")\n";
+//     s
+//   }
+//
+//   mutable fun code(c: Code): String {
+//     res = "";
+//     c.stmts.each(s -> {
+//       !res = res + "\n" + this.pad() + this.statement(s);
+//     });
+//     res
+//   }
+//
+//   mutable fun expression(e0: Exp): String {
+//     e0 match {
+//     | VInt(i) -> `${i}`
+//     | VBool(b) -> `${b}`
+//     | VString(s) -> `${s}`
+//     | VChar(ch) -> `${ch}`
+//     | Register(s) -> s
+//     | Load(s) -> `load ${s}`
+//     | Invoke(n, es) -> {
+//       s = `(${n} `;
+//        es.each(e -> !s = s + " " + this.expression(e));
+//       s + ")"
+//     }
+//     }
+//   }
+//
+//   mutable fun statement(st: Stmt): String {
+//     st match {
+//     | Set(n, e) -> `${this.expression(n)} = ${this.expression(e)}`
+//     | GSet(n, e) -> `${this.expression(n)} ^= ${this.expression(e)}`
+//     | Loop(e, s) -> "while " + this.expression(e) + " " + this.code(s)
+//     | Branch(e, s1, s2) -> {
+//       s = "(if " + this.expression(e) + "\n";
+//       this.inc();
+//       !s = s + this.code(s1) + "\n" + this.code(s2) + ")";
+//       this.dec();
+//       s
+//     }
+//     | Return(e) -> `return ${this.expression(e)}`
+//     }
+//   }
+//
+//   mutable fun inc(): void { this.!indent = this.indent + 2; }
+//   mutable fun dec(): void { this.!indent = this.indent - 2; }
+//
+// }
+//
+//
+//
+//
