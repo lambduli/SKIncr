@@ -19,6 +19,10 @@ base class Val() uses Show {
   }
 }
 
+fun zero(): Val {
+  ValInt(0)
+}
+
 type Strings = Vector<String>;
 type Funs = Vector<Fun>;
 type Statements = Vector<Stmt>;
@@ -93,16 +97,16 @@ mutable class Linearize(cntr: Int) {
   }
 
   // Reader.Exp for the condition in a  WHILE is a Register or return -1
-  mutable fun condition(e: Reader.Exp): Register {
+  mutable fun expToReg(e: Reader.Exp): Register {
     e match { | Reader.Register(s) -> strToReg(s) | _ -> Register(-1) }
   }
 
   mutable fun statement(s: Reader.Stmt): Statements {
     is = s match {
-      | Reader.Set(_regExpr, e) -> Statements[Store(0, this.expression(e))]
-      | Reader.GSet(_regExpr, e) -> Vector[GStore(0, this.expression(e))]
+      | Reader.Set(regExpr, e) -> Statements[Store(this.expToReg(regExpr).r, this.expression(e))]
+      | Reader.GSet(regExpr, e) -> Vector[GStore(this.expToReg(regExpr).r, this.expression(e))]
       | Reader.Loop(cnd, Reader.Code(body)) -> {
-        cexpr = this.condition(cnd);
+        cexpr = this.expToReg(cnd);
         topOfLoop = this.cntr;
         !this.cntr = this.cntr + 1; // the CondJump instruction is BEFORE all those
         stmts = body.map(s -> this.statement(s)).flatten(); // body of the loop
@@ -114,7 +118,7 @@ mutable class Linearize(cntr: Int) {
         instrs
       }
       | Reader.Branch(cndExpr, Reader.Code(ifYes), Reader.Code(ifNo)) -> {
-        cExpr = this.condition(cndExpr); // cndExpr has to be a Register
+        cExpr = this.expToReg(cndExpr); // cndExpr has to be a Register
         !this.cntr = this.cntr + 1; // the CondJump instr is BEFORE both branches
         positive = ifYes.map(s -> this.statement(s)).flatten(); // body of the positive branch
         // at the end of positive branch we need to skip to the end of the negative one
@@ -161,15 +165,40 @@ mutable class Frame(globals: mutable Vals, locals: mutable Vals, mutable pc: Int
 	mutable fun incPC(): void { this.!pc = this.pc + 1; }
 
   readonly fun getLocal(r: Int): Val { this.locals[r] }
-  mutable fun setLocal(r: Int, v: Val): void { this.locals![r] = v; }
+  mutable fun setLocal(r: Int, v: Val): void {
+    // so this function is doing something a bit special
+    // because we don't carry the information about how many local registers a functin has
+    // we can't have the `locals` vector initialized with zeroes or something like that
+    // so before the first `store`, the vector should have a size one smaller than what we need
+    // that is ok, if it has more than 1 element fewer, than that is bad
+    // TODO: talk about it, then make this comment shorter
+    print_string(`setLocal(r=${r}, v=${v})`);
+    print_string(`this.locals.size = ${this.locals.size()}`);
+
+    if (this.locals.size() == r){
+      // the initial store
+      this.locals.push(v);
+    } else if (this.locals.size() > r) {
+      // then this is probably OK
+      this.locals![r] = v;
+    } else {
+      // this is really bad; we compiled it wrong
+      print_string(`## INTERNAL ERROR ## We are storing registers in a wrong order.`)
+    };
+  }
 
   readonly fun getGlobal(r: Int): Val { 
     print_string(`get global 0`);
+    print_string(`globals.size() = ${this.globals.size()} | r= ${r}`);
     ret = this.globals[r];
     print_string(`get global 1`);
     ret
   }
-  mutable fun setGlobal(r: Int, v: Val): void { this.globals![r] = v; }
+  mutable fun setGlobal(r: Int, v: Val): void {
+    print_string(`set global r=${r} v=${v}`);
+    print_string(`this.globals.size=${this.globals.size()}`);
+    this.globals![r] = v;
+  }
 
   readonly fun instruction(): Stmt { this.code[this.pc] }
 
@@ -198,8 +227,40 @@ mutable class .Interpreter(modules: Modules, globals: mutable GlobMap, stack: mu
 
   // Creates a fresh interpreter given a set of modules, one of which contains main().
   static fun mcreate(mods: Modules): mutable this {
-    globals = Map::mcreateFromItems(mods.map(m -> (m.name, Vector::mcreate(m.globs))));
-    mutable Interpreter(mods, globals, mutable Frames[])
+    globals = Map::mcreateFromItems(mods.map(m -> (m.name, Vector::mfill(m.globs, zero()))));
+    vm = mutable Interpreter(mods, globals, mutable Frames[]);
+    vm.initialize();
+    vm
+  }
+
+
+  mutable fun initialize(): void {
+    // this function must call `init()` for each module
+    // because there is multiple `init`s in the program, we can't use the usual infrastructure
+    // we just do stuff "manually"
+
+    // for each module
+    this.modules.each(mod -> {
+      print_string(`init module name=${mod.name} | globs=${this.globals.get(mod.name)}`);
+      // we get its `init`
+      mod.funs.find(f -> f.name == "init") match {
+        | None() -> void; // this should never happen anyway
+        | Some(init) -> {
+            // we prepare the context and
+            // we get the globals of that module
+            globs = this.globals.get(mod.name);
+            this.stack.push(Frame::mcreate(globs, mutable Vals[], init.body));
+            // we execute its body
+            _ = this.run(); // we don't really expect it to fail or return anything
+            // when we are done, we must pop the stack
+            _ = this.stack.pop();
+            // that should be it
+            // TODO: review and remove these comments
+            void
+        }
+      }
+    });
+    print_string(`DONE INITIALIZING!`);
   }
 
 	// Calling function `fname` with arguments `args` causes the interpreter to push a new frame on its stack.
@@ -207,13 +268,16 @@ mutable class .Interpreter(modules: Modules, globals: mutable GlobMap, stack: mu
   mutable fun call(fname: String, args: mutable Vals): void {
     func = this.functionFor(fname); // the function, which we exists
 		globs = this.globalsFor(fname); // the global registers
+    print_string(`CALL()    |  fname='${fname}'  |  globs=${globs}`);
 		this.stack.push(Frame::mcreate(globs, args, func.body))
   }
 
   // Returns the globals register for a function `fname`
 	// Relies on the uniqueness of function names.
   mutable fun globalsFor(fname: String): mutable Vals {
-    this.globals.get(this.moduleFor(fname).name)
+    modName = this.moduleFor(fname).name;
+    print_string(`GLBALS FOR | fname='${fname}' | module name='${modName}'`);
+    this.globals.get(modName)
   }
 
   // Returns the Fun for a function `fname`
@@ -259,7 +323,9 @@ mutable class .Interpreter(modules: Modules, globals: mutable GlobMap, stack: mu
 	  | Register(r) -> this.top().getLocal(r)
     | Load(r) -> {
       print_string(`load 0`);
-      this.top().getGlobal(r)
+      ret = this.top().getGlobal(r);
+      print_string(`load 1`);
+      ret
     }
     | Invoke(fname, args) -> {
        argVals = Vector::mcreate();
@@ -298,6 +364,7 @@ mutable class .Interpreter(modules: Modules, globals: mutable GlobMap, stack: mu
       print_string("...... 3");
       instr match {
         | Store(r, e) -> {
+          print_string(`Store(r=${r}, e=${e})`);
           print_string(`Store 0`);
           ee = this.expression(e);
           print_string(`Store 1`);
@@ -306,9 +373,10 @@ mutable class .Interpreter(modules: Modules, globals: mutable GlobMap, stack: mu
           res
         }
         | GStore(r, expr) -> {
+          print_string(`GStore(r=${r}, e=${expr})`);
           print_string(`Global Store 0`);
           ee = this.expression(expr);
-          print_string(`Global Store 1`);
+          print_string(`Global Store 1 | ee=${ee}`);
           res = frame.setGlobal(r, ee);
           print_string(`Global Store 2`);
           res
@@ -391,7 +459,7 @@ mutable class PrettyPrint(mutable indent: Int = 0) {
     | CString(s) -> `${s}`
     | CChar(ch) -> `${ch}`
     | Register(r) -> `%${r}`
-    | Load(r) -> `load ${r}`
+    | Load(r) -> `[load %${r}]`
     | Invoke(n, regs) -> {
       s = `(${n} `;
        regs.each(r -> !s = s + ` %${r}`);

@@ -46,8 +46,10 @@ class .Translator() {
      | ValBool(_, b) -> VBool(b)
      | Var(_, s) -> Register(s)
      | Call(_, n, es) -> {
-        if (n == "load") Load(es[0].name)
-        else {
+        if (n == "load") {
+          regName = es[0] match { Var(_, name) -> name | _ -> "ERROR" };
+          Load(regName)
+        } else {
           args = es.map(e -> e match { | Var(_, n1) -> Register(n1) | _ -> Register("ERROR") });
           Invoke(n, args)
         }
@@ -169,7 +171,10 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate()) {
   mutable fun file(f: File): File {
     this.glob.clear();
     f.decls.each(d -> d match { | Decl(_, n, _) -> { this.glob.add(n, this.nextVar());}});
-    v = f.decls.map(d -> d match { | Decl(t, n, e) -> Call(t, "gset!", Vector<Expr>[Var(t, n), e])});
+    v = mutable Vector<Expr>[];
+    v.extend(f.decls.map(d -> d match { | Decl(t, n, e) -> Call(t, "gset!", Vector<Expr>[Var(t, n), e])}));
+    varname = "success";
+    v.extend(Vector<Expr>[Decl(f.tok, varname, ValInt(f.tok, 0)), Var(f.tok, varname)]); // return 0
     b = Block(f.tok, v.chill());
     init = Function(f.tok, "init", Vector<String>[], b);
     funs = Vector::mcreateFromItems(f.funs);
