@@ -46,8 +46,11 @@ class .Translator() {
      | ValBool(_, b) -> VBool(b)
      | Var(_, s) -> Register(s)
      | Call(_, n, es) -> {
-        args = es.map(e -> e match { | Var(_, n1) -> Register(n1) | _ -> Register("ERROR") });
-        Invoke(n, args)
+        if (n == "load") Load(es[0].name)
+        else {
+          args = es.map(e -> e match { | Var(_, n1) -> Register(n1) | _ -> Register("ERROR") });
+          Invoke(n, args)
+        }
      }
      | _ -> VInt(0)
     }

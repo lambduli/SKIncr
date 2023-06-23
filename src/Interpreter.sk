@@ -32,12 +32,12 @@ base class Stmt {
 	| Store(reg: Int, Expr)
   | GStore(reg: Int, Expr)
   | CondJump(cond: Int, tgt: Int) // if cond true continue from the next instruction, if false jump
-  | Jump(Int) // jump to the instruction at the `offset` from the bottom of the instruction stack
+  | Jump(Int) // jump to the instruction at this `offset`
 	| Return(Expr) //either a constant or a register (local) or Load, NEVER Invoke
 }
 
 // Expressions include immediate constants, variable lookup and function call
-base class Expr {
+base class Expr uses Show {
   children =
   | CInt(Int)
   | CBool(Bool)
@@ -46,6 +46,18 @@ base class Expr {
 	| Register(r: Int)
   | Invoke(fname: String, args: Vector<Int>)
   | Load(r: Int)
+
+  fun toString(): String {
+    this match {
+      | CInt(i) -> `CInt(${i})`
+      | CBool(b) -> `CBool(${b})`
+      | CString(str) -> `CString(${str})`
+      | CChar(ch) -> `CChar(${ch})`
+      | Register(r) -> `Register(${r})`
+      | Invoke(fname, args) -> `Invoke(${fname}, ${args})`
+      | Load(r) -> `Load(${r})`
+    }
+  }
 }
 
 // Return a register/load built by stripping off the string's prefix
@@ -151,8 +163,13 @@ mutable class Frame(globals: mutable Vals, locals: mutable Vals, mutable pc: Int
   readonly fun getLocal(r: Int): Val { this.locals[r] }
   mutable fun setLocal(r: Int, v: Val): void { this.locals![r] = v; }
 
-  readonly fun getGlobal(r: Int): Val { this.locals[r] }
-  mutable fun setGlobal(r: Int, v: Val): void { this.locals![r] = v; }
+  readonly fun getGlobal(r: Int): Val { 
+    print_string(`get global 0`);
+    ret = this.globals[r];
+    print_string(`get global 1`);
+    ret
+  }
+  mutable fun setGlobal(r: Int, v: Val): void { this.globals![r] = v; }
 
   readonly fun instruction(): Stmt { this.code[this.pc] }
 
@@ -164,7 +181,7 @@ type Vals = Vector<Val>;
 type GlobMap = Map<String, mutable Vals>;  // From module name to module global registers
 
 // Example runner
-fun runProgram(modules: Modules): Result<Expr, String> {
+fun runProgram(modules: Modules): Result<Val, String> {
   eval = Interpreter::mcreate(modules);
 	eval.call("main", mutable Vals[]);
 	eval.run();
@@ -177,7 +194,7 @@ fun runProgram(modules: Modules): Result<Expr, String> {
 //   -- globals : the globals for each module
 //   -- stack   : the stack of active functions invocations
 // ======================================================================================
-mutable class Interpreter(modules: Modules, globals: mutable GlobMap, stack: mutable Frames) {
+mutable class .Interpreter(modules: Modules, globals: mutable GlobMap, stack: mutable Frames) {
 
   // Creates a fresh interpreter given a set of modules, one of which contains main().
   static fun mcreate(mods: Modules): mutable this {
@@ -209,6 +226,7 @@ mutable class Interpreter(modules: Modules, globals: mutable GlobMap, stack: mut
 				  return f;
    		}
 		};
+    print_string(`## IMPOSSIBLE ## There is no function named '${fname}'.`);
 		invariant_violation(`## IMPOSSIBLE ## There is no function named '${fname}'.`)
 	}
 
@@ -222,6 +240,7 @@ mutable class Interpreter(modules: Modules, globals: mutable GlobMap, stack: mut
 				  return m;
    		}
 		};
+    print_string(`## IMPOSSIBLE ## There is no function named '${fname}'.`);
 		invariant_violation(`## IMPOSSIBLE ## There is no function named '${fname}'.`)
 	}
 
@@ -231,13 +250,17 @@ mutable class Interpreter(modules: Modules, globals: mutable GlobMap, stack: mut
   mutable fun prev(): mutable Frame { this.stack[this.stack.size() - 2] }
 
   mutable fun expression(e: Expr): Val {
+    print_string(`expression() 0 | e= ${e}`);
    e match {
     | CInt(v) ->  ValInt(v)
     | CBool(v) -> ValBool(v)
 	  | CString(v) -> ValString(v)
 	  | CChar(v) -> ValChar(v)
 	  | Register(r) -> this.top().getLocal(r)
-    | Load(r) -> this.top().getGlobal(r)
+    | Load(r) -> {
+      print_string(`load 0`);
+      this.top().getGlobal(r)
+    }
     | Invoke(fname, args) -> {
        argVals = Vector::mcreate();
        argVals.extend(args.map(r -> this.top().getLocal(r))); // get the values of the arguments vector
@@ -261,22 +284,46 @@ mutable class Interpreter(modules: Modules, globals: mutable GlobMap, stack: mut
 	//
 	// Function calls push a new frame, to the next time the loop comes to the top it picks up the top frame.
 	//
-  mutable fun run(): Result<Expr, String> {
+  mutable fun run(): Result<Val, String> {
+    print_string(`run()`);
+    // print_string(`the stack= ${this.}`)
+
+
     loop {
+      print_string("...... 1");
+
       frame = this.top();
+      print_string("...... 2");
       instr = frame.instruction();
+      print_string("...... 3");
       instr match {
-        | Store(r, e) -> frame.setLocal(r, this.expression(e))
-        | GStore(r, expr) -> frame.setGlobal(r, this.expression(expr))
-        | CondJump(r, tgt) ->
+        | Store(r, e) -> {
+          print_string(`Store 0`);
+          ee = this.expression(e);
+          print_string(`Store 1`);
+          res = frame.setLocal(r, ee);
+          print_string(`Store 2`);
+          res
+        }
+        | GStore(r, expr) -> {
+          print_string(`Global Store 0`);
+          ee = this.expression(expr);
+          print_string(`Global Store 1`);
+          res = frame.setGlobal(r, ee);
+          print_string(`Global Store 2`);
+          res
+        }
+        | CondJump(r, tgt) -> {
+            print_string(`Cond Jump 0`);
             this.isTrue(frame.getLocal(r)) match {
               | Success(true) -> frame.setPC(tgt)
               | Success(false) -> frame.incPC()
               | Failure(m) -> return Failure(m)
             }
+        }
         | Jump(tgt) -> frame.setPC(tgt)
         | Return(expr) -> {
-				  if (this.stack.size() == 1) return Success(expr) // main is finished, we are done
+				  if (this.stack.size() == 1) return Success(this.expression(expr)) // main is finished, we are done
 					else {
 					  prevFrame = this.prev();
 						callInstr = prevFrame.instruction();
@@ -296,88 +343,76 @@ mutable class Interpreter(modules: Modules, globals: mutable GlobMap, stack: mut
 }
 
 
-module end;
+mutable class PrettyPrint(mutable indent: Int = 0) {
+  readonly fun pad(): String {
+	  s = "";
+    n = this.indent;
+    while (n > 0) { !s = s + " "; !n = n - 1; };
+    s
+  }
 
-// mutable class PrettyPrint(mutable indent: Int = 0) {
-//
-//   readonly fun pad(): String {
-// 	  s = "";
-//     n = this.indent;
-//     while (n > 0) { !s = s + " "; !n = n - 1; };
-//     s
-//   }
-//
-//   mutable fun toModule(f: Module): String {
-//      s = `(module ${f.name} imports (`;
-//      f.imports.each(s -> !s = s + s + " ");
-//      !s = `${s})\n(vars (`;
-//      !s = s + `(functions (`;
-//      if (f.funs.size() == 0) {
-//        !s = s + "))\n";
-//      } else {
-//        this.inc();
-//        f.funs.each(f -> !s = s + "\n" + this.pad() + this.function(f));
-//         !s = s + "\n))\n";
-//        this.dec();
-//      };
-//      s
-//   }
-//
-//   mutable fun function(f: Fun): String {
-//     s = `(function ${f.name}(${f.params}`;
-//     !s = s + ") ";
-//     this.inc();
-//     !s = s + this.code(f.body);
-//     this.dec();
-//     !s = s + ")\n";
-//     s
-//   }
-//
-//   mutable fun code(c: Code): String {
-//     res = "";
-//     c.stmts.each(s -> {
-//       !res = res + "\n" + this.pad() + this.statement(s);
-//     });
-//     res
-//   }
-//
-//   mutable fun expression(e0: Exp): String {
-//     e0 match {
-//     | VInt(i) -> `${i}`
-//     | VBool(b) -> `${b}`
-//     | VString(s) -> `${s}`
-//     | VChar(ch) -> `${ch}`
-//     | Register(s) -> s
-//     | Load(s) -> `load ${s}`
-//     | Invoke(n, es) -> {
-//       s = `(${n} `;
-//        es.each(e -> !s = s + " " + this.expression(e));
-//       s + ")"
-//     }
-//     }
-//   }
-//
-//   mutable fun statement(st: Stmt): String {
-//     st match {
-//     | Set(n, e) -> `${this.expression(n)} = ${this.expression(e)}`
-//     | GSet(n, e) -> `${this.expression(n)} ^= ${this.expression(e)}`
-//     | Loop(e, s) -> "while " + this.expression(e) + " " + this.code(s)
-//     | Branch(e, s1, s2) -> {
-//       s = "(if " + this.expression(e) + "\n";
-//       this.inc();
-//       !s = s + this.code(s1) + "\n" + this.code(s2) + ")";
-//       this.dec();
-//       s
-//     }
-//     | Return(e) -> `return ${this.expression(e)}`
-//     }
-//   }
-//
-//   mutable fun inc(): void { this.!indent = this.indent + 2; }
-//   mutable fun dec(): void { this.!indent = this.indent - 2; }
-//
-// }
-//
-//
-//
-//
+  mutable fun toModule(m: Module): String {
+     s = `(module ${m.name}`;
+     !s = `${s})\n`;
+     !s = s + `(functions (`;
+     if (m.funs.size() == 0) {
+       !s = s + "))\n";
+     } else {
+       this.inc();
+       m.funs.each(f -> !s = s + "\n" + this.pad() + this.function(f));
+        !s = s + "\n))\n";
+       this.dec();
+     };
+     s
+  }
+
+  mutable fun function(f: Fun): String {
+    s = `(function ${f.name}(${f.params}`;
+    !s = s + ") ";
+    this.inc();
+    !s = s + this.code(f.body);
+    this.dec();
+    !s = s + ")\n";
+    s
+  }
+
+  mutable fun code(stmts: Statements): String {
+    res = "";
+    stmts.each(s -> {
+      !res = res + "\n" + this.pad() + this.statement(s);
+    });
+    res
+  }
+
+  mutable fun expression(e0: Expr): String {
+    e0 match {
+    | CInt(i) -> `${i}`
+    | CBool(b) -> `${b}`
+    | CString(s) -> `${s}`
+    | CChar(ch) -> `${ch}`
+    | Register(r) -> `%${r}`
+    | Load(r) -> `load ${r}`
+    | Invoke(n, regs) -> {
+      s = `(${n} `;
+       regs.each(r -> !s = s + ` %${r}`);
+      s + ")"
+    }
+    }
+  }
+
+  mutable fun statement(st: Stmt): String {
+    st match {
+    | Store(reg, expr) -> `store %${reg} ${this.expression(expr)}`
+    | GStore(reg, expr) -> `gstore %${reg} ${this.expression(expr)}`
+    | CondJump(reg, tgt) -> `condjmp %${reg} #${tgt}`
+    | Jump(tgt) -> `jmp #${tgt}`
+    | Return(expr) -> `ret ${this.expression(expr)}`
+    }
+  }
+
+  mutable fun inc(): void { this.!indent = this.indent + 2; }
+  mutable fun dec(): void { this.!indent = this.indent - 2; }
+}
+
+
+module end;

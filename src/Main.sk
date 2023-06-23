@@ -39,8 +39,28 @@ fun good(p: Vector<String>): void {
 	 	p1 = mutable PrettyPrint2();
 		print_string(p1.toModule(m));
 	});
-	// l = Interpreter.Linearize::mcreate();
-	// _linearized = translated.map(m -> l.mod(m));
+
+	l = Interpreter.Linearize::mcreate();
+	linearized: Vector<Interpreter.Module> = translated.map(m -> l.mod(m));
+
+	print_string(`_____________________________\n\n`);
+
+	// linearized.each(m -> {
+	// 	pp = mutable Interpreter.PrettyPrint();
+	// 	if (m.name != "StdLib") { print_string(pp.toModule(m)); };
+	// });
+
+	// print_string("...... 0");
+	// Interpreter.runProgram(linearized) match {
+	// 	| Failure(msg) -> {
+	// 		print_string(`The evaluation was interrupted by an error "${msg}".`);
+	// 	}
+	// 	| Success(v) -> {
+	// 		print_string(`> ${v}`);
+	// 	}
+	// };
+
+
 }
 
 fun bad_test(p: Vector<String>, _verbose: Bool): void {
