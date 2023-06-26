@@ -50,7 +50,7 @@ fun good(p: Vector<String>): void {
 		if (true || m.name != "StdLib") { print_string(pp.toModule(m)); };
 	});
 
-	print_string("...... 0");
+	// print_string("...... 0");
 	Interpreter.runProgram(linearized) match {
 		| Failure(msg) -> {
 			print_string(`The evaluation was interrupted by an error "${msg}".`);

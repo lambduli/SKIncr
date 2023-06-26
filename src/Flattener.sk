@@ -44,6 +44,8 @@ class .Translator() {
     e0 match {
      | ValInt(_, i) -> VInt(i)
      | ValBool(_, b) -> VBool(b)
+     | ValChar(_, c) -> VChar(c)
+     | ValString(_, s) -> VString(s)
      | Var(_, s) -> Register(s)
      | Call(_, n, es) -> {
         if (n == "load") {
@@ -129,8 +131,8 @@ mutable class .PrettyPrint2(mutable indent: Int = 0) {
     e0 match {
     | VInt(i) -> `${i}`
     | VBool(b) -> `${b}`
-    | VString(s) -> `${s}`
-    | VChar(ch) -> `${ch}`
+    | VString(s) -> `"${s}"`
+    | VChar(ch) -> `'${ch}'`
     | Register(s) -> s
     | Load(s) -> `load ${s}`
     | Invoke(n, es) -> {
@@ -170,6 +172,7 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate()) {
 
   mutable fun file(f: File): File {
     this.glob.clear();
+    this.!v = 0;
     f.decls.each(d -> d match { | Decl(_, n, _) -> { this.glob.add(n, this.nextVar());}});
     v = mutable Vector<Expr>[];
     v.extend(f.decls.map(d -> d match { | Decl(t, n, e) -> Call(t, "gset!", Vector<Expr>[Var(t, n), e])}));
