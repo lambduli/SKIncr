@@ -313,7 +313,7 @@ mutable class .Reader{
   readonly fun isLetter(c: Char): Bool {
     Chars.isUpperCaseLetter(c) || Chars.isLowerCaseLetter(c) || c == '_'
   }
-  readonly fun isDelimiter(c: Char): Bool   { c == '(' || c == ')' }
+  readonly fun isDelimiter(c: Char): Bool   { c == '(' || c == ')' || this.isSpace(c) || this.isLineBreak(c) }
   readonly fun isLineBreak(c: Char): Bool   { c == '\n' }
   readonly fun isSpace(c: Char): Bool       { c == ' ' || c == '\t' }
   readonly fun isComment(c: Char): Bool     { c == '#' }
