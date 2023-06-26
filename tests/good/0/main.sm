@@ -1,0 +1,46 @@
+(module Main imports (StdLib))
+
+(vars (
+  (let A 23)
+  (let B 42)
+))
+
+
+(functions (
+  (function simpler ()
+    (begin
+      (set! A 0)
+      (let d A)
+      d
+    )
+  )
+
+  (function simple ()
+    (begin
+      (let d 23)
+      d
+    )
+  )
+
+  (function fun ()
+    (begin
+      (simple)
+      (simpler)
+    )
+  )
+
+  (function small ()
+    (begin
+      (let z 0)
+      z))
+
+  (function main ()
+    (begin
+      # (let d 23)
+      # (let c 42)
+      # (fun)
+      B
+    )
+  )
+
+))

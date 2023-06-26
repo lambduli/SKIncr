@@ -1,21 +1,26 @@
 (module StdLib imports ())
 
-(vars ())
+(vars ( 
+  (let test 230) # I just wanted to test a global in a stdlib
+))
 
 (functions (
-  (function set! (x expr) 0)
-  (function + (x y) 0)
-  (function - (x y) 0)
+  (function builtin_bin (op x y) 0)
+  (function builtin_un (op x) 0)
+  (function set! (x expr) 0) # we stille need it, because we treat the set! statement as a function call
+  (function + (x y) ( builtin_bin "+" x y ))
+  (function - (x y) ( builtin_bin "-" x y ))
   (function * (x y) 0)
   (function / (x y) 0)
   (function && (x y) 0)
   (function || (x y) 0)
   (function ! (x ) 0)
   (function == (x y) 0)
-  (function < (x y) 0)
+  (function < (x y) ( builtin_bin "<" x y ))
   (function > (x y) 0)
   (function <= (x y) 0)
   (function >= (x y) 0)
-  (function write! (x) 0)
+  (function write! (x) ( builtin_un "write!" x ))
   (function read! () 0)
+  (function testing () (set! test 42))
 ))

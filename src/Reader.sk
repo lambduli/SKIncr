@@ -53,7 +53,7 @@ base class Expr {
   | ValBool(Tok, Bool)
   | ValString(Tok, String)
   | ValChar(Tok, Char)
-  | Var(Tok, String)
+  | Var(Tok, name: String)
   | Decl(Tok, String, Expr)
   | Call(Tok, String, Expressions)
   | Block(Tok, Expressions)

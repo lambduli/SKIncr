@@ -44,10 +44,17 @@ class .Translator() {
     e0 match {
      | ValInt(_, i) -> VInt(i)
      | ValBool(_, b) -> VBool(b)
+     | ValChar(_, c) -> VChar(c)
+     | ValString(_, s) -> VString(s)
      | Var(_, s) -> Register(s)
      | Call(_, n, es) -> {
-        args = es.map(e -> e match { | Var(_, n1) -> Register(n1) | _ -> Register("ERROR") });
-        Invoke(n, args)
+        if (n == "load") {
+          regName = es[0] match { Var(_, name) -> name | _ -> "ERROR" };
+          Load(regName)
+        } else {
+          args = es.map(e -> e match { | Var(_, n1) -> Register(n1) | _ -> Register("ERROR") });
+          Invoke(n, args)
+        }
      }
      | _ -> VInt(0)
     }
@@ -124,8 +131,8 @@ mutable class .PrettyPrint2(mutable indent: Int = 0) {
     e0 match {
     | VInt(i) -> `${i}`
     | VBool(b) -> `${b}`
-    | VString(s) -> `${s}`
-    | VChar(ch) -> `${ch}`
+    | VString(s) -> `"${s}"`
+    | VChar(ch) -> `'${ch}'`
     | Register(s) -> s
     | Load(s) -> `load ${s}`
     | Invoke(n, es) -> {
@@ -165,8 +172,12 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate()) {
 
   mutable fun file(f: File): File {
     this.glob.clear();
+    this.!v = 0;
     f.decls.each(d -> d match { | Decl(_, n, _) -> { this.glob.add(n, this.nextVar());}});
-    v = f.decls.map(d -> d match { | Decl(t, n, e) -> Call(t, "gset!", Vector<Expr>[Var(t, n), e])});
+    v = mutable Vector<Expr>[];
+    v.extend(f.decls.map(d -> d match { | Decl(t, n, e) -> Call(t, "gset!", Vector<Expr>[Var(t, n), e])}));
+    varname = "success";
+    v.extend(Vector<Expr>[Decl(f.tok, varname, ValInt(f.tok, 0)), Var(f.tok, varname)]); // return 0
     b = Block(f.tok, v.chill());
     init = Function(f.tok, "init", Vector<String>[], b);
     funs = Vector::mcreateFromItems(f.funs);

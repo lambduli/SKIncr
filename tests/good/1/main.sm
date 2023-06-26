@@ -1,18 +1,18 @@
 (module Main imports (StdLib))
 
 (vars (
-  (let a 23)
-  (let b 42)
-  (let x (+ a b))
-  (let z 0)
+  (let A 23)
+  (let B 42)
+  (let X (+ A B))
+  (let Z 0)
 ))
 
 
 (functions (
   (function simpler ()
     (begin
-      (set! a 0)
-      (let d a)
+      (set! A 0)
+      (let d A)
       d
     )
   )
@@ -31,20 +31,30 @@
   # if the first argument is smaller than the second argument
   # then consider the difference between them
   # and that many times multiply the second argument
-  # that is what the `z` will be set to
+  # that is what the `Z` will be set to
   (function foo (f y)
     (begin
-      (set! z 0) # resets the `z` to 0 each time `foo` is called
-      (set! x f)
-      # (let z 10) # the question is, should this be allowed?
-      (while tt # (< x y)
+      (set! Z 0) # resets the `Z` to 0 each time `foo` is called
+      (set! X f)
+      (let locx X)
+      # (write! X)
+      (let z 10) # the question is, should this be allowed?
+      # (write! locx)
+      # (write! y)
+      # (write! (< locx y))
+      (while (< locx y)
         (begin
-          (set! z (+ y z))
-          (let one 1)
-          (set! x (+ x one))
+          (write! "< locx y")
+          (write! locx)
+          (write! y)
+          # (write! (< locx y))
+          (set! Z (+ y Z))
+          # (write! locx)
+          (set! locx (+ locx 1))
+          (set! locx (- locx 0))
         )
       )
-      z
+      Z
     )
   )
 
@@ -54,7 +64,7 @@
       (let c 42)
       (let e (foo d c)) # 42 - 23 = 19 ; 19 * 42 = 798
       (let ignore (foo d e)) # never used anyway
-      (+ a b) # 23 + 798 = 821
+      (+ A B) # 23 + 798 = 821
     )
   )
 
