@@ -3,58 +3,60 @@
 # this is a comment, it spans until the end of this line
 
 (vars (
-  (let two 2)
-  (let three 3)
-  (let cond (< two three))
-  (let z 0)
-  (let zz 0)
-  (let x 1)
-  (let shouldContinue tt)
+  (let TWO 2)
+  (let THREE 3)
+  (let COND (< TWO THREE))
+  (let Z 0)
+  (let ZZ 0)
+  (let X 1)
+  (let SHOULDCONTINUE tt)
 ))
 
 (functions (
   (function not (bool)
-    (if bool ff tt))
+    (begin
+    (let res 0)
+    (if bool (set! res ff) (set! res tt))
+    res
+    )
+  )
 
   # no idea what this function does
   (function foo ()
     (begin
       (let a 23)
-      (while shouldContinue
+      (while SHOULDCONTINUE
         (begin
           (let one 1)
-          (let y (+ one x))
-          (set! x y)
-          (let eq (== x a))
-          (set! shouldContinue (not eq))
+          (let y (+ one X))
+          (set! X y)
+          (let eq (== X a))
+          (set! SHOULDCONTINUE (not eq))
         )
       )
-      x
+      X
     )
   )
 
   # if the first argument is smaller than the second argument
   # then consider the difference between them
   # and that many times multiply the second argument
-  # that is what the `z` will be set to
+  # that is what the `Z` will be set to
   (function bar (xx y)
     (begin
-      (set! z 0) # resets the `z` to 0 each time `foo` is called
-      (set! zz xx)
-      (while (< z y)
+      (set! Z 0) # resets the `Z` to 0 each time `foo` is called
+      (set! ZZ xx)
+      (while (< Z y)
         (begin
-          (set! z (+ y z))
+          (set! Z (+ y Z))
           (let one 1)
-          (set! zz (+ zz one))
+          (set! ZZ (+ ZZ one))
         )
       )
-      z # will be equal to `y`
+      Z # will be equal to `y`
     )
   )
 
-  (function simpler ()
-    (let a 23)
-  )
 
   (function simple ()
     (begin
@@ -65,6 +67,9 @@
 
   (function main ()
     (begin
+      (let x 0)
+      (if tt (set! x 1) (set! x 2))
+      x ## this is compiled away, which is cool
       (let a 23)
       (let b 42)
       (let c (bar a b)) # c = b = 42
@@ -76,19 +81,19 @@
   # result is `y * y`
   (function square (y)
     (begin
-        (set! x 0) # resets the `x` to 0
-        (set! z 0) # resets the `z` to 0
+        (set! X 0) # resets the `X` to 0
+        (set! Z 0) # resets the `Z` to 0
 
-        # (let z 0) # again, should this be legal?
+        # (let Z 0) # again, should this be legal?
 
-        (while (< x y) # x=0 < y
+        (while (< X y) # X=0 < y
           (begin
             (let one 1)
-            (set! z (+ y z)) # z = y + z
-            (set! x (+ x one)) # x = x + 1
+            (set! Z (+ y Z)) # Z = y + Z
+            (set! X (+ X one)) # X = X + 1
           )
         )
-        z
+        Z
     )
   )
 ))

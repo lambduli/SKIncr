@@ -15,7 +15,7 @@
   (function && (x y) 0)
   (function || (x y) 0)
   (function ! (x ) 0)
-  (function == (x y) 0)
+  (function == (x y) ( builtin_bin "==" x y ))
   (function < (x y) ( builtin_bin "<" x y ))
   (function > (x y) 0)
   (function <= (x y) 0)

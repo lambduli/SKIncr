@@ -45,7 +45,7 @@ type Functions = Vector<Function>;
 // -------------------------------------------------------------------------------------
 value class File(tok: Tok, name: String, imports: StringVec, decls: Declarations, funs: Functions) {}
 
-value class Function(tok: Tok, name: String, params: StringVec, body: Expr) {}
+value class Function(tok: Tok, name: String, params: StringVec, body: Expr, locals: Int) {}
 
 base class Expr {
   children =
@@ -154,7 +154,7 @@ mutable class .Reader{
     tok = this.curToken();
     (name, _) = (this.eat("(").eat("function").identifier(), this.eat("("));
     (params, _, expr, _) = (this.identifiers(), this.eat(")"), this.expression(), this.eat(")"));
-    Function(Tok::createFrom(tok, this.curToken().end, this), name, params, expr)
+    Function(Tok::createFrom(tok, this.curToken().end, this), name, params, expr, 0)
   }
 
   // Parse a let binding: (let name exp)

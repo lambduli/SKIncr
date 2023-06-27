@@ -5,7 +5,7 @@ type Funs = Vector<Fun>;
 type Statements = Vector<Stmt>;
 
 value class Module(name: String, imports: Strings, globs: Int, funs: Funs) {}
-value class Fun(name: String, params: Int, body: Code) {}
+value class Fun(name: String, params: Int, body: Code, locals: Int) {}
 value class Code(stmts: Statements) {}
 
 base class Stmt {
@@ -81,7 +81,7 @@ class .Translator() {
     e match { | Var(_, str) -> Register(str) | _ -> Register("ERROR") }
   }
 
-  fun function(f: Function): Fun { Fun(f.name, f.params.size(), Code(this.statement(f.body)))  }
+  fun function(f: Function): Fun { Fun(f.name, f.params.size(), Code(this.statement(f.body)), f.locals)  }
 }
 
 mutable class .PrettyPrint2(mutable indent: Int = 0) {
@@ -110,7 +110,7 @@ mutable class .PrettyPrint2(mutable indent: Int = 0) {
   }
 
   mutable fun function(f: Fun): String {
-    s = `(function ${f.name}(${f.params}`;
+    s = `(function ${f.name}(${f.params} | ${f.locals}`;
     !s = s + ") ";
     this.inc();
     !s = s + this.code(f.body);
@@ -179,7 +179,7 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate()) {
     varname = "success";
     v.extend(Vector<Expr>[Decl(f.tok, varname, ValInt(f.tok, 0)), Var(f.tok, varname)]); // return 0
     b = Block(f.tok, v.chill());
-    init = Function(f.tok, "init", Vector<String>[], b);
+    init = Function(f.tok, "init", Vector<String>[], b, this.v);
     funs = Vector::mcreateFromItems(f.funs);
     funs.push(init);
     fs = funs.map(f -> this.function(f));
@@ -191,7 +191,7 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate()) {
     this.!v = 0;
     f.params.each(p -> locals.add(p, this.nextVar()));
     (es, e) = this.expression(f.body, locals);
-    Function(f.tok, f.name, f.params, this.toBlock(f.tok, es, e))
+    Function(f.tok, f.name, f.params, this.toBlock(f.tok, es, e), this.v)
   }
 
   readonly fun undef(): Expr { Var(Tok(), " Error") }
