@@ -486,7 +486,7 @@ mutable class PrettyPrint(mutable indent: Int = 0) {
 	   if (m.name == "StdLib") {
 		   return "";
 		 };
-     s = `module ${m.name}\n`;
+     s = `\e[4;31mmodule\e[0m ${m.name}\n`;
      if (m.funs.size() == 0) {
        !s = s + "\n";
      } else {
@@ -497,7 +497,7 @@ mutable class PrettyPrint(mutable indent: Int = 0) {
   }
 
   mutable fun function(f: Fun): String {
-    s = `function ${f.name}(${f.params})[${f.locals}]`;
+    s = `\e[4;31mfunction\e[0m ${f.name} (${f.params}) [${f.locals}]`;
     !s = s + this.code(f.body);
     !s = s + "\n";
     s
