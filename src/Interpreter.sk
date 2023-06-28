@@ -531,7 +531,7 @@ mutable class PrettyPrint(mutable indent: Int = 0) {
     | CString(s) -> `${s}`
     | CChar(ch) -> `${ch}`
     | Register(r) -> `%${r}`
-    | Load(r) -> `^%${r}`
+    | Load(r) -> `@${r}`
     | Invoke(n, regs) -> {
        s = `${n}(`;
        regs.each(r -> !s = s + ` %${r}`);
@@ -542,8 +542,8 @@ mutable class PrettyPrint(mutable indent: Int = 0) {
 
   mutable fun statement(st: Stmt): String {
     st match {
-    | Store(reg, expr) -> `%${reg} = ${this.expression(expr)}`
-    | GStore(reg, expr) -> `^%${reg} = ${this.expression(expr)}`
+    | Store(reg, expr) -> `%${reg} \u2190 ${this.expression(expr)}`
+    | GStore(reg, expr) -> `@${reg} \u2190 ${this.expression(expr)}`
     | CondJump(reg, tgt) -> `if %${reg} jmp #${tgt}`
     | Jump(tgt) -> `jmp #${tgt}`
     | Return(expr) -> `ret ${this.expression(expr)}`
