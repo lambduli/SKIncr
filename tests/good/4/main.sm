@@ -13,6 +13,8 @@
       (write! b)
       (set! b (read!))
       (write! b)
+      (write! "DONE!")
+      100
     )
   )
 

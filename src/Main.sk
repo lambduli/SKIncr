@@ -56,7 +56,7 @@ fun good(p: Vector<String>): void {
 			print_string(`The evaluation was interrupted by an error "${msg}".`);
 		}
 		| Success(v) -> {
-			print_string(`> ${v}`);
+			print_string(`>  ${v.toOut()}`);
 		}
 	};
 

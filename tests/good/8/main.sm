@@ -11,6 +11,8 @@
       (someFun)
       (write! a)
       (write! b)
+      (let exitcode 0)
+      exitcode
     )
   )
 ))

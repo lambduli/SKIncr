@@ -12,7 +12,12 @@
 (functions (
 
   (function not (bool)
-    (if bool ff tt))
+    (begin
+    (let res 0)
+    (if bool (set! res ff) (set! res tt))
+    res
+    )
+  )
 
   # no idea what this function does
   (function foo ()

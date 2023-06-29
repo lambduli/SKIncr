@@ -17,6 +17,16 @@ base class Val() uses Show {
       | NullVal() -> `<NULL VALUE>`
     }
   }
+
+  fun toOut(): String {
+    this match {
+      | ValInt(i) -> `${i}`
+      | ValBool(b) -> `${b}`
+      | ValChar(ch) -> `'${ch}'`
+      | ValString(str) -> `"${str}"`
+      | NullVal() -> `<NULL>`
+    }
+  }
 }
 
 fun zero(): Val {
@@ -288,6 +298,14 @@ mutable class .Interpreter(modules: Modules, globals: mutable GlobMap, stack: mu
       }
     } else if (fname == "builtin_un") {
       callBuiltin1(args) match {
+        | Success(val) -> this.nativeReturn(val)
+        | Failure(msg) -> {
+          print_string(msg);
+          // TODO: fail gracefully
+        }
+      }
+    } else if (fname == "builtin_nul") {
+      callBuiltin0(args) match {
         | Success(val) -> this.nativeReturn(val)
         | Failure(msg) -> {
           print_string(msg);
@@ -578,7 +596,7 @@ fun callBuiltin2(args: readonly Vector<Val>): Result<Val, String> {
         | _ -> Failure("TODO: can't subtract!")
       }
     }
-    | _ -> Failure("uknown builtin!")
+    | _ -> Failure(`uknown binary builtin '${name}'`)
   }
 }
 
@@ -589,16 +607,33 @@ fun callBuiltin1(args: readonly Vector<Val>): Result<Val, String> {
     | ValString("write!") -> {
       args[1] match {
         | val -> {
-          print_string(`|`);
-          print_string(` \\`);
-          print_string(`  > ${val}`);
-          print_string(` /`);
-          print_string(`|`);
+          print_string(`>  ${val.toOut()}`);
           Success(NullVal())
         }
       }
     }
-    | _ -> Failure("uknown builtin!")
+    | _ -> Failure(`uknown unary builtin '${name}'`)
+  }
+}
+
+fun callBuiltin0(args: readonly Vector<Val>): Result<Val, String> {
+  name = args[0];
+
+  name match {
+    | ValString("read!") -> {
+      read_line() match {
+        | None() -> {
+          Failure(`unable to 'read!' for some reason.`);
+        }
+        | Some(line) -> {
+          line.toIntOption() match {
+            | None() -> Failure(`operation 'read!' failed. The input '${line}' is not a number.`);
+            | Some(i) -> Success(ValInt(i))
+          }
+        }
+      }
+    }
+    | _ -> Failure(`unknown nullary builtin '${name}'`)
   }
 }
 
