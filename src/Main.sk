@@ -53,7 +53,7 @@ fun good(p: Vector<String>): void {
 	// print_string("...... 0");
 	Interpreter.runProgram(linearized) match {
 		| Failure(msg) -> {
-			print_string(`The evaluation was interrupted by an error "${msg}".`);
+			print_string(`RUNTIME ERROR: ${msg}`);
 		}
 		| Success(v) -> {
 			print_string(`>  ${v.toOut()}`);

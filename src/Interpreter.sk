@@ -240,6 +240,7 @@ type GlobMap = Map<String, mutable Vals>;  // From module name to module global 
 // Example runner
 fun runProgram(modules: Modules): Result<Val, String> {
   eval = Interpreter::mcreate(modules);
+  print_string(`____________________`);
 	eval.call("main", mutable Vals[]);
 	eval.run();
 }
@@ -251,12 +252,13 @@ fun runProgram(modules: Modules): Result<Val, String> {
 //   -- globals : the globals for each module
 //   -- stack   : the stack of active functions invocations
 // ======================================================================================
-mutable class .Interpreter(modules: Modules, globals: mutable GlobMap, stack: mutable Frames) {
+mutable class .Interpreter(modules: Modules, globals: mutable GlobMap, stack: mutable Frames, mutable failure: (Bool, String)) {
 
   // Creates a fresh interpreter given a set of modules, one of which contains main().
   static fun mcreate(mods: Modules): mutable this {
     globals = Map::mcreateFromItems(mods.map(m -> (m.name, Vector::mfill(m.globs, zero()))));
-    vm = mutable Interpreter(mods, globals, mutable Frames[]);
+    vm = mutable Interpreter(mods, globals, mutable Frames[], (false, "Didn't fail yet."));
+    //                                                                 ^^^ a default err msg
     vm.initialize();
     vm
   }
@@ -292,26 +294,17 @@ mutable class .Interpreter(modules: Modules, globals: mutable GlobMap, stack: mu
     if (fname == "builtin_bin") {
       callBuiltin2(args) match {
         | Success(val) -> this.nativeReturn(val)
-        | Failure(msg) -> {
-          print_string(msg)
-          // TODO: fail gracefully
-        };
+        | Failure(msg) -> this.!failure = (true, msg);
       }
     } else if (fname == "builtin_un") {
       callBuiltin1(args) match {
         | Success(val) -> this.nativeReturn(val)
-        | Failure(msg) -> {
-          print_string(msg);
-          // TODO: fail gracefully
-        }
+        | Failure(msg) -> this.!failure = (true, msg);
       }
     } else if (fname == "builtin_nul") {
       callBuiltin0(args) match {
         | Success(val) -> this.nativeReturn(val)
-        | Failure(msg) -> {
-          print_string(msg);
-          // TODO: fail gracefully
-        }
+        | Failure(msg) -> this.!failure = (true, msg);
       }
     } else {
       func = this.functionFor(fname);
@@ -367,7 +360,6 @@ mutable class .Interpreter(modules: Modules, globals: mutable GlobMap, stack: mu
   // the `this.call(fname, argVals)` might fail if the expression is a native call
   // also those calls to getLocal and getGlobal might fail
   mutable fun expression(e: Expr): Val {
-    // print_string(`expression() 0 | e= ${e}`);
     e match {
       | CInt(v) ->  ValInt(v)
       | CBool(v) -> ValBool(v)
@@ -379,7 +371,7 @@ mutable class .Interpreter(modules: Modules, globals: mutable GlobMap, stack: mu
         argVals = Vector::mcreate();
         argVals.extend(args.map(r -> this.top().getLocal(r))); // get the values of the arguments vector
         this.call(fname, argVals); // push a new frame on the stack
-        ValInt(0) // placeholder value to be overwritten at return
+        NullVal() // placeholder value to be overwritten at return
       }
     }
  }
@@ -404,8 +396,15 @@ mutable class .Interpreter(modules: Modules, globals: mutable GlobMap, stack: mu
       frame = this.top();
       instr = frame.instruction();
 
+      if (this.failure.i0) {
+        return Failure(this.failure.i1)
+      };
+
       instr match {
-        | Store(r, e) -> frame.setLocal(r, this.expression(e))
+        | Store(r, e) -> {
+          val = this.expression(e);
+          frame.setLocal(r, val)
+        }
         | GStore(r, expr) -> frame.setGlobal(r, this.expression(expr))
         | CondJump(r, tgt) -> {
             loc = frame.getLocal(r);
@@ -430,7 +429,9 @@ mutable class .Interpreter(modules: Modules, globals: mutable GlobMap, stack: mu
 						callInstr = prevFrame.prevInstruction();
 						retVal = this.expression(expr);
 						callInstr match {
-						 | Store(r, _) -> prevFrame.setLocal(r, retVal)
+						 | Store(r, _) -> {
+              prevFrame.setLocal(r, retVal)
+             }
 						 | GStore(r, _) -> prevFrame.setLocal(r, retVal)
 						 | bad -> {
                 print_string(this.toStackTrace());
@@ -542,19 +543,19 @@ fun callBuiltin2(args: readonly Vector<Val>): Result<Val, String> {
     | ValString("<") -> {
       (args[1], args[2]) match {
         | (ValInt(x), ValInt(y)) -> Success(ValBool(x < y))
-        | _ -> Failure("TODO: can't compare!")
+        | (valx, valy) -> Failure(`Type Error: '<' was applied to '${valx.toOut()}' and '${valy.toOut()}'`)
       }
     }
     | ValString("+") -> {
       (args[1], args[2]) match {
         | (ValInt(x), ValInt(y)) -> Success(ValInt(x + y))
-        | _ -> Failure("TODO: can't add!")
+        | (valx, valy) -> Failure(`Type Error: '+' was applied to '${valx.toOut()}' and '${valy.toOut()}'`)
       }
     }
     | ValString("-") -> {
       (args[1], args[2]) match {
         | (ValInt(x), ValInt(y)) -> Success(ValInt(x - y))
-        | _ -> Failure("TODO: can't subtract!")
+        | (valx, valy) -> Failure(`Type Error: '-' was applied to '${valx.toOut()}' and '${valy.toOut()}'`)
       }
     }
     | ValString("==") -> {
@@ -563,10 +564,10 @@ fun callBuiltin2(args: readonly Vector<Val>): Result<Val, String> {
         | (ValChar(x), ValChar(y)) -> Success(ValBool(x == y))
         | (ValString(x), ValString(y)) -> Success(ValBool(x == y))
         | (ValBool(x), ValBool(y)) -> Success(ValBool(x == y))
-        | _ -> Failure("TODO: can't subtract!")
+        | (valx, valy) -> Failure(`Type Error: '=' was applied to '${valx.toOut()}' and '${valy.toOut()}'`)
       }
     }
-    | _ -> Failure(`uknown binary builtin '${name}'`)
+    | _ -> Failure(`Symbol Error: Uknown binary-builtin '${name.toOut()}'`)
   }
 }
 
@@ -582,7 +583,7 @@ fun callBuiltin1(args: readonly Vector<Val>): Result<Val, String> {
         }
       }
     }
-    | _ -> Failure(`uknown unary builtin '${name}'`)
+    | _ -> Failure(`Symbol Error: Uknown binary-builtin '${name.toOut()}'`)
   }
 }
 
@@ -603,7 +604,7 @@ fun callBuiltin0(args: readonly Vector<Val>): Result<Val, String> {
         }
       }
     }
-    | _ -> Failure(`unknown nullary builtin '${name}'`)
+    | _ -> Failure(`Symbol Error: Uknown binary-builtin '${name.toOut()}'`)
   }
 }
 

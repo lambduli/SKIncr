@@ -34,12 +34,19 @@
       (let z 0)
       z))
 
+  (function simplest () 42)
+
   (function main ()
     (begin
       # (let d 23)
       # (let c 42)
       # (fun)
-      B
+      (let a (simplest))
+      # (write! a)
+
+      (if (< tt 23) (set! a ff) (set! a tt))
+      a
+      # B
     )
   )
 
