@@ -208,7 +208,7 @@ mutable class Frame(globals: mutable Vals, locals: mutable Vals, mutable pc: Int
     this.locals![r] = v;
   }
 
-  readonly fun getGlobal(r: Int): Val { 
+  readonly fun getGlobal(r: Int): Val {
     // print_string(`get global 0`);
     // print_string(`globals.size() = ${this.globals.size()} | r= ${r}`);
     ret = this.globals[r];
@@ -471,7 +471,7 @@ mutable class .Interpreter(modules: Modules, globals: mutable GlobMap, stack: mu
 						callInstr match {
 						 | Store(r, _) -> prevFrame.setLocal(r, retVal)
 						 | GStore(r, _) -> prevFrame.setLocal(r, retVal)
-						 | bad -> { 
+						 | bad -> {
                 print_string(this.toStackTrace());
                 return Failure(`## IMPOSSIBLE ## A function call wasn't done as a Store or GStore! | it was=${bad}`)
               }
@@ -501,34 +501,43 @@ mutable class PrettyPrint(mutable indent: Int = 0) {
   }
 
   mutable fun toModule(m: Module): String {
-     s = `(module ${m.name}`;
-     !s = `${s})\n`;
-     !s = s + `(functions (`;
+	   if (m.name == "StdLib") {
+		   return "";
+		 };
+     s = `\e[4;31mmodule\e[0m ${m.name}\n`;
      if (m.funs.size() == 0) {
-       !s = s + "))\n";
+       !s = s + "\n";
      } else {
-       this.inc();
        m.funs.each(f -> !s = s + "\n" + this.pad() + this.function(f));
-        !s = s + "\n))\n";
-       this.dec();
+        !s = s + "\n";
      };
      s
   }
 
   mutable fun function(f: Fun): String {
-    s = `(function ${f.name}(${f.params} | ${f.locals}`;
-    !s = s + ") ";
-    this.inc();
+    s = `\e[4;31mfunction\e[0m ${f.name} (${f.params}) [${f.locals}]`;
     !s = s + this.code(f.body);
-    this.dec();
-    !s = s + ")\n";
+    !s = s + "\n";
     s
+  }
+
+  readonly fun padFor(i: Int, max: Int): String {
+	  mlen = max.toString().length();
+		istr = i.toString();
+		ilen = istr.length();
+		while (ilen < mlen) {
+		  !istr  = " " + istr;
+			!ilen  = ilen + 1;
+		};
+    istr
   }
 
   mutable fun code(stmts: Statements): String {
     res = "";
+		ln = 0;
     stmts.each(s -> {
-      !res = res + "\n" + this.pad() + this.statement(s);
+      !res = res + "\n" + this.padFor(ln, stmts.size()) + ": " + this.statement(s);
+			!ln = ln + 1
     });
     res
   }
@@ -540,20 +549,20 @@ mutable class PrettyPrint(mutable indent: Int = 0) {
     | CString(s) -> `${s}`
     | CChar(ch) -> `${ch}`
     | Register(r) -> `%${r}`
-    | Load(r) -> `[load %${r}]`
+    | Load(r) -> `@${r}`
     | Invoke(n, regs) -> {
-      s = `(${n} `;
+       s = `${n}(`;
        regs.each(r -> !s = s + ` %${r}`);
-      s + ")"
+       s + ")"
     }
     }
   }
 
   mutable fun statement(st: Stmt): String {
     st match {
-    | Store(reg, expr) -> `store %${reg} ${this.expression(expr)}`
-    | GStore(reg, expr) -> `gstore %${reg} ${this.expression(expr)}`
-    | CondJump(reg, tgt) -> `condjmp %${reg} #${tgt}`
+    | Store(reg, expr) -> `%${reg} \u2190 ${this.expression(expr)}`
+    | GStore(reg, expr) -> `@${reg} \u2190 ${this.expression(expr)}`
+    | CondJump(reg, tgt) -> `if %${reg} jmp #${tgt}`
     | Jump(tgt) -> `jmp #${tgt}`
     | Return(expr) -> `ret ${this.expression(expr)}`
     }
