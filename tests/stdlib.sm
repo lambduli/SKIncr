@@ -5,23 +5,29 @@
 ))
 
 (functions (
+  # define all the builtin_* as "built-in"
   (function builtin_bin (op x y) 0)
   (function builtin_un (op x) 0)
   (function builtin_nul (op) 0)
-  (function set! (x expr) 0) # we stille need it, because we treat the set! statement as a function call
+
+  # we stille need it, because we treat the set! statement as a function call
+  (function set! (x expr) 0)
+
   (function + (x y) ( builtin_bin "+" x y ))
   (function - (x y) ( builtin_bin "-" x y ))
-  (function * (x y) 0)
-  (function / (x y) 0)
-  (function && (x y) 0)
-  (function || (x y) 0)
-  (function ! (x ) 0)
+  (function * (x y) ( builtin_bin "*" x y ))
+  (function / (x y) ( builtin_bin "/" x y ))
+
+  (function ! (x) ( builtin_un "!" x ))
+  (function && (x y) ( builtin_bin "&&" x y ))
+  (function || (x y) ( builtin_bin "||" x y ))
   (function == (x y) ( builtin_bin "==" x y ))
+
   (function < (x y) ( builtin_bin "<" x y ))
-  (function > (x y) 0)
-  (function <= (x y) 0)
-  (function >= (x y) 0)
+  (function > (x y) ( builtin_bin ">" x y ))
+  (function <= (x y) ( builtin_bin "<=" x y ))
+  (function >= (x y) ( builtin_bin ">=" x y ))
+
   (function write! (x) ( builtin_un "write!" x ))
   (function read! () ( builtin_nul "read!" ))
-  (function testing () (set! test 42))
 ))
