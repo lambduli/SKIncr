@@ -516,9 +516,9 @@ mutable class PrettyPrint(mutable indent: Int = 0) {
     e0 match {
     | CInt(i) -> `${i}`
     | CBool(b) -> `${b}`
-    | CString(s) -> `${s}`
-    | CList(regs) -> `[${regs.reduce((s, r) -> `${s}, ${this.expression(r)}`, "")}]`
-    | CChar(ch) -> `${ch}`
+    | CString(s) -> `"${s}"`
+    | CList(regs) -> `[${regs.reduce((s, r) -> `${s} ${this.expression(r)}, `, "")}]`
+    | CChar(ch) -> `'${ch}'`
     | Register(r) -> `%${r}`
     | Load(r) -> `@${r}`
     | Invoke(n, regs) -> {
