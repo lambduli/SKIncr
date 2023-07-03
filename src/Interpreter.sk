@@ -6,6 +6,7 @@ base class Val() uses Show {
   | ValBool(Bool)
   | ValChar(Char)
   | ValString(String)
+  | ValList(Vector<Val>)
   | NullVal()
 
   fun toString(): String {
@@ -14,6 +15,7 @@ base class Val() uses Show {
       | ValBool(b) -> `Bool(${b})`
       | ValChar(ch) -> `Char(${ch})`
       | ValString(str) -> `String(${str})`
+      | ValList(vals) -> `[${vals.reduce((s, v) -> `${s}, ${v.toString()}`, "")}]`
       | NullVal() -> `<NULL VALUE>`
     }
   }
@@ -23,6 +25,7 @@ base class Val() uses Show {
       | ValInt(i) -> `${i}`
       | ValBool(b) -> `${b}`
       | ValChar(ch) -> `'${ch}'`
+      | ValList(vals) -> `[${vals.reduce((s, v) -> `${s}, ${v.toOut()}`, "")}]`
       | ValString(str) -> `"${str}"`
       | NullVal() -> `<NULL>`
     }
@@ -67,6 +70,7 @@ base class Expr uses Show {
   | CBool(Bool)
 	| CString(String)
 	| CChar(Char)
+  | CList(Vector<Register>)
 	| Register(r: Int)
   | Invoke(fname: String, args: Vector<Int>)
   | Load(r: Int)
@@ -77,6 +81,7 @@ base class Expr uses Show {
       | CBool(b) -> `CBool(${b})`
       | CString(str) -> `CString(${str})`
       | CChar(ch) -> `CChar(${ch})`
+      | CList(regs) -> `CList(${regs})`
       | Register(r) -> `Register(${r})`
       | Invoke(fname, args) -> `Invoke(${fname}, ${args})`
       | Load(r) -> `Load(${r})`
@@ -101,7 +106,8 @@ mutable class Linearize(mutable cntr: Int) {
   mutable fun function(f: Reader.Fun): Fun {
     !this.cntr = 0;
     b = f.body.stmts.map(s -> this.statement(s)).flatten();
-    Fun(f.name, f.params, b, f.locals)
+    maybeExtra = if (f.isPolyVar) 1 else 0;
+    Fun(f.name, f.params + maybeExtra, b, f.locals)
   }
 
   mutable fun expression(e: Reader.Exp): Expr {
@@ -110,6 +116,7 @@ mutable class Linearize(mutable cntr: Int) {
       | Reader.VBool(b) -> CBool(b)
       | Reader.VString(s) -> CString(s)
       | Reader.VChar(ch) -> CChar(ch)
+      | Reader.VList(regs) -> CList(regs.map(this.expToReg))
       | Reader.Register(str) -> strToReg(str)
       | Reader.Load(str) -> strToLoad(str)
       | Reader.Invoke(fname, args) -> Invoke(fname, args.map(r -> strToReg(r.name).r))
@@ -365,6 +372,7 @@ mutable class .Interpreter(modules: Modules, globals: mutable GlobMap, stack: mu
       | CBool(v) -> ValBool(v)
       | CString(v) -> ValString(v)
       | CChar(v) -> ValChar(v)
+      | CList(regs) -> ValList(regs.map(this.expression))
       | Register(r) -> this.top().getLocal(r)
       | Load(r) -> this.top().getGlobal(r)
       | Invoke(fname, args) -> {
@@ -509,6 +517,7 @@ mutable class PrettyPrint(mutable indent: Int = 0) {
     | CInt(i) -> `${i}`
     | CBool(b) -> `${b}`
     | CString(s) -> `${s}`
+    | CList(regs) -> `[${regs.reduce((s, r) -> `${s}, ${this.expression(r)}`, "")}]`
     | CChar(ch) -> `${ch}`
     | Register(r) -> `%${r}`
     | Load(r) -> `@${r}`
@@ -632,6 +641,24 @@ fun callBuiltin1(args: readonly Vector<Val>): Result<Val, String> {
         | val -> Failure(`Type Error: '!' was applied to '${val.toOut()}'`)
       }
     }
+    | ValString("head") -> {
+      args[1] match {
+        | ValList(vals) -> {
+          if (vals.size() > 0) Success(vals[0])
+          else Failure(`Evaluation Error: 'head' was called on an empty list.`)
+        }
+        | v -> Failure(`Type Error: 'head' was called on '${v}'\nwhich is NOT a list.`)
+      }
+    }
+    | ValString("tail") -> {
+          args[1] match {
+            | ValList(vals) -> {
+              if (vals.size() > 0) Success(ValList(vals.slice(1)))
+              else Failure(`Evaluation Error: 'tail' was called on an empty list.`)
+            }
+            | v -> Failure(`Type Error: 'tail' was called on '${v}'\nwhich is NOT a list.`)
+          }
+        }
     | _ -> Failure(`Symbol Error: Uknown binary-builtin '${name.toOut()}'`)
   }
 }

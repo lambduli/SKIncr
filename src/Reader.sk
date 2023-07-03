@@ -45,7 +45,7 @@ type Functions = Vector<Function>;
 // -------------------------------------------------------------------------------------
 value class File(tok: Tok, name: String, imports: StringVec, decls: Declarations, funs: Functions) {}
 
-value class Function(tok: Tok, name: String, params: StringVec, body: Expr, locals: Int) {}
+value class Function(tok: Tok, name: String, params: StringVec, polyArg: Option<String>, body: Expr, locals: Int) {}
 
 base class Expr {
   children =
@@ -53,6 +53,7 @@ base class Expr {
   | ValBool(Tok, Bool)
   | ValString(Tok, String)
   | ValChar(Tok, Char)
+  | ValList(Tok, Vector<Expr>)
   | Var(Tok, name: String)
   | Decl(Tok, String, Expr)
   | Call(Tok, String, Expressions)
@@ -98,12 +99,17 @@ mutable class .Reader{
 
   // Process a set of files
   static fun process(paths: StringVec): (Vector<mutable Reader>, Files) {
+    print_string(`#0`);
     rs = paths.map(p -> Reader::create(p)); // Readers
+    print_string(`#1`);
     fs = rs.map(r -> r.file()); // Files
+    print_string(`#2`);
     fail = false;
     rs.each(r -> if (!r.ok) { r.reportError(); !fail = true; });
+    print_string(`#3`);
     if (fail) return (rs,fs);
     cks = rs.map(r -> Checker::create(r)); // Checkers
+    print_string(`#4`);
     i = 0;
     while (i < rs.size()) {
       (f, ck) = (fs[i], cks[i]);
@@ -111,6 +117,7 @@ mutable class .Reader{
 
       !i = i + 1;
     };
+    print_string(`#5`);
     (rs,fs)
   }
 
@@ -119,11 +126,17 @@ mutable class .Reader{
 
   // Parse a file, always returns something. Clients check the Reader for an error.
   mutable fun file(): File {
+    print_string(`#A`);
     tok = this.curToken();
+    print_string(`#B`);
     (name, _) = (this.eat("(").eat("module").identifier(), this.eat("imports").eat("("));
+    print_string(`#C`);
     (imports, _) = (this.identifiers(), this.eat(")").eat(")").eat("(").eat("vars").eat("("));
+    print_string(`#D`);
     (decls, _) = (this.declarations(), this.eat(")").eat(")").eat("(").eat("functions").eat("("));
+    print_string(`#E`);
     (funs, _) = (this.functions(), this.eat(")").eat(")"));
+    print_string(`#F`);
     File(Tok::createFrom(tok, this.curToken().end, this), name, imports, decls, funs)
   }
 
@@ -153,8 +166,8 @@ mutable class .Reader{
   mutable fun function(): Function {
     tok = this.curToken();
     (name, _) = (this.eat("(").eat("function").identifier(), this.eat("("));
-    (params, _, expr, _) = (this.identifiers(), this.eat(")"), this.expression(), this.eat(")"));
-    Function(Tok::createFrom(tok, this.curToken().end, this), name, params, expr, 0)
+    (params, polyArg , _, expr, _) = (this.identifiers(), this.maybePolyArg(), this.eat(")"), this.expression(), this.eat(")"));
+    Function(Tok::createFrom(tok, this.curToken().end, this), name, params, polyArg, expr, 0)
   }
 
   // Parse a let binding: (let name exp)
@@ -189,9 +202,22 @@ mutable class .Reader{
     Call(Tok::createFrom(tok, this.curToken().end, this), name, exprs)
   }
 
+  mutable fun maybePolyArg(): Option<String> {
+    if (this.isNext("...")) {
+      // read the identifier
+      _ = this.eat("...");
+      Some(this.identifier())
+    } else {
+      // there is just a ")"
+      None()
+    }
+  }
+
   mutable fun identifiers(): StringVec {
     vec = mutable StringVec[];
-    while (!this.isNext(")")) vec.push(this.identifier());
+    print_string(`this.identifier() ... this.curToken()='${this.curToken().asString()}'`);
+    while (! (this.isNext(")") || this.isNext("...") )) vec.push(this.identifier());
+    print_string(`identifiers() = ${vec}`);
     vec.chill()
   }
 
@@ -319,6 +345,7 @@ mutable class .Reader{
   readonly fun isComment(c: Char): Bool     { c == '#' }
   readonly fun isSingleQuote(c: Char): Bool { c == '\'' }
   readonly fun isDoubleQuote(c: Char): Bool { c == '\"' }
+  readonly fun isPeriod(c: Char): Bool      { c ==  '.' }
 
 
   // Records the position of the line break and increase the number of lines seen
@@ -354,6 +381,7 @@ mutable class .Reader{
     else if (this.isDelimiter(c)) Tok::createRange(start, start+1, this)
     else if (this.isSingleQuote(c)) this.readChar(start)
     else if (this.isDoubleQuote(c)) this.readString(start)
+    else if (this.isPeriod(c)) this.readElipses(start)
     else if (this.isLetterOrOp(c)) this.readIdentifier(start)
     else Tok()
   }
@@ -375,6 +403,17 @@ mutable class .Reader{
          break void;
       }  else if (!Chars.isDigit(c)) return Tok();
     };
+    Tok::createRange(start, this.pos, this)
+ }
+
+ mutable fun readElipses(start: Int): Tok {
+  while(this.hasMore()) {
+      c = this.charNext();
+      if ( ! this.isPeriod(c)) { this.unread(); break void };
+    };
+
+    if (this.pos - start != 3) return Tok();
+
     Tok::createRange(start, this.pos, this)
  }
 

@@ -36,7 +36,29 @@ module Reader;
 
 type Names = Vector<Name>;
 
-value class Name(name: String, tok: Tok, arity: Int) { }
+value class Name(name: String, tok: Tok, arity: Arity) { }
+
+base class Arity() uses Show {
+  children =
+    | Exactly(a: Int) // for functions like     (function foo (a b c) 0)      or    (function blub () 0)
+    | AtLeast(a: Int) // for functions like     (function bar (x y ...z) 0)   or    (function baz (...args) 0)
+
+  fun canBeCalledWith(argsCnt: Int): Bool {
+    // TODO: check that the call is legal!
+    this match {
+      | Exactly(a) -> argsCnt == a
+      | AtLeast(a) -> argsCnt >= a
+    }
+  }
+
+  fun toString(): String {
+    this match {
+      | Exactly(a) -> `${a}`
+      | AtLeast(a) -> `${a}+`
+    }
+  }
+
+}
 
 mutable class Scope(mutable top: Bool, env: mutable Vector<mutable Names>) {
 
@@ -50,15 +72,16 @@ mutable class Scope(mutable top: Bool, env: mutable Vector<mutable Names>) {
 
   mutable fun popScope(): void { _ = this.env.pop(); }
 
-  mutable fun define(s: String, t: Tok, arity: Int): void {
+  mutable fun define(s: String, t: Tok, arity: Arity): void {
     v = this.env[this.env.size() - 1]; n = Name(s, t, arity);  v.push(n);
   }
 
-  readonly fun isDefined(s: String): Bool { this.hasArity(s) != -2 }
+  readonly fun isDefined(s: String): Bool { this.hasArity(s).isSome() }
 
   // return -2 if not found, -1 if not a function
-  readonly fun hasArity(s: String): Int {
-    res = -2; this.env.each(v -> v.each(n -> if (s == n.name) { !res = n.arity })); res
+  readonly fun hasArity(s: String): Option<Arity> {
+    res: Option<Arity> = None();
+    this.env.each(v -> v.each(n -> if (s == n.name) { !res = Some(n.arity) })); res
   }
 
   readonly fun dbg_print(): void {
@@ -81,7 +104,7 @@ mutable class Checker(env: mutable Scope, r: mutable Reader) {
 
 
   // Add `name` to the environment, fail if already there
-  mutable fun checked_add(name: String, t: Tok, arity: Int): void {
+  mutable fun checked_add(name: String, t: Tok, arity: Arity): void {
     if (this.env.isDefined(name)) {
       this.r.fail(t, `name ${name} already defined, names cannot be shadowed`);
     } else {
@@ -90,9 +113,9 @@ mutable class Checker(env: mutable Scope, r: mutable Reader) {
   }
 
   // Ensure that `name` is defined at this point, or fail
-  mutable fun mustHave(name: String, t: Tok): Int {
+  mutable fun mustHave(name: String, t: Tok): Option<Arity> {
     arity = this.env.hasArity(name);
-    if (arity == -2) { this.r.fail(t, `name ${name} not defined`); };
+    if (arity.isNone()) { this.r.fail(t, `name ${name} not defined`); };
     arity
  }
 
@@ -153,16 +176,26 @@ mutable class Checker(env: mutable Scope, r: mutable Reader) {
     // By processing decls before functions we naturally do not have those in the environment.
     // Perhaps we should just have access to basic StdLib functions?
     env.setTop(true);
-    fs.each(f -> if (f.name == "StdLib") {
-      f.funs.each(func ->
-        this.checked_add(func.name, func.tok, func.params.size()));
+    fs.each(file -> if (file.name == "StdLib") {
+      file.funs.each(func -> {
+        arity = func.polyArg match {
+          | None() -> Exactly(func.params.size())
+          | Some(_) -> AtLeast(func.params.size())
+        };
+        this.checked_add(func.name, func.tok, arity);
+      })
     });
     file.decls.each(d -> this.expression(d) );
     // Here load the remaining imported function names
     file.imports.each(name ->
-      fs.each(f -> if (name == f.name && name != "StdLib") {
-        f.funs.each(func ->
-          this.checked_add(func.name, func.tok, func.params.size()))
+      fs.each(file -> if (name == file.name && name != "StdLib") {
+        file.funs.each(func -> {
+          arity = func.polyArg match {
+            | None() -> Exactly(func.params.size())
+            | Some(_) -> AtLeast(func.params.size())
+          };
+          this.checked_add(func.name, func.tok, arity)
+        })
       }));
 
     // Checking function definitions
@@ -179,9 +212,14 @@ mutable class Checker(env: mutable Scope, r: mutable Reader) {
 
   // Check a function declaration
   mutable fun function(f: Function): void {
-    this.checked_add(f.name, f.tok, f.params.size());
+    arity = f.polyArg match {
+              | None() -> Exactly(f.params.size())
+              | Some(_) -> AtLeast(f.params.size())
+            };
+    this.checked_add(f.name, f.tok, arity);
     this.env.pushScope();
-    if (this.r.ok) { f.params.each(s -> this.checked_add(s, f.tok, -1) ); };
+    if (this.r.ok) { f.params.each(s -> this.checked_add(s, f.tok, Exactly(-1))); };
+    if (this.r.ok) { _ = f.polyArg.map(n -> this.checked_add(n, f.tok, Exactly(-1))); };
     if (this.r.ok) { this.expression(f.body); };
 
     // check that the function returns for (R7)
@@ -197,6 +235,7 @@ mutable class Checker(env: mutable Scope, r: mutable Reader) {
       | ValBool(_, _)
       | ValChar(_, _)
       | ValString(_, _)
+      | ValList(_, _) -> void // THIS SHOULD NEVER EVER HAPPEN, Parser can't produce ValList() !
       | Var(_, _) -> void;
       | Call(t, n, _) -> {
         if (n == "set!") {
@@ -225,6 +264,7 @@ mutable class Checker(env: mutable Scope, r: mutable Reader) {
     | ValBool(_, _) -> void
     | ValChar(_, _) -> void
     | ValString(_, _) -> void
+    | ValList(_, _) -> void // THIS SHOULD NEVER EVER HAPPEN, Parser can't produce ValList() !
     | Var(t, s) -> {
       if (!env.isDefined(s)) { this.r.fail(t, `name ${s} undefined`); };
     }
@@ -233,17 +273,22 @@ mutable class Checker(env: mutable Scope, r: mutable Reader) {
       env.setTop(false); // we are not at the top level in `e`
       this.expression(e);
       env.setTop(old); // reset top to what it was
-      this.checked_add(n, t, -1);
+      this.checked_add(n, t, Exactly(-1));
     }
     | Call(t, n, es) -> { // Check function `n`'s arity matches number of arguments; Ensure `set!` is
-      arity = this.mustHave(n,t); // called at top-level; check `es` is good.
-      if (arity != es.size()) {
-        this.r.fail(t, `function ${n} defined with arity ${arity} got ${es.size()} argument(s)`);
+      // called at top-level; check `es` is good.
+      this.mustHave(n,t) match {
+        | Some(arity) -> {
+            if (! arity.canBeCalledWith(es.size())) {
+              this.r.fail(t, `function ${n} defined with arity ${arity} got ${es.size()} argument(s)`);
+            };
+            if(n == "set!") { this.check_top_level(n, t); };
+            env.setTop(false);
+            es.each(e -> this.expression(e));
+            env.setTop(old);
+        };
+        | None() -> void;
       };
-      if(n == "set!") { this.check_top_level(n, t); };
-      env.setTop(false);
-      es.each(e -> this.expression(e));
-      env.setTop(old);
     }
     | Block(t, vs) -> { // check that (begin...) is at the top level, and the expressions are good
        this.check_top_level("begin", t);

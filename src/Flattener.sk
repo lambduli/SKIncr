@@ -5,7 +5,7 @@ type Funs = Vector<Fun>;
 type Statements = Vector<Stmt>;
 
 value class Module(name: String, imports: Strings, globs: Int, funs: Funs) {}
-value class Fun(name: String, params: Int, body: Code, locals: Int) {}
+value class Fun(name: String, params: Int, isPolyVar: Bool, body: Code, locals: Int) {}
 value class Code(stmts: Statements) {}
 
 base class Stmt {
@@ -26,6 +26,7 @@ base class Exp {
   | VBool(Bool)
   | VString(String)
   | VChar(Char)
+  | VList(content: Vector<Register>)
   | Register(name: String)
   | Load(String) // TODO: can all loads be statements? would make expr simpler, but we already have invoke
   | Invoke(String, Vector<Register>)
@@ -46,6 +47,7 @@ class .Translator() {
      | ValBool(_, b) -> VBool(b)
      | ValChar(_, c) -> VChar(c)
      | ValString(_, s) -> VString(s)
+     | ValList(_, exs) -> VList(exs.map(e -> this.var(e)))
      | Var(_, s) -> Register(s)
      | Call(_, n, es) -> {
         if (n == "load") {
@@ -81,7 +83,7 @@ class .Translator() {
     e match { | Var(_, str) -> Register(str) | _ -> Register("ERROR") }
   }
 
-  fun function(f: Function): Fun { Fun(f.name, f.params.size(), Code(this.statement(f.body)), f.locals)  }
+  fun function(f: Function): Fun { Fun(f.name, f.params.size(), f.polyArg.isSome(), Code(this.statement(f.body)), f.locals)  }
 }
 
 mutable class .PrettyPrint2(mutable indent: Int = 0) {
@@ -110,7 +112,8 @@ mutable class .PrettyPrint2(mutable indent: Int = 0) {
   }
 
   mutable fun function(f: Fun): String {
-    s = `(function ${f.name}(${f.params} | ${f.locals}`;
+    params = `${f.params}${if (f.isPolyVar) " +1" else ""}`;
+    s = `(function ${f.name}(${params} | ${f.locals}`;
     !s = s + ") ";
     this.inc();
     !s = s + this.code(f.body);
@@ -133,6 +136,7 @@ mutable class .PrettyPrint2(mutable indent: Int = 0) {
     | VBool(b) -> `${b}`
     | VString(s) -> `"${s}"`
     | VChar(ch) -> `'${ch}'`
+    | VList(regs) -> `[${regs.reduce((s, r) -> `${s}, ${this.expression(r)}`, "")}]`
     | Register(s) -> s
     | Load(s) -> `load ${s}`
     | Invoke(n, es) -> {
@@ -168,18 +172,20 @@ mutable class .PrettyPrint2(mutable indent: Int = 0) {
 type VMap = mutable Map<String, String>;
 type MExprs = mutable Vector<Expr>;
 
-mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate()) {
+mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), mutable funs: Vector<Function> = Vector<Function>[]) {
 
   mutable fun file(f: File): File {
     this.glob.clear();
     this.!v = 0;
+    this.!funs = f.funs;
+
     f.decls.each(d -> d match { | Decl(_, n, _) -> { this.glob.add(n, this.nextVar());}});
     v = mutable Vector<Expr>[];
     v.extend(f.decls.map(d -> d match { | Decl(t, n, e) -> Call(t, "gset!", Vector<Expr>[Var(t, n), e])}));
     varname = "success";
     v.extend(Vector<Expr>[Decl(f.tok, varname, ValInt(f.tok, 0)), Var(f.tok, varname)]); // return 0
     b = Block(f.tok, v.chill());
-    init = Function(f.tok, "init", Vector<String>[], b, this.v);
+    init = Function(f.tok, "init", Vector<String>[], None(), b, this.v);
     funs = Vector::mcreateFromItems(f.funs);
     funs.push(init);
     fs = funs.map(f -> this.function(f));
@@ -190,8 +196,21 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate()) {
     locals : VMap = Map::mcreate();
     this.!v = 0;
     f.params.each(p -> locals.add(p, this.nextVar()));
+    _ = f.polyArg.map(str -> locals.add(str, this.nextVar()));
     (es, e) = this.expression(f.body, locals);
-    Function(f.tok, f.name, f.params, this.toBlock(f.tok, es, e), this.v)
+    Function(f.tok, f.name, f.params, f.polyArg, this.toBlock(f.tok, es, e), this.v)
+  }
+
+  readonly fun arityOf(fname: String): Arity {
+    this.funs.find(f -> f.name == fname) match {
+      | Some(f) ->
+          f.polyArg match {
+            | None() -> Exactly(f.params.size())
+            | Some(_) -> AtLeast(f.params.size())
+          }
+      | None() -> // WILL NEVER HAPPEN
+          Exactly(-1)
+    }
   }
 
   readonly fun undef(): Expr { Var(Tok(), " Error") }
@@ -231,6 +250,11 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate()) {
     | ValString(t, _) -> {
       varname = this.nextVar();
       (mutable Vector<Expr>[Decl(t, varname, e0)], Var(t, varname))
+    }
+    | ValList(t, _) -> {
+      // THIS WILL NEVER HAPPEN
+      ve.push(Var(t, "ERROR"));
+      (ve, undef)
     }
     | Var(t, n) -> {
       vname = this.toRegister(n, locals);
@@ -272,14 +296,55 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate()) {
         v2.push(Call(t, n, args));
         (v2, undef)
       } else {
-         es.each( e -> {
-          (v2, e2) = this.expression(e, locals);
-           es2.push(e2);
-          ve.extend(v2.chill());
-        });
-         varname = this.nextVar();
-        ve.push(Decl(t, varname, Call(t, n, es2.chill())));
-        (ve, Var(t,varname))
+        _argsCnt = es.size();
+        arity = this.arityOf(n);
+        arity match {
+          | Exactly(_) -> {
+            // that `n` must be equal to `argsCnt`, but at this point it will
+            es.each(e -> {
+              (v2, e2) = this.expression(e, locals);
+              es2.push(e2);
+              ve.extend(v2.chill());
+            });
+            varname = this.nextVar();
+            ve.push(Decl(t, varname, Call(t, n, es2.chill())));
+            (ve, Var(t,varname))
+          }
+          | AtLeast(ordCnt) -> {
+            // that `ordCnt` must be smaller than `argsCnt`, but at this point it will
+            // I will have to construct a new variable and store a list in it
+            // that list will contain all the additional arguments (rest of `es`)
+            // so I take first `n` arguments and deal with them the same way as above
+            // but then I create a new variable after I deal with the rest of the arguments
+            // in such a way that the new variable can host a List that contains all the second parts of each tuple
+            // I then construct the call, it will be almost exactly what is above, but I will push one more argument to it
+            // that will be the new variable with the list
+
+            ordinary = es.slice(0, ordCnt); // only first `n` arguments
+            ordinary.each(e -> {
+              (v2, e2) = this.expression(e, locals);
+              es2.push(e2);
+              ve.extend(v2.chill());
+            });
+
+            rest = es.slice(ordCnt); // until the end
+            listvars = mutable MExprs[];
+            rest.each(e -> {
+              (v2, e2) = this.expression(e, locals);
+              listvars.push(e2);
+              ve.extend(v2.chill());
+            });
+
+            listvarname = this.nextVar();
+            ve.push(Decl(t, listvarname, ValList(t, listvars.chill())));
+            es2.push(Var(t, listvarname));
+
+
+            varname = this.nextVar();
+            ve.push(Decl(t, varname, Call(t, n, es2.chill())));
+            (ve, Var(t,varname))
+          }
+        }
       }
     }
     | Block(_, es) -> {
@@ -347,6 +412,7 @@ mutable class .PrettyPrint(mutable indent: Int = 0) {
   mutable fun function(f: Function): String {
     s = `(function ${f.name}(`;
     f.params.each(p -> !s = s + " " + p);
+    _ = f.polyArg.map(str -> { !s = `${s} ...${str}`});
     !s = s + ") ";
     this.inc();
     !s = s + this.expression(f.body);
@@ -361,6 +427,7 @@ mutable class .PrettyPrint(mutable indent: Int = 0) {
     | ValBool(_, b) -> `${b}`
     | ValChar(_, ch) -> `'${ch}'`
     | ValString(_, str) -> `"${str}"`
+    | ValList(_, exs) -> `[${exs.reduce((s, e) -> `${s}, ${this.expression(e)}`, "")}]`
     | Var(_, s) -> { s }
     | Decl(_, n, e) -> {
        se = this.expression(e);

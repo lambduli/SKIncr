@@ -5,6 +5,9 @@
 ))
 
 (functions (
+  #define polyvariadic function for list construction
+  (function list (...arglist) arglist)
+
   # define all the builtin_* as "built-in"
   (function builtin_bin (op x y) 0)
   (function builtin_un (op x) 0)
@@ -13,21 +16,29 @@
   # we stille need it, because we treat the set! statement as a function call
   (function set! (x expr) 0)
 
+  # functions on lists
+  (function head (lst) ( builtin_un "head" lst ))
+  (function tail (lst) ( builtin_un "tail" lst ))
+
+  # number airthmetics
   (function + (x y) ( builtin_bin "+" x y ))
   (function - (x y) ( builtin_bin "-" x y ))
   (function * (x y) ( builtin_bin "*" x y ))
   (function / (x y) ( builtin_bin "/" x y ))
 
+  # boolean airthmetics
   (function ! (x) ( builtin_un "!" x ))
   (function && (x y) ( builtin_bin "&&" x y ))
   (function || (x y) ( builtin_bin "||" x y ))
   (function == (x y) ( builtin_bin "==" x y ))
 
+  # numeric ordering
   (function < (x y) ( builtin_bin "<" x y ))
   (function > (x y) ( builtin_bin ">" x y ))
   (function <= (x y) ( builtin_bin "<=" x y ))
   (function >= (x y) ( builtin_bin ">=" x y ))
 
+  # IO
   (function write! (x) ( builtin_un "write!" x ))
   (function read! () ( builtin_nul "read!" ))
 ))

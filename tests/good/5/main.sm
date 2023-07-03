@@ -1,8 +1,9 @@
 (module Main imports (StdLib))
 
 (vars (
-  (let x 0)
-  (let y 0)
+  (let X 23)
+  (let Y 42)
+  (let Z (+ X Y))
 ))
 
 (functions (
@@ -19,7 +20,8 @@
   (function main ()
     (begin
       (let seven 7)
-      (fail x y)
+      (fail X Y)
+      Z
     )
   )
 

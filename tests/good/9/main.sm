@@ -1,0 +1,24 @@
+(module Main imports (StdLib))
+
+(vars (
+  (let ALIST (list 1 2 3 4 5))
+  # (let BLIST (list 10 9 8 7 6))
+))
+
+(functions (
+
+  (function polyvar (a b ...c)
+    c
+  )
+
+  (function main ()
+    (begin
+      (let a (list 0 1 0 1 0 1))
+      # (let b (polyvar 0 1 2 3 4 5))
+      (let b (polyvar "a" "b" "c" "d"))
+      (let c (head b))
+      c
+    )
+  )
+
+))
