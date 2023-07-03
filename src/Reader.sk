@@ -99,17 +99,12 @@ mutable class .Reader{
 
   // Process a set of files
   static fun process(paths: StringVec): (Vector<mutable Reader>, Files) {
-    print_string(`#0`);
     rs = paths.map(p -> Reader::create(p)); // Readers
-    print_string(`#1`);
     fs = rs.map(r -> r.file()); // Files
-    print_string(`#2`);
     fail = false;
     rs.each(r -> if (!r.ok) { r.reportError(); !fail = true; });
-    print_string(`#3`);
     if (fail) return (rs,fs);
     cks = rs.map(r -> Checker::create(r)); // Checkers
-    print_string(`#4`);
     i = 0;
     while (i < rs.size()) {
       (f, ck) = (fs[i], cks[i]);
@@ -117,7 +112,6 @@ mutable class .Reader{
 
       !i = i + 1;
     };
-    print_string(`#5`);
     (rs,fs)
   }
 
@@ -126,17 +120,11 @@ mutable class .Reader{
 
   // Parse a file, always returns something. Clients check the Reader for an error.
   mutable fun file(): File {
-    print_string(`#A`);
     tok = this.curToken();
-    print_string(`#B`);
     (name, _) = (this.eat("(").eat("module").identifier(), this.eat("imports").eat("("));
-    print_string(`#C`);
     (imports, _) = (this.identifiers(), this.eat(")").eat(")").eat("(").eat("vars").eat("("));
-    print_string(`#D`);
     (decls, _) = (this.declarations(), this.eat(")").eat(")").eat("(").eat("functions").eat("("));
-    print_string(`#E`);
     (funs, _) = (this.functions(), this.eat(")").eat(")"));
-    print_string(`#F`);
     File(Tok::createFrom(tok, this.curToken().end, this), name, imports, decls, funs)
   }
 
@@ -215,9 +203,7 @@ mutable class .Reader{
 
   mutable fun identifiers(): StringVec {
     vec = mutable StringVec[];
-    print_string(`this.identifier() ... this.curToken()='${this.curToken().asString()}'`);
     while (! (this.isNext(")") || this.isNext("...") )) vec.push(this.identifier());
-    print_string(`identifiers() = ${vec}`);
     vec.chill()
   }
 

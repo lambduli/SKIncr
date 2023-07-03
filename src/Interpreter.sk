@@ -298,7 +298,9 @@ mutable class .Interpreter(modules: Modules, globals: mutable GlobMap, stack: mu
   // calling a builtin might result in Failure
   // the initialization part of a normal call should be fine, we expect it to always work
   mutable fun call(fname: String, args: mutable Vals): void {
-    if (fname == "builtin_bin") {
+    if (fname == "list") {
+      this.nativeReturn(ValList(args.chill()))
+    } else if (fname == "builtin_bin") {
       callBuiltin2(args) match {
         | Success(val) -> this.nativeReturn(val)
         | Failure(msg) -> this.!failure = (true, msg);
