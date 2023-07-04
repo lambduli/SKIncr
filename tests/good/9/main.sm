@@ -7,31 +7,58 @@
 
 (functions (
 
-  (function polyvar (a b ...c)
+  (function snd (a b ...c)
+    b
+  )
+
+  (function rest (a b ...c)
     c
+  )
+
+  (function rec (n)
+    (begin
+      (write! "rec-n: " n)
+      (let x n)
+      (if (== n 0)
+          (set! x n)
+          (set! x (rec (- n 1))))
+      x
+    )
   )
 
   (function main ()
     (begin
-      (let a (list 0 1 0 1 0 1))
-      (write! "a:")
-      (write! a)
-      # (let b (polyvar 0 1 2 3 4 5))
-      # (write! "b:")
-      # (write! b)
-      # (let c (polyvar "a" "b" "c" "d"))
-      # (write! "c:")
-      # (write! c)
-      # (let d (head c))
-      # (write! "d:")
-      # (write! d)
+      (let aa (drop 0 "hello"))
 
-      # (let lst (list 23 24 25 26))
-      # (write! lst)
+      (write! "aa: " aa)
+
+      (let bb (snd 1 2 3 4 5))
+      (write! "bb: " bb)
       
-      # (write! ALIST)
-      # (let e (head (tail ALIST)))
-      # (write! e)
+      (let a (list 0 1 0 1 0 1))
+      (write! "a: " a)
+      
+      (let o (rec 3))
+      (write! "o: " o)
+      
+      (let a1 (list 0 1 0 1 0 1))
+      (write! "a1: " a1)
+      
+      (let b (snd 0 1 2 3 4 5))
+      (write! "b: " b)
+
+      (let c (rest "a" "b" "c" "d"))
+      (write! "c: " c)
+      
+      (let d (head c))
+      (write! "d[head of c]: " d)
+
+      (let lst (list 23 24 25 26))
+      (write! "lst: " lst)
+      
+      (write! "ALIST: " ALIST)
+      (let e (head (tail ALIST)))
+      (write! "e: " e)
       0
     )
   )

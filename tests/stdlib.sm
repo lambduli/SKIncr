@@ -7,7 +7,19 @@
 (functions (
   #define polyvariadic function for list construction
   # it is actually a special built-in
-  (function list (...arglist) 0)
+  (function list (...arglist) arglist)
+
+  (function at (lst i) ( builtin_bin "at" lst i ))
+
+  (function drop (n lst)
+    (begin
+      (let res 0)
+      (if (== n 0)
+          (set! res lst)
+          (set! res (drop (- n 1) (tail lst))))
+          res
+    )
+  )
 
   # define all the builtin_* as "built-in"
   (function builtin_bin (op x y) 0)
@@ -31,7 +43,6 @@
   (function ! (x) ( builtin_un "!" x ))
   (function && (x y) ( builtin_bin "&&" x y ))
   (function || (x y) ( builtin_bin "||" x y ))
-  (function == (x y) ( builtin_bin "==" x y ))
 
   # numeric ordering
   (function < (x y) ( builtin_bin "<" x y ))
@@ -39,7 +50,10 @@
   (function <= (x y) ( builtin_bin "<=" x y ))
   (function >= (x y) ( builtin_bin ">=" x y ))
 
+  # universal comparison
+  (function == (x y) ( builtin_bin "==" x y ))
+
   # IO
-  (function write! (x) ( builtin_un "write!" x ))
+  (function write! (msg x) ( builtin_bin "write!" msg x ))
   (function read! () ( builtin_nul "read!" ))
 ))
