@@ -177,7 +177,14 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), mutabl
   mutable fun file(f: File): File {
     this.glob.clear();
     this.!v = 0;
-    this.!funs = f.funs;
+
+    newFuns = mutable Vector<Function>[];
+    newFuns.extend(this.funs);
+    newFuns.extend(f.funs);
+    this.!funs = newFuns.chill(); // we need to preserve all the functions in all the modules
+    // even thought, this approach seems to be susceptible to bugs
+    // the order in which the modules are processed matters, but that order is not really
+    // the order of dependencies
 
     f.decls.each(d -> d match { | Decl(_, n, _) -> { this.glob.add(n, this.nextVar());}});
     v = mutable Vector<Expr>[];

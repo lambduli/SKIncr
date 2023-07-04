@@ -7,7 +7,7 @@
 (functions (
   #define polyvariadic function for list construction
   # it is actually a special built-in
-  (function list (...arglist) 0)
+  (function list (...arglist) arglist)
 
   # define all the builtin_* as "built-in"
   (function builtin_bin (op x y) 0)
