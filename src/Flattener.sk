@@ -5,7 +5,7 @@ type Funs = Vector<Fun>;
 type Statements = Vector<Stmt>;
 
 value class Module(name: String, imports: Strings, globs: Int, funs: Funs) {}
-value class Fun(name: String, params: Int, isPolyVar: Bool, body: Code, locals: Int) {}
+value class Fun(name: String, params: Int, body: Code, locals: Int) {}
 value class Code(stmts: Statements) {}
 
 base class Stmt {
@@ -83,7 +83,7 @@ class .Translator() {
     e match { | Var(_, str) -> Register(str) | _ -> Register("ERROR") }
   }
 
-  fun function(f: Function): Fun { Fun(f.name, f.params.size(), f.polyArg.isSome(), Code(this.statement(f.body)), f.locals)  }
+  fun function(f: Function): Fun { Fun(f.name, f.params.size(), Code(this.statement(f.body)), f.locals)  }
 }
 
 mutable class .PrettyPrint2(mutable indent: Int = 0) {
@@ -112,7 +112,7 @@ mutable class .PrettyPrint2(mutable indent: Int = 0) {
   }
 
   mutable fun function(f: Fun): String {
-    params = `${f.params}${if (f.isPolyVar) " +1" else ""}`;
+    params = `${f.params}`;
     s = `(function ${f.name}(${params} | ${f.locals}`;
     !s = s + ") ";
     this.inc();
@@ -177,7 +177,14 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), mutabl
   mutable fun file(f: File): File {
     this.glob.clear();
     this.!v = 0;
-    this.!funs = f.funs;
+
+    newFuns = mutable Vector<Function>[];
+    newFuns.extend(this.funs);
+    newFuns.extend(f.funs);
+    this.!funs = newFuns.chill(); // we need to preserve all the functions in all the modules
+    // even thought, this approach seems to be susceptible to bugs
+    // the order in which the modules are processed matters, but that order is not really
+    // the order of dependencies
 
     f.decls.each(d -> d match { | Decl(_, n, _) -> { this.glob.add(n, this.nextVar());}});
     v = mutable Vector<Expr>[];
@@ -195,10 +202,49 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), mutabl
   mutable fun function(f: Function): Function {
     locals : VMap = Map::mcreate();
     this.!v = 0;
-    f.params.each(p -> locals.add(p, this.nextVar()));
-    _ = f.polyArg.map(str -> locals.add(str, this.nextVar()));
-    (es, e) = this.expression(f.body, locals);
-    Function(f.tok, f.name, f.params, f.polyArg, this.toBlock(f.tok, es, e), this.v)
+    
+    if (f.polyArg.isSome()) {
+      this.polyFunction(f)
+    } else {
+      f.params.each(p -> locals.add(p, this.nextVar()));
+      _ = f.polyArg.map(str -> locals.add(str, this.nextVar()));
+      (es, e) = this.expression(f.body, locals);
+      Function(f.tok, f.name, f.params, f.polyArg, this.toBlock(f.tok, es, e), this.v)
+    }
+  }
+
+  mutable fun polyFunction(f: Function): Function {
+    locals : VMap = Map::mcreate();
+    this.!v = 0; // just to show that it's done
+
+    origParamCnt = f.params.size();
+    if (f.polyArg.isSome()) { !origParamCnt = origParamCnt + 1; };
+
+    aname = this.nextVar();
+    argVar = Var(f.tok, aname);
+    locals.add(aname, aname);
+
+    // rewrite all the parameters into something like
+    // Decl(<original token>, <original name>, Call(<original token>, "at", Vector[<original name>, <position>]))
+    // this needs to become a part of the body of the function, so I need to prepend it before transformation
+
+    unlistParams
+      = f.params.mapWithIndex((pos, name) -> Decl(f.tok, name, Call(f.tok, "at", Vector<Expr>[argVar, ValInt(f.tok, pos)])));
+    // all of this will go into a body
+    // they "redefine" original parameters and we make up a new, singular parameter (inside `argVar`)
+
+    unlistRest = f.polyArg.map(str -> Vector<Expr>[Decl(f.tok, str, Call(f.tok, "drop", Vector<Expr>[ValInt(f.tok, f.params.size()), argVar]))]).default(Vector<Expr>[]);
+
+    body = mutable Vector<Expr>[];
+    body.extend(unlistParams);
+    body.extend(unlistRest);
+    body.push(f.body);
+
+    (es, e) = this.expression(Block(f.tok, body.chill()), locals);
+    
+    params = Vector<String>[aname]; // There's always just this one "arguments"
+
+    Function(f.tok, f.name, params, None(), this.toBlock(f.tok, es, e), this.v)
   }
 
   readonly fun arityOf(fname: String): Arity {
@@ -310,7 +356,7 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), mutabl
             ve.push(Decl(t, varname, Call(t, n, es2.chill())));
             (ve, Var(t,varname))
           }
-          | AtLeast(ordCnt) -> {
+          | AtLeast(_) -> {
             // that `ordCnt` must be smaller than `argsCnt`, but at this point it will
             // I will have to construct a new variable and store a list in it
             // that list will contain all the additional arguments (rest of `es`)
@@ -320,16 +366,21 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), mutabl
             // I then construct the call, it will be almost exactly what is above, but I will push one more argument to it
             // that will be the new variable with the list
 
-            ordinary = es.slice(0, ordCnt); // only first `n` arguments
-            ordinary.each(e -> {
-              (v2, e2) = this.expression(e, locals);
-              es2.push(e2);
-              ve.extend(v2.chill());
-            });
+            // we know that every polyvariadic function is translated into a function with a single parameter
+            // we therefore need to put all the arguments into a list and only pass that list into the call
 
-            rest = es.slice(ordCnt); // until the end
+            // TODO: there are no ordinary arguments, everything goes into a list together with the rest thing
+            // ordinary = es.slice(0, ordCnt); // only first `n` arguments
+            // ordinary.each(e -> {
+            //   (v2, e2) = this.expression(e, locals);
+            //   es2.push(e2);
+            //   ve.extend(v2.chill());
+            // });
+
+            // rest = es.slice(ordCnt); // until the end
             listvars = mutable MExprs[];
-            rest.each(e -> {
+            // all original arguments will be flattened and put into a list-value
+            es.each(e -> {
               (v2, e2) = this.expression(e, locals);
               listvars.push(e2);
               ve.extend(v2.chill());

@@ -43,14 +43,11 @@ fun good(p: Vector<String>): void {
 	l = Interpreter.Linearize::mcreate();
 	linearized: Vector<Interpreter.Module> = translated.map(m -> l.mod(m));
 
-	print_string(`_____________________________\n\n`);
-
 	linearized.each(m -> {
 		pp = mutable Interpreter.PrettyPrint();
 		if (true || m.name != "StdLib") { print_string(pp.toModule(m)); };
 	});
 
-	// print_string("...... 0");
 	Interpreter.runProgram(linearized) match {
 		| Failure(msg) -> {
 			print_string(`RUNTIME ERROR: ${msg}`);
