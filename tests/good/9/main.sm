@@ -28,8 +28,7 @@
 
   (function main ()
     (begin
-      (let aa (drop 0 "hello"))
-
+      (let aa (drop 0 "hello")) # just seeing if `drop` works for 0
       (write! "aa: " aa)
 
       (let bb (snd 1 2 3 4 5))

@@ -2,6 +2,7 @@
 
 (vars ( 
   (let test 230) # I just wanted to test a global in a stdlib
+  (let testlist (list 1 2 3 4 5))
 ))
 
 (functions (
