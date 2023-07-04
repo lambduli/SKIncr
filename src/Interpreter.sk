@@ -619,6 +619,15 @@ fun callBuiltin2(args: readonly Vector<Val>): Result<Val, String> {
         | (valx, valy) -> Failure(`Type Error: '=' was applied to '${valx.toOut()}' and '${valy.toOut()}'`)
       }
     }
+    | ValString("write!") -> {
+       (args[1], args[2]) match {
+         | (ValString(msg), val) -> {
+           print_string(`>  ${msg}${val.toOut()}`);
+           Success(NullVal())
+         }
+         | (_, _) -> Failure(`Type Error: 'write!' was called with a non-string first argument.`)
+       }
+    }
     | _ -> Failure(`Symbol Error: Uknown binary-builtin '${name.toOut()}'`)
   }
 }
@@ -651,14 +660,20 @@ fun callBuiltin1(args: readonly Vector<Val>): Result<Val, String> {
       }
     }
     | ValString("tail") -> {
-          args[1] match {
-            | ValList(vals) -> {
-              if (vals.size() > 0) Success(ValList(vals.slice(1)))
-              else Failure(`Evaluation Error: 'tail' was called on an empty list.`)
-            }
-            | v -> Failure(`Type Error: 'tail' was called on '${v}'\nwhich is NOT a list.`)
+        args[1] match {
+          | ValList(vals) -> {
+            if (vals.size() > 0) Success(ValList(vals.slice(1)))
+            else Failure(`Evaluation Error: 'tail' was called on an empty list.`)
           }
+          | v -> Failure(`Type Error: 'tail' was called on '${v}'\nwhich is NOT a list.`)
         }
+      }
+    | ValString("size") -> {
+        args[1] match {
+          | ValList(vals) -> Success(ValInt(vals.size()))
+          | v -> Failure(`Type Error: 'tail' was called on '${v}'\nwhich is NOT a list.`)
+        }
+      }
     | _ -> Failure(`Symbol Error: Uknown binary-builtin '${name.toOut()}'`)
   }
 }

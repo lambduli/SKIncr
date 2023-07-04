@@ -14,24 +14,25 @@
   (function main ()
     (begin
       (let a (list 0 1 0 1 0 1))
-      (write! "a:")
-      (write! a)
+      (write! "a: " a)
+
       (let b (polyvar 0 1 2 3 4 5))
-      (write! "b:")
-      (write! b)
+      (write! "b:" b)
+
       (let c (polyvar "a" "b" "c" "d"))
-      (write! "c:")
-      (write! c)
+      (write! "c:" c)
+
       (let d (head c))
-      (write! "d:")
-      (write! d)
+      (write! "d:" d)
 
       (let lst (list 23 24 25 26))
-      (write! lst)
+      (write! "lst: " lst)
       
-      (write! ALIST)
+      (write! "ALIST: " ALIST)
+      (write! "ALIST size= " (size ALIST))
+
       (let e (head (tail ALIST)))
-      (write! e)
+      (write! "e: " e)
       0
     )
   )
