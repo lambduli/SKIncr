@@ -106,8 +106,7 @@ mutable class Linearize(mutable cntr: Int) {
   mutable fun function(f: Reader.Fun): Fun {
     !this.cntr = 0;
     b = f.body.stmts.map(s -> this.statement(s)).flatten();
-    maybeExtra = if (f.isPolyVar) 1 else 0;
-    Fun(f.name, f.params + maybeExtra, b, f.locals)
+    Fun(f.name, f.params, b, f.locals)
   }
 
   mutable fun expression(e: Reader.Exp): Expr {
@@ -212,18 +211,12 @@ mutable class Frame(globals: mutable Vals, locals: mutable Vals, mutable pc: Int
 
   // [###] This might fail at runtime
   mutable fun setLocal(r: Int, v: Val): void {
-    // print_string(`setLocal(r=${r}, v=${v})`);
-    // print_string(`this.locals.size = ${this.locals.size()}`);
-
     this.locals![r] = v;
   }
 
   // [###] This might fail at runtime
   readonly fun getGlobal(r: Int): Val {
-    // print_string(`get global 0`);
-    // print_string(`globals.size() = ${this.globals.size()} | r= ${r}`);
     ret = this.globals[r];
-    // print_string(`get global 1`);
     ret
   }
 
@@ -247,7 +240,6 @@ type GlobMap = Map<String, mutable Vals>;  // From module name to module global 
 // Example runner
 fun runProgram(modules: Modules): Result<Val, String> {
   eval = Interpreter::mcreate(modules);
-  print_string(`____________________`);
 	eval.call("main", mutable Vals[]);
 	eval.run();
 }
@@ -471,9 +463,6 @@ mutable class PrettyPrint(mutable indent: Int = 0) {
   }
 
   mutable fun toModule(m: Module): String {
-	   if (m.name == "StdLib") {
-		   return "";
-		 };
      s = `\e[4;31mmodule\e[0m ${m.name}\n`;
      if (m.funs.size() == 0) {
        !s = s + "\n";
@@ -619,14 +608,23 @@ fun callBuiltin2(args: readonly Vector<Val>): Result<Val, String> {
         | (valx, valy) -> Failure(`Type Error: '=' was applied to '${valx.toOut()}' and '${valy.toOut()}'`)
       }
     }
+    | ValString("at") -> {
+        (args[1], args[2]) match {
+          | (ValList(vals), ValInt(i)) -> {
+            if (vals.size() >= i) Success(vals[i])
+            else Failure(`Evaluation Error: 'at' was called on a too short list.`)
+          }
+          | (v, i) -> Failure(`Type Error: 'at' was called on '${v}'\nwhich is NOT a list OR the '${i}' is not a number.`)
+        }
+      }
     | ValString("write!") -> {
-       (args[1], args[2]) match {
-         | (ValString(msg), val) -> {
-           print_string(`>  ${msg}${val.toOut()}`);
-           Success(NullVal())
-         }
-         | (_, _) -> Failure(`Type Error: 'write!' was called with a non-string first argument.`)
-       }
+      (args[1], args[2]) match {
+        | (ValString(msg), val) -> {
+          print_string(`>  ${msg}${val.toOut()}`);
+          Success(NullVal())
+        }
+        | (_, _) -> Failure(`Type Error: 'write!' was called with a non-string first argument.`)
+      }
     }
     | _ -> Failure(`Symbol Error: Uknown binary-builtin '${name.toOut()}'`)
   }
@@ -636,14 +634,6 @@ fun callBuiltin1(args: readonly Vector<Val>): Result<Val, String> {
   name = args[0];
 
   name match {
-    | ValString("write!") -> {
-      args[1] match {
-        | val -> {
-          print_string(`>  ${val.toOut()}`);
-          Success(NullVal())
-        }
-      }
-    }
     | ValString("!") -> {
       args[1] match {
         | ValBool(b) -> Success(ValBool(! b))
