@@ -7,7 +7,8 @@
 
 (functions (
   #define polyvariadic function for list construction
-  # it is actually a special built-in
+
+  # this is just a small "trick"
   (function list (...arglist) arglist)
 
   (function at (lst i) ( builtin_bin "at" lst i ))
@@ -33,6 +34,7 @@
   # functions on lists
   (function head (lst) ( builtin_un "head" lst ))
   (function tail (lst) ( builtin_un "tail" lst ))
+  (function size (lst) ( builtin_un "size" lst ))
 
   # number airthmetics
   (function + (x y) ( builtin_bin "+" x y ))
@@ -55,6 +57,15 @@
   (function == (x y) ( builtin_bin "==" x y ))
 
   # IO
+  # (function write! (...args)
+  #   (begin
+  #     (if (> (size args) 1)
+  #         # just one argument, treat it like the thing to print with an empty message
+  #         (builtin_un (head args))
+  #         # at least two arguments, for now I just care about the first two
+  #         (builtin_bin (head args) (at 1 args))
+  #   )
+  # )
   (function write! (msg x) ( builtin_bin "write!" msg x ))
   (function read! () ( builtin_nul "read!" ))
 ))

@@ -658,6 +658,12 @@ fun callBuiltin1(args: readonly Vector<Val>): Result<Val, String> {
           | v -> Failure(`Type Error: 'tail' was called on '${v}'\nwhich is NOT a list.`)
         }
       }
+    | ValString("size") -> {
+        args[1] match {
+          | ValList(vals) -> Success(ValInt(vals.size()))
+          | v -> Failure(`Type Error: 'tail' was called on '${v}'\nwhich is NOT a list.`)
+        }
+      }
     | _ -> Failure(`Symbol Error: Uknown binary-builtin '${name.toOut()}'`)
   }
 }

@@ -36,6 +36,15 @@
       
       (let a (list 0 1 0 1 0 1))
       (write! "a: " a)
+
+      (let b (polyvar 0 1 2 3 4 5))
+      (write! "b:" b)
+
+      (let c (polyvar "a" "b" "c" "d"))
+      (write! "c:" c)
+
+      (let d (head c))
+      (write! "d:" d)
       
       (let o (rec 3))
       (write! "o: " o)
@@ -56,6 +65,8 @@
       (write! "lst: " lst)
       
       (write! "ALIST: " ALIST)
+      (write! "ALIST size= " (size ALIST))
+
       (let e (head (tail ALIST)))
       (write! "e: " e)
       0
