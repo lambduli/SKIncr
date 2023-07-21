@@ -102,7 +102,6 @@ mutable class Checker(env: mutable Scope, r: mutable Reader) {
   // update internal state as they walk over the AST.
   static fun create(r: mutable Reader): mutable Checker { mutable Checker(Scope::create(), r) }
 
-
   // Add `name` to the environment, fail if already there
   mutable fun checked_add(name: String, t: Tok, arity: Arity): void {
     if (this.env.isDefined(name)) {

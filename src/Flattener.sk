@@ -170,15 +170,15 @@ mutable class .PrettyPrint2(mutable indent: Int = 0) {
 
 
 type VMap = mutable Map<String, String>;
-type MExprs = mutable Vector<Expr>;
+type Exprs = Vector<Expr>;
 
-mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), mutable funs: Vector<Function> = Vector<Function>[]) {
+mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), mutable funs: Functions = Functions[]) {
 
   mutable fun file(f: File): File {
     this.glob.clear();
     this.!v = 0;
 
-    newFuns = mutable Vector<Function>[];
+    newFuns = mutable Functions[];
     newFuns.extend(this.funs);
     newFuns.extend(f.funs);
     this.!funs = newFuns.chill(); // we need to preserve all the functions in all the modules
@@ -187,12 +187,12 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), mutabl
     // the order of dependencies
 
     f.decls.each(d -> d match { | Decl(_, n, _) -> { this.glob.add(n, this.nextVar());}});
-    v = mutable Vector<Expr>[];
-    v.extend(f.decls.map(d -> d match { | Decl(t, n, e) -> Call(t, "gset!", Vector<Expr>[Var(t, n), e])}));
+    v = mutable Exprs[];
+    v.extend(f.decls.map(d -> d match { | Decl(t, n, e) -> Call(t, "gset!", Exprs[Var(t, n), e])}));
     varname = "success";
-    v.extend(Vector<Expr>[Decl(f.tok, varname, ValInt(f.tok, 0)), Var(f.tok, varname)]); // return 0
+    v.extend(Exprs[Decl(f.tok, varname, ValInt(f.tok, 0)), Var(f.tok, varname)]); // return 0
     b = Block(f.tok, v.chill());
-    init = Function(f.tok, "init", Vector<String>[], None(), b, this.v);
+    init = Function(f.tok, "init", Strings[], None(), b, this.v);
     funs = Vector::mcreateFromItems(f.funs);
     funs.push(init);
     fs = funs.map(f -> this.function(f));
@@ -202,7 +202,6 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), mutabl
   mutable fun function(f: Function): Function {
     locals : VMap = Map::mcreate();
     this.!v = 0;
-    
     if (f.polyArg.isSome()) {
       this.polyFunction(f)
     } else {
@@ -227,22 +226,22 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), mutabl
     // rewrite all the parameters into something like
     // Decl(<original token>, <original name>, Call(<original token>, "at", Vector[<original name>, <position>]))
     // this needs to become a part of the body of the function, so I need to prepend it before transformation
-
     unlistParams
-      = f.params.mapWithIndex((pos, name) -> Decl(f.tok, name, Call(f.tok, "at", Vector<Expr>[argVar, ValInt(f.tok, pos)])));
+      = f.params.mapWithIndex((pos, name) -> Decl(f.tok, name, Call(f.tok, "at", Exprs[argVar, ValInt(f.tok, pos)])));
     // all of this will go into a body
     // they "redefine" original parameters and we make up a new, singular parameter (inside `argVar`)
 
-    unlistRest = f.polyArg.map(str -> Vector<Expr>[Decl(f.tok, str, Call(f.tok, "drop", Vector<Expr>[ValInt(f.tok, f.params.size()), argVar]))]).default(Vector<Expr>[]);
+    unlistRest = f.polyArg.map(str -> Exprs[Decl(f.tok,str,
+							 Call(f.tok, "drop", Exprs[ValInt(f.tok, f.params.size()), argVar]))]).default(Exprs[]);
 
-    body = mutable Vector<Expr>[];
+    body = mutable Exprs[];
     body.extend(unlistParams);
     body.extend(unlistRest);
     body.push(f.body);
 
     (es, e) = this.expression(Block(f.tok, body.chill()), locals);
-    
-    params = Vector<String>[aname]; // There's always just this one "arguments"
+
+    params = Strings[aname]; // There's always just this one "arguments"
 
     Function(f.tok, f.name, params, None(), this.toBlock(f.tok, es, e), this.v)
   }
@@ -271,7 +270,7 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), mutabl
 
   mutable fun nextVar(): String { `%${this.nextVarId()}` }
 
-  readonly fun toBlock(t: Tok, es: MExprs, e: Expr): Expr {
+  readonly fun toBlock(t: Tok, es: mutable Exprs, e: Expr): Expr {
     if (!this.isUndef(e)) { es.push(e);  };
     if (es.size() > 1) { Block(t, es.chill()) } else if (es.size() == 1) { es[0]} else { this.undef() }
    }
@@ -286,8 +285,8 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), mutabl
     }
   }
 
-  mutable fun expression(e0: Expr, locals: VMap): (MExprs, Expr) {
-    ve = mutable MExprs[];
+  mutable fun expression(e0: Expr, locals: VMap): (mutable Exprs, Expr) {
+    ve = mutable Exprs[];
     undef = this.undef();
     e0 match {
     | ValInt(t, _)
@@ -295,7 +294,7 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), mutabl
     | ValChar(t, _)
     | ValString(t, _) -> {
       varname = this.nextVar();
-      (mutable Vector<Expr>[Decl(t, varname, e0)], Var(t, varname))
+      (mutable Exprs[Decl(t, varname, e0)], Var(t, varname))
     }
     | ValList(t, _) -> {
       // THIS WILL NEVER HAPPEN
@@ -307,7 +306,7 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), mutabl
       if (locals.containsKey(n)) {
         (ve, Var(t, vname))
       } else if (this.glob.containsKey(n)) {
-        x = Call(t, "load", Vector<Expr>[Var(t, vname)]);
+        x = Call(t, "load", Exprs[Var(t, vname)]);
         nvar = this.nextVar();
         assign = Decl(t, nvar, x);
         ve.push(assign);
@@ -324,21 +323,21 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), mutabl
       (v2, undef)
     }
     | Call(t, n, es) -> {
-      es2 = mutable MExprs[];
+      es2 = mutable Exprs[];
       if (n == "set!") {
          (vexp, exp) = (es[0], es[1]);
          (tok, origVName) = vexp match {| Var(t2, nm) -> (t2, nm) | _ -> (t, "Error")};
          !n = if (this.glob.containsKey(origVName)) { "gset!" } else { "set!" };
          vname = this.toRegister(origVName, locals);
          (v2, e2) = this.expression(exp, locals);
-         args = Vector<Expr>[Var(tok, vname), e2];
+         args = Exprs[Var(tok, vname), e2];
          v2.push(Call(t, n, args));
          (v2, undef)
       } else if (n == "gset!") {
         (tok, origVName) = es[0] match {| Var(t2, nm) -> (t2, nm) | _ -> (t, "Error")};
         vname = this.toRegister(origVName, locals);
         (v2, e2) = this.expression(es[1], locals);
-        args = Vector<Expr>[Var(tok, vname), e2];
+        args = Exprs[Var(tok, vname), e2];
         v2.push(Call(t, n, args));
         (v2, undef)
       } else {
@@ -378,19 +377,16 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), mutabl
             // });
 
             // rest = es.slice(ordCnt); // until the end
-            listvars = mutable MExprs[];
+            listvars = mutable Exprs[];
             // all original arguments will be flattened and put into a list-value
             es.each(e -> {
               (v2, e2) = this.expression(e, locals);
               listvars.push(e2);
               ve.extend(v2.chill());
             });
-
             listvarname = this.nextVar();
             ve.push(Decl(t, listvarname, ValList(t, listvars.chill())));
             es2.push(Var(t, listvarname));
-
-
             varname = this.nextVar();
             ve.push(Decl(t, varname, Call(t, n, es2.chill())));
             (ve, Var(t,varname))

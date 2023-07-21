@@ -1,4 +1,7 @@
 module Reader;
+// ================================================================================================================
+// Parser and Lexer for Small, a small Lisp-like imperative, first-order, eager language.
+// ================================================================================================================
 
 type Expressions = Vector<Expr>;
 type Tokens = Vector<Tok>;
@@ -8,43 +11,36 @@ type Declarations = Vector<Decl>;
 type Files = Vector<File>;
 type Functions = Vector<Function>;
 
-// ------
-// TODO:
-//     -- add support for string values "..." and for concatenation with conversion
-//     -- add support for lists with the only constant value [] for the empty list
-//        functions head and tail and ==.
-//     -- add support for varargs a function with a varag write its argument as x+
-//        the plus denotes multiplicity but is not part of the name
-//     -- add a (function prim (name args+) 0) function for calling all primitives
-//        thus we can define + as (function + (x y) (prim "+" x y))
-//     -- file descriptors and (open! path call
-//     -- add function name variables? or closure?
-// -----
-//
 // Grammar
 //
-// File ::= (module Ident imports (Ident..))  (vars (Decl..))  (functions (Function..))
+// File ::= (module Ident imports (Ident+))  (vars (Decl+))  (functions (Function+))
 // Decl ::= (let Ident Expr)
-// Function ::= (function Ident(Ident..) Expr)
+// Function ::= (function Ident(Args) Expr)
+// Args ::= Ident+ [`...`Ident]
 // Expr ::=  ValInt
 //        |  ValBool
-//        |  Var
+//        |  ValString
+//        |  ValChar
+//        |  ValList
+//        |  Ident
 //        |  Cond
 //        |  While
 //        |  Decl
 //        |  Block
 //        |  Call
-// Call ::= (Ident Expr..)
+// Call ::= (Ident Expr*)
 // Cond ::= (if Expr Expr Expr)
-// Block ::= (begin Expr.. )
-// Var ::= Ident
+// Block ::= (begin Expr* )
 // While ::= (while Expr Expr)
 //
 // -------------------------------------------------------------------------------------
 // ---------------------- ABSTRACT SYNTAX TREE -----------------------------------------
 // -------------------------------------------------------------------------------------
+
+// A file that contains .sm code
 value class File(tok: Tok, name: String, imports: StringVec, decls: Declarations, funs: Functions) {}
 
+// A .sm function
 value class Function(tok: Tok, name: String, params: StringVec, polyArg: Option<String>, body: Expr, locals: Int) {}
 
 base class Expr {
@@ -68,11 +64,12 @@ base class Expr {
 // Interface to keep track of a file, its source text, parsed output, and any error.
 //
 // Does not throw exceptions.
+//
+// Some issues/questions:
 // ?? The dot in front of the name is a trick to make the class visible at the top ??
 // ?? Is there a way to have private fields? ??
 // ?? !this.f = 1   ||   this.!f = 1  ??
 // skiplang documentation still has .get method on String
-//
 // ----------------------------------------------------------------------------------
 mutable class .Reader{
   path: String,                 // path to the target file
@@ -109,14 +106,12 @@ mutable class .Reader{
     while (i < rs.size()) {
       (f, ck) = (fs[i], cks[i]);
       ck.file(f, fs);
-
       !i = i + 1;
     };
     (rs,fs)
   }
 
   // ------------- PARSING -----------------------------------------------------
-
 
   // Parse a file, always returns something. Clients check the Reader for an error.
   mutable fun file(): File {
@@ -213,18 +208,21 @@ mutable class .Reader{
     vec.chill()
   }
 
+  // Parse declarations
   mutable fun declarations(): Declarations {
     vec = mutable Declarations[];
     while (!this.isNext(")")) vec.push(this.declaration());
     vec.chill()
   }
 
+  // Parse functions
   mutable fun functions(): Functions {
     vec = mutable Functions[];
     while (!this.isNext(")")) vec.push(this.function());
     vec.chill()
   }
 
+ // Is the given string the next token?
   mutable fun isNext(s: String): Bool { this.hasMoreTokens() && this.curToken().asString() == s }
 
   // Do we have more tokens?
@@ -281,7 +279,6 @@ mutable class .Reader{
 
   // If an error occured report it.
   readonly fun reportError(): void { if (!this.ok) print_string(this.error); }
-
 
   // -------------- LEXING -----------------------------------------------------
 
@@ -443,6 +440,7 @@ mutable class .Reader{
   // A string is "aa"
   mutable fun isString(t: Tok): Bool { this.isDoubleQuote(this.text[t.start]) }
 
+  // tt and ff
   mutable fun asBool(t: Tok): Bool { this.text[t.start] == 't' && this.text[t.start+1] == 't' }
 
   mutable fun asInt(t: Tok): Int { t.asString().toInt() }
@@ -494,7 +492,98 @@ mutable class .Reader{
        true
      }
   }
+}
 
+
+// -------------------------------------------------------------------------------------------
+// class Tok: tokens with references into the source file.
+//
+// start -- the position in the text file of the start of this token
+// end   -- the position in the text file of the end of this token
+// lines -- the line number, starting at 0, where this token occurs
+// lineBreak -- the position of the previous line break
+// path -- the path on the filesystem to the file this token belongs to
+// text -- the full source text of the file
+//
+// A Tok can be valid or `bad`, a bad token has an end at -1.
+//
+// A Tok can return its value as a string and print a formatted error message.
+//
+// A default Tok created with `Tok()` is bad.
+// -------------------------------------------------------------------------------------------
+value class .Tok(start: Int = 0,
+                end: Int = -1,
+                lines: Int = 0,
+                lineBreak: Int = 0,
+                path: String = "",
+                text: Chars = Chars[]) {
+
+   // Create a new token and an end point. This function is used to extend the range of a token
+	 // so that, for example, when parsing the expression `(+ a b)` its corresponding token goes
+	 // from the first brace to the end brace. This will be used to print more accurate errors.
+  static fun createFrom(tok: Tok, end: Int, r: mutable Reader): Tok {
+	  Tok(tok.start, end, tok.lines, tok.lineBreak, r.path, r.text)
+	}
+
+  static fun createRange(start: Int, end: Int, r: mutable Reader): Tok {
+	  Tok(start, end, r.lines, r.lineBreak, r.path, r.text)
+	}
+
+  // A bad token should not be used.
+  fun isBad(): Bool { this.end == -1 }
+
+  // Return the token as a string, or "BADTOKEN" if bad.
+  fun asString(): String {
+	  if (this.isBad()) "BADTOKEN" else this.stringFromSlice(this.start, this.end)
+	}
+
+  // Print the name of the file, the line number, the last three lines
+	// and a carret followed by the error message.
+  fun error_message(msg: String): String {
+	  if (this.isBad()) return "BADTOKEN";
+    (l, lstart, txt, s) = (this.lines, this.start, this.text, "    ");
+    s1 = `File ${this.path} at line ${this.lines}`;
+    (s2, s3, s4) = (this.lineAt(l-2), this.lineAt(l-1), this.lineAt(l));
+    // Print a carret and a message at a particular position in a line
+    while (lstart > 0) {
+      c = txt[lstart];
+      if (this.isLineBreak(c)) {
+        !lstart = lstart + 1;
+        break void;
+      };
+      !lstart = lstart - 1;
+      !s = s + " ";
+    };
+    `${s1}\n${s2}\n${s3}\n${s4}\n${s}^--${msg}\n`
+  }
+
+  // -------------------------- PRIVATE FUNCTIONS ---------------------------------------------
+
+  // Assuming that our programs are no more than 999 long, this should align each printed line
+  fun pad(n: Int): String {  s = if (n < 10) "  " else { if (n < 99) " " else ""}; `${s}${n}`  }
+
+  fun isLineBreak(c: Char): Bool { c == '\n' }
+
+  fun stringFromSlice(start: Int, end: Int): String {
+     String::fromChars(this.text.slice(start, end).toArray())
+  }
+
+  // Given a line number, print the corresponding line in the file with line number prepended
+  fun lineAt(line: Int): String {
+    if (line < 0) return "";
+    (start, end, lineSeen, txt) = (0, 0, 0, this.text);
+    while(end < txt.size()) {
+      c = txt[end];
+      !end = end + 1;
+      if (this.isLineBreak(c)) {
+         !lineSeen = lineSeen + 1;
+         if (lineSeen == line + 1) break void;
+        !start = end;
+      };
+    };
+    s = this.stringFromSlice(start, end - 1);
+    `${this.pad(line)}| ${s}`
+ }
 }
 
 module end;
