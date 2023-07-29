@@ -401,10 +401,7 @@ mutable class .Interpreter(modules: Modules, globals: mutable GlobMap, stack: mu
       };
 
       instr match {
-        | Store(r, e) -> {
-          val = this.expression(e);
-          frame.setLocal(r, val)
-        }
+        | Store(r, e) -> frame.setLocal(r, this.expression(e))
         | GStore(r, expr) -> frame.setGlobal(r, this.expression(expr))
         | CondJump(r, tgt) -> {
             loc = frame.getLocal(r);
@@ -449,8 +446,6 @@ mutable class .Interpreter(modules: Modules, globals: mutable GlobMap, stack: mu
   readonly fun toStackTrace(): String {
     this.stack.reduce((trace, fr) -> `${trace}\n${fr.toString()}`, "")
   }
-
-
 }
 
 
