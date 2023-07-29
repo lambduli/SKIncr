@@ -1,6 +1,10 @@
 module Reader;
 // ================================================================================================================
-// Parser and Lexer for Small, a small Lisp-like imperative, first-order, eager language.
+// Parser and Lexer for Small, a miniature parenthesized imperative, first-order, eager language.
+//
+// This file contains the handwritten parser and lexer for Small. The entry point is the Reader class.
+// From this class you will get an AST with source references to each input file,.
+//
 // ================================================================================================================
 
 type Expressions = Vector<Expr>;
@@ -11,7 +15,7 @@ type Declarations = Vector<Decl>;
 type Files = Vector<File>;
 type Functions = Vector<Function>;
 
-// Grammar
+// Grammar:
 //
 // File ::= (module Ident imports (Ident+))  (vars (Decl+))  (functions (Function+))
 // Decl ::= (let Ident Expr)
@@ -43,6 +47,7 @@ value class File(tok: Tok, name: String, imports: StringVec, decls: Declarations
 // A .sm function
 value class Function(tok: Tok, name: String, params: StringVec, polyArg: Option<String>, body: Expr, locals: Int) {}
 
+// The core of the AST is the Expr type with its children.
 base class Expr {
   children =
   | ValInt(Tok, Int)
@@ -94,21 +99,19 @@ mutable class .Reader{
     }
   }
 
-  // Process a set of files
+  // process: given a list of files, parses and check them
   static fun process(paths: StringVec): (Vector<mutable Reader>, Files) {
     rs = paths.map(p -> Reader::create(p)); // Readers
-    fs = rs.map(r -> r.file()); // Files
+    fs = rs.map(r -> r.file()); // Parsed files
     fail = false;
     rs.each(r -> if (!r.ok) { r.reportError(); !fail = true; });
-    if (fail) return (rs,fs);
-    cks = rs.map(r -> Checker::create(r)); // Checkers
+    if (fail) return (rs, fs);
     i = 0;
     while (i < rs.size()) {
-      (f, ck) = (fs[i], cks[i]);
-      ck.file(f, fs);
+			Checker::create(rs[i]).file(f, fs[i]);
       !i = i + 1;
     };
-    (rs,fs)
+    (rs, fs)  // Return parsed and checked files
   }
 
   // ------------- PARSING -----------------------------------------------------
@@ -149,8 +152,8 @@ mutable class .Reader{
   mutable fun function(): Function {
     tok = this.curToken();
     (name, _) = (this.eat("(").eat("function").identifier(), this.eat("("));
-    (params, polyArg , _, expr, _) = (this.identifiers(), this.maybePolyArg(), this.eat(")"), this.expression(), this.eat(")"));
-    Function(Tok::createFrom(tok, this.curToken().end, this), name, params, polyArg, expr, 0)
+    (params, poly, _, expr, _) = (this.identifiers(), this.maybePolyArg(), this.eat(")"), this.expression(), this.eat(")"));
+    Function(Tok::createFrom(tok, this.curToken().end, this), name, params, poly, expr, 0)
   }
 
   // Parse a let binding: (let name exp)
