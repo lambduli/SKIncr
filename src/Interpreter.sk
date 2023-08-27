@@ -1,44 +1,47 @@
 module Interpreter;
 
+type Strings = Vector<String>;
+type Funs = Vector<Fun>;
+type Statements = Vector<Stmt>;
+type Vals = Vector<Val>;
+type Frames = Vector<mutable Frame>;
+type Modules = Vector<Module>;
+type GlobMap = Map<String, mutable Vals>;  // From module name to module global registers
+
 base class Val() uses Show {
   children =
-  | ValInt(Int)
-  | ValBool(Bool)
-  | ValChar(Char)
-  | ValString(String)
-  | ValList(Vector<Val>)
-  | NullVal()
+  | I(Int)
+  | B(Bool)
+  | C(Char)
+  | S(String)
+  | L(Vals)
+  | Null()
 
   fun toString(): String {
     this match {
-      | ValInt(i) -> `Int(${i})`
-      | ValBool(b) -> `Bool(${b})`
-      | ValChar(ch) -> `Char(${ch})`
-      | ValString(str) -> `String(${str})`
-      | ValList(vals) -> `[${vals.reduce((s, v) -> `${s}, ${v.toString()}`, "")}]`
-      | NullVal() -> `<NULL VALUE>`
+      | I(i) -> `Int(${i})`
+      | B(b) -> `Bool(${b})`
+      | C(ch) -> `Char(${ch})`
+      | S(str) -> `String(${str})`
+      | L(vals) -> `[${vals.reduce((s, v) -> `${s}, ${v.toString()}`, "")}]`
+      | Null() -> `Null`
     }
   }
 
   fun toOut(): String {
     this match {
-      | ValInt(i) -> `${i}`
-      | ValBool(b) -> `${b}`
-      | ValChar(ch) -> `'${ch}'`
-      | ValList(vals) -> `[${vals.reduce((s, v) -> `${s}, ${v.toOut()}`, "")}]`
-      | ValString(str) -> `"${str}"`
-      | NullVal() -> `<NULL>`
+      | I(i) -> `${i}`
+      | B(b) -> `${b}`
+      | C(ch) -> `'${ch}'`
+      | L(vals) -> `[${vals.reduce((s, v) -> `${s}, ${v.toOut()}`, "")}]`
+      | S(str) -> `"${str}"`
+      | Null() -> `<NULL>`
     }
   }
 }
 
-fun zero(): Val {
-  ValInt(0)
-}
+fun zero(): Val { I(0) }
 
-type Strings = Vector<String>;
-type Funs = Vector<Fun>;
-type Statements = Vector<Stmt>;
 
 value class Module(name: String, globs: Int, funs: Funs) {}
 value class Fun(name: String, params: Int, body: Statements, locals: Int) {}
@@ -66,22 +69,22 @@ base class Stmt {
 // Expressions include immediate constants, variable lookup and function call
 base class Expr uses Show {
   children =
-  | CInt(Int)
-  | CBool(Bool)
-	| CString(String)
-	| CChar(Char)
-  | CList(Vector<Register>)
+  | LitI(Int)
+  | LitB(Bool)
+	| LitS(String)
+	| LitC(Char)
+  | LitL(Vector<Register>)
 	| Register(r: Int)
   | Invoke(fname: String, args: Vector<Int>)
   | Load(r: Int)
 
   fun toString(): String {
     this match {
-      | CInt(i) -> `CInt(${i})`
-      | CBool(b) -> `CBool(${b})`
-      | CString(str) -> `CString(${str})`
-      | CChar(ch) -> `CChar(${ch})`
-      | CList(regs) -> `CList(${regs})`
+      | LitI(i) -> `LitI(${i})`
+      | LitB(b) -> `LitB(${b})`
+      | LitS(str) -> `LitS(${str})`
+      | LitC(ch) -> `LitC(${ch})`
+      | LitL(regs) -> `LitL(${regs})`
       | Register(r) -> `Register(${r})`
       | Invoke(fname, args) -> `Invoke(${fname}, ${args})`
       | Load(r) -> `Load(${r})`
@@ -111,11 +114,11 @@ mutable class Linearize(mutable cntr: Int) {
 
   mutable fun expression(e: Reader.Exp): Expr {
     e match {
-      | Reader.VInt(i) -> CInt(i)
-      | Reader.VBool(b) -> CBool(b)
-      | Reader.VString(s) -> CString(s)
-      | Reader.VChar(ch) -> CChar(ch)
-      | Reader.VList(regs) -> CList(regs.map(this.expToReg))
+      | Reader.VInt(i) -> LitI(i)
+      | Reader.VBool(b) -> LitB(b)
+      | Reader.VString(s) -> LitS(s)
+      | Reader.VChar(ch) -> LitC(ch)
+      | Reader.VList(regs) -> LitL(regs.map(this.expToReg))
       | Reader.Register(str) -> strToReg(str)
       | Reader.Load(str) -> strToLoad(str)
       | Reader.Invoke(fname, args) -> Invoke(fname, args.map(r -> strToReg(r.name).r))
@@ -197,45 +200,23 @@ mutable class Frame(globals: mutable Vals, locals: mutable Vals, mutable pc: Int
   }
 
 
-  readonly fun toString(): String {
-    `${this.fname} pc=${this.pc}`
-  }
-
+  readonly fun toString(): String { `${this.fname} pc=${this.pc}` }
   mutable fun setPC(pc: Int): void { this.!pc = pc; }
 	mutable fun incPC(): void { this.!pc = this.pc + 1; }
 
   // [###] This might fail at runtime
-  readonly fun getLocal(r: Int): Val {
-    this.locals[r]
-  }
-
+  readonly fun getLocal(r: Int): Val { this.locals[r] }
   // [###] This might fail at runtime
-  mutable fun setLocal(r: Int, v: Val): void {
-    this.locals![r] = v;
-  }
-
+  mutable fun setLocal(r: Int, v: Val): void { this.locals![r] = v; }
   // [###] This might fail at runtime
-  readonly fun getGlobal(r: Int): Val {
-    ret = this.globals[r];
-    ret
-  }
-
+  readonly fun getGlobal(r: Int): Val { this.globals[r] }
   // [###] This might fail at runtime
-  mutable fun setGlobal(r: Int, v: Val): void {
-    this.globals![r] = v;
-  }
-
+  mutable fun setGlobal(r: Int, v: Val): void { this.globals![r] = v; }
   // [###] This might fail at runtime
   readonly fun instruction(): Stmt { this.code[this.pc] }
-
   // [###] This might fail at runtime
   readonly fun prevInstruction(): Stmt { this.code[this.pc - 1] }
 }
-
-type Frames = Vector<mutable Frame>;
-type Modules = Vector<Module>;
-type Vals = Vector<Val>;
-type GlobMap = Map<String, mutable Vals>;  // From module name to module global registers
 
 // Example runner
 fun runProgram(modules: Modules): Result<Val, String> {
@@ -274,7 +255,7 @@ mutable class .Interpreter(modules: Modules, globals: mutable GlobMap, stack: mu
         | None() -> void; // this should never happen anyway
         | Some(init) -> {
             globs = this.globals.get(mod.name);
-            locals = Vector<Val>::mfill(init.locals, NullVal());
+            locals = Vals::mfill(init.locals, Null());
             this.stack.push(Frame::mcreate(globs, locals, init.body, "init"));
             _ = this.run();
             _ = this.stack.pop();
@@ -293,24 +274,24 @@ mutable class .Interpreter(modules: Modules, globals: mutable GlobMap, stack: mu
     if (fname == "builtin_bin") {
       callBuiltin2(args) match {
         | Success(val) -> this.nativeReturn(val)
-        | Failure(msg) -> this.!failure = (true, msg);
+        | Failure(msg) -> this.!failure = (true, `Error: ${msg}`);
       }
     } else if (fname == "builtin_un") {
       callBuiltin1(args) match {
         | Success(val) -> this.nativeReturn(val)
-        | Failure(msg) -> this.!failure = (true, msg);
+        | Failure(msg) -> this.!failure = (true, `Error: ${msg}`);
       }
     } else if (fname == "builtin_nul") {
       callBuiltin0(args) match {
         | Success(val) -> this.nativeReturn(val)
-        | Failure(msg) -> this.!failure = (true, msg);
+        | Failure(msg) -> this.!failure = (true, `Error: ${msg}`);
       }
     } else {
       func = this.functionFor(fname);
       globs = this.globalsFor(fname);
       locals = mutable Vals[];
       locals.extend(args);
-      rest = Vector::fill(func.locals - func.params, NullVal());
+      rest = Vector::fill(func.locals - func.params, Null());
       locals.extend(rest);
       this.stack.push(Frame::mcreate(globs, locals, func.body, fname))
     }
@@ -360,18 +341,18 @@ mutable class .Interpreter(modules: Modules, globals: mutable GlobMap, stack: mu
   // also those calls to getLocal and getGlobal might fail
   mutable fun expression(e: Expr): Val {
     e match {
-      | CInt(v) ->  ValInt(v)
-      | CBool(v) -> ValBool(v)
-      | CString(v) -> ValString(v)
-      | CChar(v) -> ValChar(v)
-      | CList(regs) -> ValList(regs.map(this.expression))
+      | LitI(v) ->  I(v)
+      | LitB(v) -> B(v)
+      | LitS(v) -> S(v)
+      | LitC(v) -> C(v)
+      | LitL(regs) -> L(regs.map(this.expression))
       | Register(r) -> this.top().getLocal(r)
       | Load(r) -> this.top().getGlobal(r)
       | Invoke(fname, args) -> {
         argVals = Vector::mcreate();
         argVals.extend(args.map(r -> this.top().getLocal(r))); // get the values of the arguments vector
         this.call(fname, argVals); // push a new frame on the stack
-        NullVal() // placeholder value to be overwritten at return
+        Null() // placeholder value to be overwritten at return
       }
     }
  }
@@ -380,7 +361,7 @@ mutable class .Interpreter(modules: Modules, globals: mutable GlobMap, stack: mu
   // this would be a type error, I think
   mutable fun toBool(v: Val): Result<Bool, String> {
 	 v match {
-    | ValBool(b) -> Success(b)
+    | B(b) -> Success(b)
     | _ -> Failure(`The value '${v}' can not be used as a boolean!`)
    }
 	}
@@ -398,10 +379,7 @@ mutable class .Interpreter(modules: Modules, globals: mutable GlobMap, stack: mu
     loop {
       frame = this.top();
       instr = frame.instruction();
-
-      if (this.failure.i0) {
-        return Failure(this.failure.i1)
-      };
+      if (this.failure.i0) return Failure(this.failure.i1);
 
       instr match {
         | Store(r, e) -> frame.setLocal(r, this.expression(e))
@@ -435,7 +413,7 @@ mutable class .Interpreter(modules: Modules, globals: mutable GlobMap, stack: mu
 						 | GStore(r, _) -> prevFrame.setLocal(r, retVal)
 						 | bad -> {
                 print_string(this.toStackTrace());
-                return Failure(`## IMPOSSIBLE ## A function call wasn't done as a Store or GStore! | it was=${bad}`)
+                return Failure(`## IMPOSSIBLE: A function call wasn't done as a Store or GStore! | it was=${bad}`)
               }
 	  				 };
 						_ = this.stack.pop();
@@ -501,11 +479,11 @@ mutable class PrettyPrint(mutable indent: Int = 0) {
 
   mutable fun expression(e0: Expr): String {
     e0 match {
-    | CInt(i) -> `${i}`
-    | CBool(b) -> `${b}`
-    | CString(s) -> `"${s}"`
-    | CList(regs) -> `[${regs.reduce((s, r) -> `${s} ${this.expression(r)}, `, "")}]`
-    | CChar(ch) -> `'${ch}'`
+    | LitI(i) -> `${i}`
+    | LitB(b) -> `${b}`
+    | LitS(s) -> `"${s}"`
+    | LitL(regs) -> `[${regs.reduce((s, r) -> `${s} ${this.expression(r)}, `, "")}]`
+    | LitC(ch) -> `'${ch}'`
     | Register(r) -> `%${r}`
     | Load(r) -> `@${r}`
     | Invoke(n, regs) -> {
@@ -531,159 +509,150 @@ mutable class PrettyPrint(mutable indent: Int = 0) {
 }
 
 
-
-fun callBuiltin2(args: readonly Vector<Val>): Result<Val, String> {
-  name = args[0];
-
+fun callBuiltin2(args: readonly Vals): Result<Val, String> {
+  name = args[0].toOut();
   name match {
-    | ValString("<") -> {
+    | "<"  -> {
       (args[1], args[2]) match {
-        | (ValInt(x), ValInt(y)) -> Success(ValBool(x < y))
-        | (valx, valy) -> Failure(`Type Error: '<' was applied to '${valx.toOut()}' and '${valy.toOut()}'`)
+        | (I(x), I(y)) -> Success(B(x < y))
+        | (_, _) -> Failure(`${name} applied to '${args[1].toOut()}' and '${args[2].toOut()}'`)
       }
     }
-    | ValString(">") -> {
+    | ">" -> {
       (args[1], args[2]) match {
-        | (ValInt(x), ValInt(y)) -> Success(ValBool(x > y))
-        | (valx, valy) -> Failure(`Type Error: '>' was applied to '${valx.toOut()}' and '${valy.toOut()}'`)
+        | (I(x), I(y)) -> Success(B(x > y))
+        | (_, _) -> Failure(`${name} applied to '${args[1].toOut()}' and '${args[2].toOut()}'`)
       }
     }
-    | ValString("<=") -> {
+    | "<=" -> {
       (args[1], args[2]) match {
-        | (ValInt(x), ValInt(y)) -> Success(ValBool(x <= y))
-        | (valx, valy) -> Failure(`Type Error: '<=' was applied to '${valx.toOut()}' and '${valy.toOut()}'`)
+        | (I(x), I(y)) -> Success(B(x <= y))
+        | (_, _) -> Failure(`${name} applied to '${args[1].toOut()}' and '${args[2].toOut()}'`)
       }
     }
-    | ValString(">=") -> {
+    | ">=" -> {
       (args[1], args[2]) match {
-        | (ValInt(x), ValInt(y)) -> Success(ValBool(x >= y))
-        | (valx, valy) -> Failure(`Type Error: '>=' was applied to '${valx.toOut()}' and '${valy.toOut()}'`)
+        | (I(x), I(y)) -> Success(B(x >= y))
+        | (_, _) -> Failure(`${name} applied to '${args[1].toOut()}' and '${args[2].toOut()}'`)
       }
     }
-    | ValString("+") -> {
+    | "+" -> {
       (args[1], args[2]) match {
-        | (ValInt(x), ValInt(y)) -> Success(ValInt(x + y))
-        | (valx, valy) -> Failure(`Type Error: '+' was applied to '${valx.toOut()}' and '${valy.toOut()}'`)
+        | (I(x), I(y)) -> Success(I(x + y))
+        | (_, _) -> Failure(`${name} applied to '${args[1].toOut()}' and '${args[2].toOut()}'`)
       }
     }
-    | ValString("-") -> {
+    | "-" -> {
       (args[1], args[2]) match {
-        | (ValInt(x), ValInt(y)) -> Success(ValInt(x - y))
-        | (valx, valy) -> Failure(`Type Error: '-' was applied to '${valx.toOut()}' and '${valy.toOut()}'`)
+        | (I(x), I(y)) -> Success(I(x - y))
+        | (_, _) -> Failure(`${name} applied to '${args[1].toOut()}' and '${args[2].toOut()}'`)
       }
     }
-    | ValString("*") -> {
+    | "*" -> {
       (args[1], args[2]) match {
-        | (ValInt(x), ValInt(y)) -> Success(ValInt(x * y))
-        | (valx, valy) -> Failure(`Type Error: '*' was applied to '${valx.toOut()}' and '${valy.toOut()}'`)
+        | (I(x), I(y)) -> Success(I(x * y))
+        | (_, _) -> Failure(`${name} applied to '${args[1].toOut()}' and '${args[2].toOut()}'`)
       }
     }
-    | ValString("/") -> {
+    | "/" -> {
       (args[1], args[2]) match {
-        | (ValInt(x), ValInt(y)) -> Success(ValInt(x / y))
-        | (valx, valy) -> Failure(`Type Error: '/' was applied to '${valx.toOut()}' and '${valy.toOut()}'`)
+        | (I(x), I(y)) -> Success(I(x / y))
+        | (_, _) -> Failure(`${name} applied to '${args[1].toOut()}' and '${args[2].toOut()}'`)
       }
     }
-
-    | ValString("&&") -> {
+    | "&&" -> {
       (args[1], args[2]) match {
-        | (ValBool(x), ValBool(y)) -> Success(ValBool(x && y))
-        | (valx, valy) -> Failure(`Type Error: '&&' was applied to '${valx.toOut()}' and '${valy.toOut()}'`)
+        | (B(x), B(y)) -> Success(B(x && y))
+        | (_, _) -> Failure(`${name} applied to '${args[1].toOut()}' and '${args[2].toOut()}'`)
       }
     }
-    | ValString("||") -> {
+    | "||" -> {
       (args[1], args[2]) match {
-        | (ValBool(x), ValBool(y)) -> Success(ValBool(x || y))
-        | (valx, valy) -> Failure(`Type Error: '||' was applied to '${valx.toOut()}' and '${valy.toOut()}'`)
+        | (B(x), B(y)) -> Success(B(x || y))
+        | (_, _) -> Failure(`${name} applied to '${args[1].toOut()}' and '${args[2].toOut()}'`)
       }
     }
-    | ValString("==") -> {
+    | "==" -> {
       (args[1], args[2]) match {
-        | (ValInt(x), ValInt(y)) -> Success(ValBool(x == y))
-        | (ValChar(x), ValChar(y)) -> Success(ValBool(x == y))
-        | (ValString(x), ValString(y)) -> Success(ValBool(x == y))
-        | (ValBool(x), ValBool(y)) -> Success(ValBool(x == y))
-        | (valx, valy) -> Failure(`Type Error: '=' was applied to '${valx.toOut()}' and '${valy.toOut()}'`)
+        | (I(x), I(y)) -> Success(B(x == y))
+        | (C(x), C(y)) -> Success(B(x == y))
+        | (S(x), S(y)) -> Success(B(x == y))
+        | (B(x), B(y)) -> Success(B(x == y))
+        | (_, _) -> Failure(`${name} applied to '${args[1].toOut()}' and '${args[2].toOut()}'`)
       }
     }
-    | ValString("at") -> {
+    | "at" -> {
         (args[1], args[2]) match {
-          | (ValList(vals), ValInt(i)) -> {
+          | (L(vals), I(i)) -> {
             if (vals.size() >= i) Success(vals[i])
-            else Failure(`Evaluation Error: 'at' was called on a too short list.`)
+            else Failure(`Evaluation 'at' was called on a too short list.`)
           }
-          | (v, i) -> Failure(`Type Error: 'at' was called on '${v}'\nwhich is NOT a list OR the '${i}' is not a number.`)
+          | (v, i) -> Failure(`'at' called on '${v}' and '${i}', expecting a list and a number.`)
         }
       }
-    | ValString("write!") -> {
-      (args[1], args[2]) match {
-        | (ValString(msg), val) -> {
-          print_string(`>  ${msg}${val.toOut()}`);
-          Success(NullVal())
-        }
-        | (_, _) -> Failure(`Type Error: 'write!' was called with a non-string first argument.`)
-      }
-    }
-    | _ -> Failure(`Symbol Error: Uknown binary-builtin '${name.toOut()}'`)
+    | "write!" -> {
+ 		  (args[1], args[2]) match {
+			| (v, L(ls)) -> print_string(`${v.toOut()}${ls.reduce((s,e) -> `${s}${e.toOut()}`,"")}`)
+			| (v, _) -> print_string(`${v.toOut()}`)
+      };
+			Success(Null())
+		}
+    | _ -> Failure(`Uknown builtin '${name}'`)
   }
 }
 
-fun callBuiltin1(args: readonly Vector<Val>): Result<Val, String> {
-  name = args[0];
-
+fun callBuiltin1(args: readonly Vals): Result<Val, String> {
+  name = args[0].toOut();
   name match {
-    | ValString("!") -> {
+    | "!" -> {
       args[1] match {
-        | ValBool(b) -> Success(ValBool(! b))
-        | val -> Failure(`Type Error: '!' was applied to '${val.toOut()}'`)
+        | B(b) -> Success(B(! b))
+        | _ -> Failure(`${name} applied to '${args[1].toOut()}'`)
       }
     }
-    | ValString("head") -> {
+    | "head" -> {
       args[1] match {
-        | ValList(vals) -> {
+        | L(vals) -> {
           if (vals.size() > 0) Success(vals[0])
-          else Failure(`Evaluation Error: 'head' was called on an empty list.`)
+          else Failure(`'head' was called on an empty list.`)
         }
-        | v -> Failure(`Type Error: 'head' was called on '${v}'\nwhich is NOT a list.`)
+        | v -> Failure(`'head' was called on '${v}'\nwhich is NOT a list.`)
       }
     }
-    | ValString("tail") -> {
+    | "tail" -> {
         args[1] match {
-          | ValList(vals) -> {
-            if (vals.size() > 0) Success(ValList(vals.slice(1)))
-            else Failure(`Evaluation Error: 'tail' was called on an empty list.`)
+          | L(vals) -> {
+            if (vals.size() > 0) Success(L(vals.slice(1)))
+            else Failure(`'tail' was called on an empty list.`)
           }
-          | v -> Failure(`Type Error: 'tail' was called on '${v}'\nwhich is NOT a list.`)
+          | v -> Failure(`'tail' was called on '${v}'\nwhich is NOT a list.`)
         }
       }
-    | ValString("size") -> {
+    | "size" -> {
         args[1] match {
-          | ValList(vals) -> Success(ValInt(vals.size()))
-          | v -> Failure(`Type Error: 'tail' was called on '${v}'\nwhich is NOT a list.`)
+          | L(vals) -> Success(I(vals.size()))
+          | v -> Failure(`'tail' was called on '${v}'\nwhich is NOT a list.`)
         }
       }
-    | _ -> Failure(`Symbol Error: Uknown binary-builtin '${name.toOut()}'`)
+    | _ -> Failure(`Uknown binary-builtin '${name}'`)
   }
 }
 
-fun callBuiltin0(args: readonly Vector<Val>): Result<Val, String> {
-  name = args[0];
-
+fun callBuiltin0(args: readonly Vals): Result<Val, String> {
+  name = args[0].toOut();
   name match {
-    | ValString("read!") -> {
+    | "read!" -> {
       read_line() match {
-        | None() -> {
-          Failure(`unable to 'read!' for some reason.`);
-        }
+        | None() -> Failure(`unable to 'read!' for some reason.`)
         | Some(line) -> {
           line.toIntOption() match {
             | None() -> Failure(`operation 'read!' failed. The input '${line}' is not a number.`);
-            | Some(i) -> Success(ValInt(i))
+            | Some(i) -> Success(I(i))
           }
         }
       }
     }
-    | _ -> Failure(`Symbol Error: Uknown binary-builtin '${name.toOut()}'`)
+    | _ -> Failure(`Uknown builtin '${name}'`)
   }
 }
 

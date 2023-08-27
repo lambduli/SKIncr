@@ -1,8 +1,8 @@
 (module Main imports (StdLib))
 
 (vars (
-  (let A 23)
-  (let B 42)
+  (let A 1)
+  (let B 2)
   (let X (+ A B))
   (let Z 0)
 ))
@@ -24,32 +24,16 @@
     )
   )
 
-  (function fun ()
-    (simple)
-  )
+  (function fun ()  (simple))
 
-  # if the first argument is smaller than the second argument
-  # then consider the difference between them
-  # and that many times multiply the second argument
-  # that is what the `Z` will be set to
   (function foo (f y)
     (begin
       (set! Z 0) # resets the `Z` to 0 each time `foo` is called
       (set! X f)
       (let locx X)
-      # (write! X)
-      (let z 10) # the question is, should this be allowed?
-      # (write! locx)
-      # (write! y)
-      # (write! (< locx y))
       (while (< locx y)
         (begin
-          (write! "< locx y")
-          (write! locx)
-          (write! y)
-          # (write! (< locx y))
           (set! Z (+ y Z))
-          # (write! locx)
           (set! locx (+ locx 1))
           (set! locx (- locx 0))
         )
@@ -58,14 +42,14 @@
     )
   )
 
+  # returns "> 3"
   (function main ()
     (begin
-      (let d 23)
-      (let c 42)
-      (let e (foo d c)) # 42 - 23 = 19 ; 19 * 42 = 798
-      (let ignore (foo d e)) # never used anyway
-      (+ A B) # 23 + 798 = 821
+      (let d 2)
+      (let c 4)
+      (let e (foo d c))
+      (let ignore (foo d e))
+      (+ A B)
     )
   )
-
 ))

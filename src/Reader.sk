@@ -87,7 +87,13 @@ type Functions = Vector<Function>;
 // -------------------------------------------------------------------------------------
 
 // A file that contains .sm code
-value class File(tok: Tok, name: String, imports: Strings, decls: Declarations, funs: Functions) {}
+value class File(tok: Tok, name: String, imports: Strings, decls: Declarations, funs: Functions) {
+//fun print(): void {
+//	  if (this.name == "StdLib") return void;
+//		printer = mutable PretyPrint();
+	//	print_string(printer.file(this));
+	//}
+}
 
 // A .sm function
 value class Function(tok: Tok, name: String, params: Strings, polyArg: Option<String>, body: Expr, locals: Int) {}
@@ -107,6 +113,79 @@ base class Expr {
   | While(Tok, Expr, Expr)
   | Cond(Tok, Expr, Expr, Expr)
 }
+
+
+mutable class .PrettyPrint(mutable indent: Int = 0) {
+
+  mutable fun file(f: File): String {
+     s = `(module ${f.name} imports (`;
+     f.imports.each(s -> !s = s + s + " ");
+     !s = `${s})\n(vars (`;
+     if (f.decls.size() == 0) {
+       !s = s + "))\n";
+     } else {
+       this.inc();
+       f.decls.each(d -> !s = s + "\n" + this.pad() + this.expression(d));
+       this.dec();
+       !s = s + "\n))\n";
+     };
+     !s = s + `(functions (`;
+     if (f.funs.size() == 0) {
+       !s = s + "))\n";
+     } else {
+       this.inc();
+       f.funs.each(f -> !s = s + "\n" + this.pad() + this.function(f));
+        !s = s + "\n))\n";
+       this.dec();
+     };
+     s
+  }
+
+  mutable fun function(f: Function): String {
+    s = `(function ${f.name}(`;
+    f.params.each(p -> !s = `${s} ${p}`);
+    _ = f.polyArg.map(str -> { !s = `${s} ...${str}`});
+    !s = `${s}) `;
+    this.inc();
+    !s = `${s} ${this.expression(f.body)}\n`;
+    this.dec();
+    s
+  }
+
+  mutable fun expression(e0: Expr): String {
+    e0 match {
+    | LitInt(_, i) -> `${i}`
+    | LitBool(_, b) -> `${b}`
+    | LitChar(_, ch) -> `'${ch}'`
+    | LitString(_, str) -> `"${str}"`
+    | LitList(_, exs) -> `[${exs.reduce((s, e) -> `${s}, ${this.expression(e)}`, "")}]`
+    | Var(_, s) -> { s }
+    | Decl(_, n, e) -> `(let ${n} ${this.expression(e)})`
+    | Call(_, n, es) -> `(${n} ${es.reduce((s, e) -> `${s} ${this.expression(e)}`, "")})`
+    | Block(_t, es) -> {
+      s = `${this.pad()}(begin `;
+      this.inc();
+      es.each(e -> !s = `${s}\n${this.pad()}${this.expression(e)}`);
+      this.dec();
+      `${s})`
+    }
+    | While(_, e, s) -> `(while ${this.expression(e)} ${this.expression(s)})`
+		| Cond(_, e, s1, s2) -> {
+      s = `(if ${this.expression(e)}\n`;
+      this.inc();
+      !s = `${s}${this.expression(s1)}\n${this.expression(s2)})`;
+      this.dec();
+      s
+    }
+    }
+  }
+
+  mutable fun inc(): void { this.!indent = this.indent + 2; }
+  mutable fun dec(): void { this.!indent = this.indent - 2; }
+  readonly fun pad(): String { s = ""; n = this.indent; while (n > 0) { !s = s+" "; !n = n-1; }; s }
+
+}
+
 
 // ----------------------------------------------------------------------------------
 // Reader

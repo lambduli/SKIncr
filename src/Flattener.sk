@@ -88,87 +88,6 @@ class .Translator() {
   fun function(f: Function): Fun { Fun(f.name, f.params.size(), Code(this.statement(f.body)), f.locals)  }
 }
 
-mutable class .PrettyPrint2(mutable indent: Int = 0) {
-
-  readonly fun pad(): String {
-    s = "";
-  n = this.indent;
-  while (n > 0) { !s = s + " "; !n = n - 1; };
-  s
-  }
-
-  mutable fun toModule(f: Module): String {
-    s = `(module ${f.name} imports (`;
-    f.imports.each(s -> !s = s + s + " ");
-    // !s = `${s})\n(vars (`;
-    !s = s + `(functions (`;
-    if (f.funs.size() == 0) {
-      !s = s + "))\n";
-    } else {
-      this.inc();
-      f.funs.each(f -> !s = s + "\n" + this.pad() + this.function(f));
-       !s = s + "\n))\n";
-      this.dec();
-    };
-    s
-  }
-
-  mutable fun function(f: Fun): String {
-    params = `${f.params}`;
-    s = `(function ${f.name}(${params} | ${f.locals}`;
-    !s = s + ") ";
-    this.inc();
-    !s = s + this.code(f.body);
-    this.dec();
-    !s = s + ")\n";
-    s
-  }
-
-  mutable fun code(c: Code): String {
-    res = "";
-    c.stmts.each(s -> {
-      !res = res + "\n" + this.pad() + this.statement(s);
-    });
-    res
-  }
-
-  mutable fun expression(e0: Exp): String {
-    e0 match {
-    | VInt(i) -> `${i}`
-    | VBool(b) -> `${b}`
-    | VString(s) -> `"${s}"`
-    | VChar(ch) -> `'${ch}'`
-    | VList(regs) -> `[${regs.reduce((s, r) -> `${s}, ${this.expression(r)}`, "")}]`
-    | Register(s) -> s
-    | Load(s) -> `load ${s}`
-    | Invoke(n, es) -> {
-      s = `(${n} `;
-       es.each(e -> !s = s + " " + this.expression(e));
-      s + ")"
-    }
-    }
-  }
-
-  mutable fun statement(st: Stmt): String {
-    st match {
-    | Set(n, e) -> `${this.expression(n)} = ${this.expression(e)}`
-    | GSet(n, e) -> `${this.expression(n)} ^= ${this.expression(e)}`
-    | Loop(e, s) -> "while " + this.expression(e) + " " + this.code(s)
-    | Branch(e, s1, s2) -> {
-      s = "(if " + this.expression(e) + "\n";
-      this.inc();
-      !s = s + this.code(s1) + "\n" + this.code(s2) + ")";
-      this.dec();
-      s
-    }
-    | Return(e) -> `return ${this.expression(e)}`
-    }
-  }
-
-  mutable fun inc(): void { this.!indent = this.indent + 2; }
-  mutable fun dec(): void { this.!indent = this.indent - 2; }
-
-}
 
 
 mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), mutable funs: Functions = Functions[]) {
@@ -429,86 +348,81 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), mutabl
   }
 }
 
-mutable class .PrettyPrint(mutable indent: Int = 0) {
+
+
+mutable class .PrettyPrint2(mutable indent: Int = 0) {
 
   readonly fun pad(): String {
-    s = "";
-    n = this.indent;
+    s = "";  n = this.indent;
     while (n > 0) { !s = s + " "; !n = n - 1; };
     s
   }
 
-  mutable fun file(f: File): String {
-     s = `(module ${f.name} imports (`;
-     f.imports.each(s -> !s = s + s + " ");
-     !s = `${s})\n(vars (`;
-     if (f.decls.size() == 0) {
-       !s = s + "))\n";
-     } else {
-       this.inc();
-       f.decls.each(d -> !s = s + "\n" + this.pad() + this.expression(d));
-       this.dec();
+  mutable fun toModule(f: Module): String {
+    s = `(module ${f.name} imports (`;
+    f.imports.each(s -> !s = s + s + " ");
+    // !s = `${s})\n(vars (`;
+    !s = s + `(functions (`;
+    if (f.funs.size() == 0) {
+      !s = s + "))\n";
+    } else {
+      this.inc();
+      f.funs.each(f -> !s = s + "\n" + this.pad() + this.function(f));
        !s = s + "\n))\n";
-     };
-     !s = s + `(functions (`;
-     if (f.funs.size() == 0) {
-       !s = s + "))\n";
-     } else {
-       this.inc();
-       f.funs.each(f -> !s = s + "\n" + this.pad() + this.function(f));
-        !s = s + "\n))\n";
-       this.dec();
-     };
-     s
+      this.dec();
+    };
+    s
   }
 
-  mutable fun function(f: Function): String {
-    s = `(function ${f.name}(`;
-    f.params.each(p -> !s = s + " " + p);
-    _ = f.polyArg.map(str -> { !s = `${s} ...${str}`});
+  mutable fun function(f: Fun): String {
+    params = `${f.params}`;
+    s = `(function ${f.name}(${params} | ${f.locals}`;
     !s = s + ") ";
     this.inc();
-    !s = s + this.expression(f.body);
+    !s = s + this.code(f.body);
     this.dec();
     !s = s + ")\n";
     s
   }
 
-  mutable fun expression(e0: Expr): String {
+  mutable fun code(c: Code): String {
+    res = "";
+    c.stmts.each(s -> {
+      !res = res + "\n" + this.pad() + this.statement(s);
+    });
+    res
+  }
+
+  mutable fun expression(e0: Exp): String {
     e0 match {
-    | LitInt(_, i) -> `${i}`
-    | LitBool(_, b) -> `${b}`
-    | LitChar(_, ch) -> `'${ch}'`
-    | LitString(_, str) -> `"${str}"`
-    | LitList(_, exs) -> `[${exs.reduce((s, e) -> `${s}, ${this.expression(e)}`, "")}]`
-    | Var(_, s) -> { s }
-    | Decl(_, n, e) -> {
-       se = this.expression(e);
-       `(let ${n} ${se})`
-    }
-    | Call(_, n, es) -> {
+    | VInt(i) -> `${i}`
+    | VBool(b) -> `${b}`
+    | VString(s) -> `"${s}"`
+    | VChar(ch) -> `'${ch}'`
+    | VList(regs) -> `[${regs.reduce((s, r) -> `${s}, ${this.expression(r)}`, "")}]`
+    | Register(s) -> s
+    | Load(s) -> `load ${s}`
+    | Invoke(n, es) -> {
       s = `(${n} `;
        es.each(e -> !s = s + " " + this.expression(e));
       s + ")"
     }
-    | Block(_t, es) -> {
-      s = this.pad() + "(begin ";
-      this.inc();
-      es.each(e -> !s = s + "\n" + this.pad() + this.expression(e));
-      this.dec();
-      s + ")"
     }
-    | While(_, e, s) -> {
-      "(while " + this.expression(e) + " " + this.expression(s) + ")"
-    }
-    | Cond(_, e, s1, s2) -> {
+  }
+
+  mutable fun statement(st: Stmt): String {
+    st match {
+    | Set(n, e) -> `${this.expression(n)} = ${this.expression(e)}`
+    | GSet(n, e) -> `${this.expression(n)} ^= ${this.expression(e)}`
+    | Loop(e, s) -> "while " + this.expression(e) + " " + this.code(s)
+    | Branch(e, s1, s2) -> {
       s = "(if " + this.expression(e) + "\n";
       this.inc();
-      !s = s + this.expression(s1) + "\n";
-      !s = s + this.expression(s2) + ")";
+      !s = s + this.code(s1) + "\n" + this.code(s2) + ")";
       this.dec();
       s
     }
+    | Return(e) -> `return ${this.expression(e)}`
     }
   }
 
