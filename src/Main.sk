@@ -1,14 +1,22 @@
-
+// =====================================================================================
 // The entry point for the interpreter and analyzer.
 //
-// main() expects a list of files, one of which should be module `Main`, with a function
-// `main`. All imported modules should be available. No module should appear more than once.
-//
+// `main()` gets a `paths` from the command line.
+
+// If `paths` is the empty list, run the tests.
+
+// Otherwise, `path` is expected to contain file names (including one
+// that has module `Main`).  Parse the files and run `Main`.
+// =====================================================================================
 fun main(): void {
 	paths = arguments();
 	if (paths.size() == 0)  test() else	good(Vector::createFromItems(paths));
 }
 
+// ====================================================================================
+// test(): Run tests. Good ones do not fail, bad ones can.  Currently
+// `bad()` is unimplemented.
+//
 fun test(): void {
 	good(Vector<String>["tests/stdlib.sm", "tests/good/1/main.sm"]);
 	good(Vector<String>["tests/stdlib.sm", "tests/good/2/main.sm"]);
@@ -18,26 +26,30 @@ fun test(): void {
 	good(Vector<String>["tests/stdlib.sm", "tests/good/6/main.sm"]);
   good(Vector<String>["tests/stdlib.sm", "tests/good/7/main.sm"]);
   good(Vector<String>["tests/stdlib.sm", "tests/good/8/lib.sm", "tests/good/8/main.sm"]);
-
 //	bad_test(Vector<String>["tests/StdLib.sm", "tests/bad/1.sm"], true);
 //	bad_test(Vector<String>["tests/StdLib.sm", "tests/bad/2.sm"], false);
 //	bad_test(Vector<String>["tests/StdLib.sm", "tests/bad/3.sm"], true);
 }
 
-fun good(p: Vector<String>): void {
-   (rs,fs) = Reader::process(p);
+// ====================================================================================
+// `good(files)`: `files` has a list of file names, we read, parse and
+// check each file, then run `Main`.  `files` must include `StdLib` as
+// it contains all the primitives.
+//
+fun good(files: Vector<String>): void {
+   (rs,fs) = Reader::process(files);
 	 rs.each(r -> if (!r.ok) { r.reportError(); });
 	 flat = mutable Flattener();
 	 flatFs = fs.map( f -> flat.file(f) );
 	 flatFs.each(f -> {
 	   pp = mutable PrettyPrint();
-		 if (true || f.name != "StdLib") { print_string(pp.file(f)); };
+		 if (f.name != "StdLib") { print_string(pp.file(f)); };
 	 });
 	 t = Translator();
 	 translated = flatFs.map(d -> t.file(d));
 	 translated.each(m -> {
 	 	p1 = mutable PrettyPrint2();
-		print_string(p1.toModule(m));
+   	print_string(p1.toModule(m));
 	});
 
 	l = Interpreter.Linearize::mcreate();
@@ -49,15 +61,9 @@ fun good(p: Vector<String>): void {
 	});
 
 	Interpreter.runProgram(linearized) match {
-		| Failure(msg) -> {
-			print_string(`RUNTIME ERROR: ${msg}`);
-		}
-		| Success(v) -> {
-			print_string(`>  ${v.toOut()}`);
-		}
+		| Failure(msg) -> print_string(`RUNTIME ERROR: ${msg}`);
+		| Success(v) ->   print_string(`>  ${v.toOut()}`);
 	};
-
-
 }
 
 fun bad_test(p: Vector<String>, _verbose: Bool): void {

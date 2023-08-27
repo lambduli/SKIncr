@@ -1,8 +1,9 @@
 module Reader;
 
-type Strings = Vector<String>;
 type Funs = Vector<Fun>;
 type Statements = Vector<Stmt>;
+type VMap = mutable Map<String, String>;
+type Exprs = Vector<Expr>;
 
 value class Module(name: String, imports: Strings, globs: Int, funs: Funs) {}
 value class Fun(name: String, params: Int, body: Code, locals: Int) {}
@@ -15,9 +16,10 @@ base class Stmt {
   | Loop(Exp, Code)
   | Branch(Exp, Code, Code)
   | Return(Exp) // TODO: Return(Register)
-  // this means that the Flattener needs to turn the last expression in Function into a
-  // return (and store the result into the register first).  This will be helped when we check
-  // sanity of function definitions. See comment on top of Checker.sk
+  //this means that the Flattener needs to turn the last expression in
+  //Function into a return (and store the result into the register
+  //first).  This will be helped when we check sanity of function
+  //definitions. See comment on top of Checker.sk
 }
 
 base class Exp {
@@ -43,11 +45,11 @@ class .Translator() {
 
   fun expression(e0: Expr): Exp {
     e0 match {
-     | ValInt(_, i) -> VInt(i)
-     | ValBool(_, b) -> VBool(b)
-     | ValChar(_, c) -> VChar(c)
-     | ValString(_, s) -> VString(s)
-     | ValList(_, exs) -> VList(exs.map(e -> this.var(e)))
+     | LitInt(_, i) -> VInt(i)
+     | LitBool(_, b) -> VBool(b)
+     | LitChar(_, c) -> VChar(c)
+     | LitString(_, s) -> VString(s)
+     | LitList(_, exs) -> VList(exs.map(e -> this.var(e)))
      | Var(_, s) -> Register(s)
      | Call(_, n, es) -> {
         if (n == "load") {
@@ -169,9 +171,6 @@ mutable class .PrettyPrint2(mutable indent: Int = 0) {
 }
 
 
-type VMap = mutable Map<String, String>;
-type Exprs = Vector<Expr>;
-
 mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), mutable funs: Functions = Functions[]) {
 
   mutable fun file(f: File): File {
@@ -181,16 +180,17 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), mutabl
     newFuns = mutable Functions[];
     newFuns.extend(this.funs);
     newFuns.extend(f.funs);
-    this.!funs = newFuns.chill(); // we need to preserve all the functions in all the modules
-    // even thought, this approach seems to be susceptible to bugs
-    // the order in which the modules are processed matters, but that order is not really
-    // the order of dependencies
+    this.!funs = newFuns.chill();
+		// we need to preserve all the functions in all the modules.  even
+    // thought, this approach seems to be susceptible to bugs.  the
+    // order in which the modules are processed matters, but that
+    // order is not really the order of dependencies
 
     f.decls.each(d -> d match { | Decl(_, n, _) -> { this.glob.add(n, this.nextVar());}});
     v = mutable Exprs[];
     v.extend(f.decls.map(d -> d match { | Decl(t, n, e) -> Call(t, "gset!", Exprs[Var(t, n), e])}));
     varname = "success";
-    v.extend(Exprs[Decl(f.tok, varname, ValInt(f.tok, 0)), Var(f.tok, varname)]); // return 0
+    v.extend(Exprs[Decl(f.tok, varname, LitInt(f.tok, 0)), Var(f.tok, varname)]); // return 0
     b = Block(f.tok, v.chill());
     init = Function(f.tok, "init", Strings[], None(), b, this.v);
     funs = Vector::mcreateFromItems(f.funs);
@@ -227,12 +227,12 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), mutabl
     // Decl(<original token>, <original name>, Call(<original token>, "at", Vector[<original name>, <position>]))
     // this needs to become a part of the body of the function, so I need to prepend it before transformation
     unlistParams
-      = f.params.mapWithIndex((pos, name) -> Decl(f.tok, name, Call(f.tok, "at", Exprs[argVar, ValInt(f.tok, pos)])));
+      = f.params.mapWithIndex((pos, name) -> Decl(f.tok, name, Call(f.tok, "at", Exprs[argVar, LitInt(f.tok, pos)])));
     // all of this will go into a body
     // they "redefine" original parameters and we make up a new, singular parameter (inside `argVar`)
 
     unlistRest = f.polyArg.map(str -> Exprs[Decl(f.tok,str,
-							 Call(f.tok, "drop", Exprs[ValInt(f.tok, f.params.size()), argVar]))]).default(Exprs[]);
+							 Call(f.tok, "drop", Exprs[LitInt(f.tok, f.params.size()), argVar]))]).default(Exprs[]);
 
     body = mutable Exprs[];
     body.extend(unlistParams);
@@ -289,14 +289,14 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), mutabl
     ve = mutable Exprs[];
     undef = this.undef();
     e0 match {
-    | ValInt(t, _)
-    | ValBool(t, _)
-    | ValChar(t, _)
-    | ValString(t, _) -> {
+    | LitInt(t, _)
+    | LitBool(t, _)
+    | LitChar(t, _)
+    | LitString(t, _) -> {
       varname = this.nextVar();
       (mutable Exprs[Decl(t, varname, e0)], Var(t, varname))
     }
-    | ValList(t, _) -> {
+    | LitList(t, _) -> {
       // THIS WILL NEVER HAPPEN
       ve.push(Var(t, "ERROR"));
       (ve, undef)
@@ -356,17 +356,23 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), mutabl
             (ve, Var(t,varname))
           }
           | AtLeast(_) -> {
-            // that `ordCnt` must be smaller than `argsCnt`, but at this point it will
-            // I will have to construct a new variable and store a list in it
-            // that list will contain all the additional arguments (rest of `es`)
-            // so I take first `n` arguments and deal with them the same way as above
-            // but then I create a new variable after I deal with the rest of the arguments
-            // in such a way that the new variable can host a List that contains all the second parts of each tuple
-            // I then construct the call, it will be almost exactly what is above, but I will push one more argument to it
-            // that will be the new variable with the list
+            // that `ordCnt` must be smaller than `argsCnt`, but at
+            // this point it will I will have to construct a new
+            // variable and store a list in it that list will contain
+            // all the additional arguments (rest of `es`) so I take
+            // first `n` arguments and deal with them the same way as
+            // above but then I create a new variable after I deal
+            // with the rest of the arguments in such a way that the
+            // new variable can host a List that contains all the
+            // second parts of each tuple I then construct the call,
+            // it will be almost exactly what is above, but I will
+            // push one more argument to it that will be the new
+            // variable with the list
 
-            // we know that every polyvariadic function is translated into a function with a single parameter
-            // we therefore need to put all the arguments into a list and only pass that list into the call
+            // we know that every polyvariadic function is translated
+            // into a function with a single parameter we therefore
+            // need to put all the arguments into a list and only pass
+            // that list into the call
 
             // TODO: there are no ordinary arguments, everything goes into a list together with the rest thing
             // ordinary = es.slice(0, ordCnt); // only first `n` arguments
@@ -385,7 +391,7 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), mutabl
               ve.extend(v2.chill());
             });
             listvarname = this.nextVar();
-            ve.push(Decl(t, listvarname, ValList(t, listvars.chill())));
+            ve.push(Decl(t, listvarname, LitList(t, listvars.chill())));
             es2.push(Var(t, listvarname));
             varname = this.nextVar();
             ve.push(Decl(t, varname, Call(t, n, es2.chill())));
@@ -470,11 +476,11 @@ mutable class .PrettyPrint(mutable indent: Int = 0) {
 
   mutable fun expression(e0: Expr): String {
     e0 match {
-    | ValInt(_, i) -> `${i}`
-    | ValBool(_, b) -> `${b}`
-    | ValChar(_, ch) -> `'${ch}'`
-    | ValString(_, str) -> `"${str}"`
-    | ValList(_, exs) -> `[${exs.reduce((s, e) -> `${s}, ${this.expression(e)}`, "")}]`
+    | LitInt(_, i) -> `${i}`
+    | LitBool(_, b) -> `${b}`
+    | LitChar(_, ch) -> `'${ch}'`
+    | LitString(_, str) -> `"${str}"`
+    | LitList(_, exs) -> `[${exs.reduce((s, e) -> `${s}, ${this.expression(e)}`, "")}]`
     | Var(_, s) -> { s }
     | Decl(_, n, e) -> {
        se = this.expression(e);

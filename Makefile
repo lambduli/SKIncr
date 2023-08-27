@@ -7,7 +7,7 @@ CC32FLAGS=-DSKIP32 --target=wasm32 -emit-llvm
 CC64FLAGS=$(OLEVEL) -DSKIP64
 SKFLAGS=
 
-SKIP_FILES=$(shell find . -name "*.sk") 
+SKIP_FILES=$(shell find . -name "*.sk")
 CFILES=\
 	runtime/copy.c \
 	runtime/free.c \
@@ -32,12 +32,10 @@ BCFILES32=build/magic.bc $(addprefix build/,$(CFILES32:.c=.bc))
 OFILES=$(addprefix build/,$(CFILES:.c=.o))
 ONATIVE_FILES= build/magic.o $(addprefix build/,$(NATIVE_FILES:.c=.o))
 
-
 default: build/skia
 
 docker:
 	docker run -it -v /Users/jan/Documents/SKIncr:/jan/SKIncr buildme bash
-
 
 build/skc:
 	mkdir -p build
@@ -73,43 +71,5 @@ build/out64.ll: $(SKIP_FILES) build/skc
 clean:
 	rm -Rf build
 
-examples: build/skia
-	@echo "=================================================="
-	@echo "                   Testing Smol:                  "
-	@echo "--------------------------------------------------"
-	@echo "file:  ./src/examples/three-vars.smol"
-	./build/skia ./src/examples/three-vars.smol
-
-	@echo "--------------------------------------------------"
-	@echo "file:  ./src/examples/first.smol"
-	./build/skia ./src/examples/first.smol
-
-	@echo "--------------------------------------------------"
-	@echo "file:  ./src/examples/one-fun.smol"
-	./build/skia ./src/examples/one-fun.smol
-
-	@echo "--------------------------------------------------"
-	@echo "file:  ./src/examples/control-flow.smol"
-	./build/skia ./src/examples/control-flow.smol
-
-
-	@echo "--------------------------------------------------"
-	@echo "file:  ./src/examples/comments.smol"
-	./build/skia ./src/examples/comments.smol
-
-# this one is supposed to rail at runtime
-#	@echo "--------------------------------------------------"
-#	@echo "file:  ./src/examples/local-set.smol"
-#	./build/skia ./src/examples/local-set.smol
-
-
-	@echo "--------------------------------------------------"
-	@echo "file:  ./src/examples/io.smol"
-	./build/skia ./src/examples/io.smol
-
-
-	@echo "--------------------------------------------------"
-	@echo "files:  ./src/examples/imported.smol  ./src/examples/imports.smol"
-	./build/skia ./src/examples/imported.smol ./src/examples/imports.smol
-
-	@echo "====================== DONE ======================"
+test:
+	./build/skia

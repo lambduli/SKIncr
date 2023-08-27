@@ -385,11 +385,14 @@ mutable class .Interpreter(modules: Modules, globals: mutable GlobMap, stack: mu
    }
 	}
 
-  // The main interpreter run loop. It terminates when we return from stack of size 1 (i.e. return from main)
-	// The loop work with the top of stack, the current frame. It reads the current instruction, decodes and
-	// executes it. Then advances the program counter on that frame.
+  // The main interpreter run loop. It terminates when we return from
+  // stack of size 1 (i.e. return from main) The loop work with the
+  // top of stack, the current frame. It reads the current
+  // instruction, decodes and executes it. Then advances the program
+  // counter on that frame.
 	//
-	// Function calls push a new frame, to the next time the loop comes to the top it picks up the top frame.
+	// Function calls push a new frame, to the next time the loop comes
+	// to the top it picks up the top frame.
 	//
   mutable fun run(): Result<Val, String> {
     loop {
