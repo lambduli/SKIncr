@@ -1,5 +1,7 @@
 module Interpreter;
 
+// Aliases for various types, the convection is Xs means Vector of X
+// -----------------------------------------------------------------
 type Strings = Vector<String>;
 type Funs = Vector<Fun>;
 type Statements = Vector<Stmt>;
@@ -8,6 +10,15 @@ type Frames = Vector<mutable Frame>;
 type Modules = Vector<Module>;
 type GlobMap = Map<String, mutable Vals>;  // From module name to module global registers
 
+// ==================================================================
+// Val represents runtime value, the current types are intergers (I),
+// booleans (B), characters (C), strings (S), polymorphic lists (L),
+// and null (Null).
+
+// Val.toString() returns a string representation of the constructor.
+
+// Val.toOut() returns a string representation that can be printed.
+// ------------------------------------------------------------------
 base class Val() uses Show {
   children =
   | I(Int)
@@ -19,11 +30,11 @@ base class Val() uses Show {
 
   fun toString(): String {
     this match {
-      | I(i) -> `Int(${i})`
-      | B(b) -> `Bool(${b})`
-      | C(ch) -> `Char(${ch})`
-      | S(str) -> `String(${str})`
-      | L(vals) -> `[${vals.reduce((s, v) -> `${s}, ${v.toString()}`, "")}]`
+      | I(i) -> `I(${i})`
+      | B(b) -> `B(${b})`
+      | C(ch) -> `C(${ch})`
+      | S(str) -> `S(${str})`
+      | L(vals) -> `list(${vals.reduce((s, v) -> `${s}, ${v.toString()}`, "")})`
       | Null() -> `Null`
     }
   }
@@ -35,7 +46,7 @@ base class Val() uses Show {
       | C(ch) -> `'${ch}'`
       | L(vals) -> `[${vals.reduce((s, v) -> `${s}, ${v.toOut()}`, "")}]`
       | S(str) -> `${str}`
-      | Null() -> `<NULL>`
+      | Null() -> `NULL`
     }
   }
 }
@@ -43,8 +54,25 @@ base class Val() uses Show {
 fun zero(): Val { I(0) }
 
 
+// ========================= Small bytecode format ==========================================
+
+// A `Module` is a program unit uniquely named by a string, that
+// contains a set of private global variables, and a set of public
+// functions. The private variables are initialized by calling a
+// synthetic `init` function. The initialization code should not call
+// functions from other modules (as these may not have been
+// initalized).
 value class Module(name: String, globs: Int, funs: Funs) {}
+
+// A `Fun` is a function that has a globally unique name, a set of
+// parameters, a set of local variables, and a body. At this point,
+// parameters and locals are a vector of slots, each of which starts
+// undefined, and can hold a `Val`. Undefined values should not be
+// read by construction.
 value class Fun(name: String, params: Int, body: Statements, locals: Int) {}
+
+// A `Code` is the body of a function, it has a list of statements. All functions
+// must return, so a code block should have at least one statement, ie. `Return`.
 value class Code(stmts: Statements) {}
 
 base class Stmt {
@@ -92,18 +120,24 @@ base class Expr uses Show {
   }
 }
 
+// =========================================================================================
+
 // Return a register/load built by stripping off the string's prefix
 fun strToReg(r: String) : Register { Register(r.stripPrefix("%").toInt()) }
 fun strToLoad(r: String) : Load { Load(r.stripPrefix("%").toInt()) }
 
 // ===================== Linearize ===================================================
+
+// `Linearize` produces Small bytecode from a flattened AST.
+
 mutable class Linearize(mutable cntr: Int) {
 
- static fun mcreate(): mutable this {  mutable Linearize(0) }
+  static fun mcreate(): mutable this {  mutable Linearize(0) }
+
+  mutable fun inc() { this.!cntr = this.cntr + 1 }
 
   mutable fun mod(m: Reader.Module): Module {
-    funs = m.funs.map(f -> this.function(f));
-    Module(m.name, m.globs, funs)
+    Module(m.name, m.globs, m.funs.map(f -> this.function(f)))
   }
 
   mutable fun function(f: Reader.Fun): Fun {
@@ -114,14 +148,14 @@ mutable class Linearize(mutable cntr: Int) {
 
   mutable fun expression(e: Reader.Exp): Expr {
     e match {
-      | Reader.VInt(i) -> LitI(i)
-      | Reader.VBool(b) -> LitB(b)
-      | Reader.VString(s) -> LitS(s)
-      | Reader.VChar(ch) -> LitC(ch)
-      | Reader.VList(regs) -> LitL(regs.map(this.expToReg))
+      | Reader.VInt(i)       -> LitI(i)
+      | Reader.VBool(b)      -> LitB(b)
+      | Reader.VString(s)    -> LitS(s)
+      | Reader.VChar(ch)     -> LitC(ch)
+      | Reader.VList(regs)   -> LitL(regs.map(this.expToReg))
       | Reader.Register(str) -> strToReg(str)
-      | Reader.Load(str) -> strToLoad(str)
-      | Reader.Invoke(fname, args) -> Invoke(fname, args.map(r -> strToReg(r.name).r))
+      | Reader.Load(str)     -> strToLoad(str)
+      | Reader.Invoke(name, args) -> Invoke(name, args.map(r -> strToReg(r.name).r))
     }
   }
 
@@ -132,36 +166,30 @@ mutable class Linearize(mutable cntr: Int) {
 
   mutable fun statement(s: Reader.Stmt): Statements {
     is = s match {
-      | Reader.Set(regExpr, e) -> {
-        this.!cntr = this.cntr + 1;
-        Statements[Store(this.expToReg(regExpr).r, this.expression(e))]
-      }
-      | Reader.GSet(regExpr, e) -> {
-        this.!cntr = this.cntr + 1;
-        Statements[GStore(this.expToReg(regExpr).r, this.expression(e))]
-      }
+      | Reader.Set(r, e) -> { this.inc(); Statements[Store(this.expToReg(r).r, this.expression(e))] }
+      | Reader.GSet(r, e) -> { this.inc(); Statements[GStore(this.expToReg(r).r, this.expression(e))] }
       | Reader.Loop(cnd, Reader.Code(body)) -> {
         cexpr = this.expToReg(cnd);
         topOfLoop = this.cntr;
-        this.!cntr = this.cntr + 1; // the CondJump instruction is BEFORE all those
+        this.inc(); // the CondJump instruction is BEFORE all those
         stmts = body.map(s -> this.statement(s)).flatten(); // body of the loop
-        this.!cntr = this.cntr + 1; // for jump to loop's top
+        this.inc(); // for jump to loop's top
         instrs = mutable Statements[];
         instrs.push(CondJump(cexpr.r, this.cntr));
         instrs.extend(stmts);
         instrs.push(Jump(topOfLoop));
         instrs
       }
-      | Reader.Branch(cndExpr, Reader.Code(ifYes), Reader.Code(ifNo)) -> {
-        cExpr = this.expToReg(cndExpr); // cndExpr has to be a Register
-        !this.cntr = this.cntr + 1; // the CondJump instr is BEFORE both branches
-        positive = ifYes.map(s -> this.statement(s)).flatten(); // body of the positive branch
+      | Reader.Branch(cnd, Reader.Code(ifThen), Reader.Code(ifElse)) -> {
+        cExpr = this.expToReg(cnd); // cndExpr has to be a Register
+        this.inc(); // the CondJump instr is BEFORE both branches
+        positive = ifThen.map(s -> this.statement(s)).flatten(); // body of the positive branch
         // at the end of positive branch we need to skip to the end of the negative one
         // so there's gonna be a Jump
-        !this.cntr = this.cntr + 1;
+        this.inc();
         beforeNegative = this.cntr;
         cond = CondJump(cExpr.r, beforeNegative); // skip the positive if the condition is false/zero
-        negative = ifNo.map(s -> this.statement(s)).flatten(); // body of the negative branch
+        negative = iElse.map(s -> this.statement(s)).flatten(); // body of the negative branch
         afterNegative = this.cntr;
         skipNegative = Jump(afterNegative);
         instrs = (mutable Vector<Stmt>[cond]);
@@ -170,10 +198,7 @@ mutable class Linearize(mutable cntr: Int) {
         instrs.extend(negative);
         instrs
       }
-      | Reader.Return(expr) -> {
-        this.!cntr = this.cntr + 1;
-        Vector<Stmt>[Return(this.expression(expr))]
-      }
+      | Reader.Return(e) -> { this.inc(); Vector<Stmt>[Return(this.expression(e))] }
 			// either a constant, load from a global register or a (local) register
     };
 		is.chill()
