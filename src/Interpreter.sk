@@ -34,7 +34,7 @@ base class Val() uses Show {
       | B(b) -> `${b}`
       | C(ch) -> `'${ch}'`
       | L(vals) -> `[${vals.reduce((s, v) -> `${s}, ${v.toOut()}`, "")}]`
-      | S(str) -> `"${str}"`
+      | S(str) -> `${str}`
       | Null() -> `<NULL>`
     }
   }

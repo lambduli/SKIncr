@@ -10,7 +10,6 @@
     (begin
       (write! a)
       (set! a 23)
-      (write! a)
       (write! b)
       (set! b (read!))
       (write! b)
