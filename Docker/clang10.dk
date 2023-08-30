@@ -1,5 +1,5 @@
 #we are using ubuntu base image
-FROM ubuntu:18.04
+FROM  --platform=linux/amd64   ubuntu:18.04
 
 # installing requirements to get and extract prebuilt binaries
 RUN apt-get update && apt-get install -y \

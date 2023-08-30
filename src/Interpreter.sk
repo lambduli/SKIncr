@@ -134,7 +134,7 @@ mutable class Linearize(mutable cntr: Int) {
 
   static fun mcreate(): mutable this {  mutable Linearize(0) }
 
-  mutable fun inc() { this.!cntr = this.cntr + 1 }
+  mutable fun inc(): void { this.!cntr = this.cntr + 1 }
 
   mutable fun mod(m: Reader.Module): Module {
     Module(m.name, m.globs, m.funs.map(f -> this.function(f)))
