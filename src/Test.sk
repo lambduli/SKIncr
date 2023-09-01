@@ -22,6 +22,7 @@ mutable class TestHarness( tests: mutable Vector<TestCase> ){
     this.tests.push( case )
   }
 
+  // TODO refactor out?
   // Assert that result equals to a expected value
   mutable fun assert_val( name: String, expectedValue: Interpreter.Val, result: TestResult ): void {
     msg = result match {
@@ -82,14 +83,17 @@ mutable class TestHarness( tests: mutable Vector<TestCase> ){
     }).filterNone();
     unsuccessfulCnt = errs.size();
 
-    err = "\n".join(
-      errs.map( err -> err match {
-        | (test, msg) -> `    ${test}: ${msg}`
-      } )
-    );
+    err = if ( unsuccessfulCnt != 0 ){
+      "Errors:\n" +
+      "\n".join(
+        errs.map( err -> err match { | (test, msg) -> `    ${test}: ${msg}` } )
+      ) +
+      "\n\n"
+    } else {
+      ""
+    };
 
-    "Errors:\n" +
-    `${err}\n\n` +
+    err +
     `Total tests: ${allCnt}\n` +
     `Failed tests: ${unsuccessfulCnt}\n` +
     `Passing tests: ${successfulCnt}\n`
