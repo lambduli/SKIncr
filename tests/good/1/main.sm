@@ -1,55 +1,9 @@
 (module Main imports (StdLib))
 
-(vars (
-  (let A 1)
-  (let B 2)
-  (let X (+ A B))
-  (let Z 0)
-))
-
+(vars ())
 
 (functions (
-  (function simpler ()
-    (begin
-      (set! A 0)
-      (let d A)
-      d
-    )
-  )
-
-  (function simple ()
-    (begin
-      (let d 23)
-      d
-    )
-  )
-
-  (function fun ()  (simple))
-
-  (function foo (f y)
-    (begin
-      (set! Z 0) # resets the `Z` to 0 each time `foo` is called
-      (set! X f)
-      (let locx X)
-      (while (< locx y)
-        (begin
-          (set! Z (+ y Z))
-          (set! locx (+ locx 1))
-          (set! locx (- locx 0))
-        )
-      )
-      Z
-    )
-  )
-
-  # returns "> 3"
   (function main ()
-    (begin
-      (let d 2)
-      (let c 4)
-      (let e (foo d c))
-      (let ignore (foo d e))
-      (+ A B)
-    )
+    "Hello world!"
   )
 ))
