@@ -5,6 +5,7 @@ LLC=llc-10
 OLEVEL=-O2
 CC32FLAGS=-DSKIP32 --target=wasm32 -emit-llvm
 CC64FLAGS=$(OLEVEL) -DSKIP64
+CPPFLAGS=$(OLEVEL) -std=c++17
 SKFLAGS=
 
 SKIP_FILES=$(shell find . -name "*.sk")
@@ -41,7 +42,7 @@ build/skc:
 	mkdir -p build
 	gunzip -c prebuild/preamble_and_skc_out64.ll.gz > build/preamble_and_skc_out64.ll
 	make build/libskip_runtime64.a
-	clang++ $(OLEVEL) build/preamble_and_skc_out64.ll build/libskip_runtime64.a -o build/skc -lrt -lpthread
+	$(CPP) $(CPPFLAGS) build/preamble_and_skc_out64.ll build/libskip_runtime64.a -o build/skc -lrt -lpthread
 
 build/magic.c:
 	date | cksum | awk '{print "unsigned long version = " $$1 ";"}' > build/magic.c
@@ -55,14 +56,14 @@ build/libskip_runtime64.a: $(OFILES) build/runtime/runtime64_specific.o $(ONATIV
 	ar rcs build/libskip_runtime64.a $(OFILES) build/runtime/runtime64_specific.o $(ONATIVE_FILES)
 
 build/runtime/runtime64_specific.o: runtime/runtime64_specific.cpp
-	$(CPP) $(OLEVEL) -c runtime/runtime64_specific.cpp -o build/runtime/runtime64_specific.o
+	$(CPP) $(CPPFLAGS) -c runtime/runtime64_specific.cpp -o build/runtime/runtime64_specific.o
 
 build/%.o: %.c
 	mkdir -p build/runtime
 	$(CC) $(CC64FLAGS) -o $@ -c $<
 
 build/skia: build/out64.ll ./build/libskip_runtime64.a
-	$(CPP) $(OLEVEL) build/out64.ll ./build/libskip_runtime64.a -o build/skia -lrt -lpthread
+	$(CPP) $(CPPFLAGS) build/out64.ll ./build/libskip_runtime64.a -o build/skia -lrt -lpthread
 
 build/out64.ll: $(SKIP_FILES) build/skc
 	mkdir -p build/
