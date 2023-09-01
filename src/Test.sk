@@ -1,0 +1,190 @@
+module Test;
+
+// A name of the test and optional error message
+value class TestCase(name: String, message: Option<String>){}
+
+// Result of complete run
+base class TestResult(){
+  children =
+  | Successful( Interpreter.Val )
+  | ReaderError( String )
+  | ExecutionError( String )
+}
+
+// A class for collecting TestCases
+mutable class TestHarness( tests: mutable Vector<TestCase> ){
+
+  static fun mcreate() : mutable this {
+    mutable TestHarness( mutable Vector<TestCase>[] )
+  }
+
+  mutable fun pushTestCase( case: TestCase ): void {
+    this.tests.push( case )
+  }
+
+  // Assert that result equals to a expected value
+  mutable fun assert_val( name: String, expectedValue: Interpreter.Val, result: TestResult ): void {
+    msg = result match {
+      | Successful(val) if (val == expectedValue) -> {
+        None()
+      }
+      | Successful(val) -> {
+        Some( `Expected result ${expectedValue}, got ${val}` )
+      }
+      | ReaderError(msg) -> {
+        Some( `Reader failed with message: ${msg}` )
+      }
+      | ExecutionError(msg) -> {
+        Some( `Execution failed with message: ${msg}` )
+      }
+    };
+    this.pushTestCase( TestCase(name, msg) );
+  }
+
+  // Assert that execution failed in runtime
+  mutable fun assert_execution_fail( name: String, result: TestResult ): void {
+    msg = result match {
+      | Successful(val) -> {
+        Some( `Expected execution failure, got ${val}` )
+      }
+      | ReaderError(msg) -> {
+        Some( `Reader failed with message: ${msg}` )
+      }
+      | ExecutionError(_) -> {
+        None()
+      }
+    };
+    this.pushTestCase( TestCase(name, msg) );
+  }
+
+  // Report all failed tests and the count of all, failed and succesful tests
+  readonly fun report(): String {
+    allCnt = this.tests.size();
+    successfulCnt = this.tests.filter( test -> test.message.isNone() ).size();
+    errs: Vector<(String, String)> = this.tests.map( test -> test.message match {
+      | Some( msg ) -> Some( (test.name, msg) )
+      | None() -> None()
+    }).filterNone();
+    unsuccessfulCnt = errs.size();
+
+    err = "\n".join(
+      errs.map( err -> err match {
+        | (test, msg) -> `    ${test}: ${msg}`
+      } )
+    );
+
+    "Errors:\n" +
+    `${err}\n\n` +
+    `Total tests: ${allCnt}\n` +
+    `Failed tests: ${unsuccessfulCnt}\n` +
+    `Passing tests: ${successfulCnt}\n`
+  }
+}
+
+// A file-based test that creates a file (snapshot) that captures the expected output,
+// or if it already exists, validates that the current output matches the expected one
+class SnapshotTest( snapshotName: String, inputsFolder: String, outputsFolder: String, log: Bool ){
+  fun createOrValidate( testName: String, fileName: String, contents: String ): TestCase {
+    testNameUnder = testName.replace( "/", "_" );
+
+    inputFolder = Path.join( this.inputsFolder, testNameUnder);
+    outputFolder = Path.join( this.outputsFolder, testNameUnder);
+
+    FileSystem.ensureDirectory( inputFolder );
+    FileSystem.ensureDirectory( outputFolder );
+
+    inputPath = Path.join( inputFolder, fileName );
+    outputPath = Path.join( outputFolder, fileName );
+
+    // Does not compile
+    msg = if ( ! FileSystem.exists( inputPath ) ){
+      if (this.log) {
+        print_string( `Creating snapshot file ${inputPath}` )
+      };
+
+      FileSystem.writeTextFile( inputPath, contents );
+
+      None()
+    } else {
+      FileSystem.writeTextFile( outputPath, contents );
+      expected = FileSystem.readTextFile( inputPath );
+
+      if ( expected != contents ){
+        Some( `Produced output is different, see 'diff ${inputPath} ${outputPath}'` )
+      } else {
+        None()
+      }
+    };
+
+    TestCase( `${this.snapshotName}/${testName}/${fileName}`, msg )
+  }
+}
+
+// An overall runner of test, encapsulating snapshot tests and TestHarness
+mutable class .TestRunner( stdLib: String, harness: mutable TestHarness, flattenerSnapshot: SnapshotTest, translatorSnapshot: SnapshotTest ){
+  static fun mcreate( stdLib: String, inputSnapshotFolder: String, outputSnapshotFolder: String ): mutable this {
+    mkSnapshot = name ~> {
+      SnapshotTest(
+        name,
+        Path.join( inputSnapshotFolder, name ),
+        Path.join( outputSnapshotFolder, name ),
+        true
+      )
+    };
+
+    mutable TestRunner(
+      stdLib,
+      TestHarness::mcreate(),
+      mkSnapshot("flattener"),
+      mkSnapshot("translator")
+    );
+  }
+
+  mutable fun good_test( files: Vector<String>, expectedValue: Interpreter.Val ): mutable this {
+    name = Path.dirname( files[0] );
+
+    // Prepend the stdLib
+    paths = Vector::mcreate( files.size() + 1 );
+    paths.push( this.stdLib );
+    paths.extend( files );
+
+    res = this.run_test( paths.chill(), name );
+    this.harness.assert_val( name, expectedValue, res );
+    this
+  }
+
+  mutable fun run_test(files: Vector<String>, testName: String): TestResult {
+    (rs, fs) = Reader::process(files);
+    for ( r in rs ){
+      if (!r.ok){
+        return ReaderError( r.error );
+      };
+    };
+
+    flat = mutable Flattener();
+    flatFs = fs.map( f -> flat.file(f) );
+    pp = mutable PrettyPrint();
+    flatFs.filter(f -> f.name.lowercase() != "stdlib").each( f -> {
+      prettyOut = pp.file(f);
+      case = this.flattenerSnapshot.createOrValidate( testName, f.name, prettyOut );
+      this.harness.pushTestCase( case );
+    });
+
+    t = Translator();
+    translated = flatFs.map(d -> t.file(d));
+    translated.filter(m -> m.name.lowercase() != "stdlib").each(m -> {
+      prettyOut = (mutable PrettyPrint2()).toModule(m);
+      case = this.translatorSnapshot.createOrValidate( testName, m.name, prettyOut );
+      this.harness.pushTestCase( case );
+    });
+
+    l = Interpreter.Linearize::mcreate();
+    linearized: Vector<Interpreter.Module> = translated.map(m -> l.mod(m));
+    //linearized.each(m -> {if (m.name != "StdLib") print_string(mutable Interpreter.PrettyPrint().toModule(m));});
+
+    Interpreter.runProgram( linearized ) match {
+      | Success(val) -> Successful(val)
+      | Failure(msg) -> ExecutionError(msg)
+    };
+  }
+}
