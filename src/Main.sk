@@ -10,35 +10,36 @@
 // =====================================================================================
 fun main(): void {
 	paths = arguments();
-	if (paths.size() == 0)  test() else	good(Vector::createFromItems(paths));
+
+	if (paths.size() == 0) {
+    test()
+  }
+  else {
+	  run(Vector::createFromItems(paths))
+  }
 }
 
 // ====================================================================================
-// test(): Run tests. Good ones do not fail, bad ones can.  Currently
-// `bad()` is unimplemented.
+// test(): Run tests. Good ones do not fail, bad ones can.
 //
 fun test(): void {
-	good(Vector<String>["tests/stdlib.sm", "tests/good/1/main.sm"]);
-	good(Vector<String>["tests/stdlib.sm", "tests/good/2/main.sm"]);
-	good(Vector<String>["tests/stdlib.sm", "tests/good/3/main.sm"]);
-  good(Vector<String>["tests/stdlib.sm", "tests/good/4/main.sm"]);
-	good(Vector<String>["tests/stdlib.sm", "tests/good/5/main.sm"]);
-	good(Vector<String>["tests/stdlib.sm", "tests/good/6/main.sm"]);
-  good(Vector<String>["tests/stdlib.sm", "tests/good/7/main.sm"]);
-  good(Vector<String>["tests/stdlib.sm", "tests/good/8/lib.sm", "tests/good/8/main.sm"]);
-//	bad_test(Vector<String>["tests/StdLib.sm", "tests/bad/1.sm"], true);
-//	bad_test(Vector<String>["tests/StdLib.sm", "tests/bad/2.sm"], false);
-//	bad_test(Vector<String>["tests/StdLib.sm", "tests/bad/3.sm"], true);
 }
 
 // ====================================================================================
-// `good(files)`: `files` has a list of file names, we read, parse and
+// `run(files)`: `files` has a list of file names, we read, parse and
 // check each file, then run `Main`.  `files` must include `StdLib` as
 // it contains all the primitives.
 //
-fun good(files: Vector<String>): void {
+
+fun run(files: Vector<String>): void {
    (rs, fs) = Reader::process(files);
-	 rs.each(r -> if (!r.ok) { r.reportError(); });
+   for ( r in rs ){
+    if (!r.ok){
+      print_string( r.error );
+      return void;
+    };
+   };
+
 	 flat = mutable Flattener();
 	 flatFs = fs.map( f -> flat.file(f) );
 	 p = mutable PrettyPrint();
@@ -52,15 +53,9 @@ fun good(files: Vector<String>): void {
 	linearized: Vector<Interpreter.Module> = translated.map(m -> l.mod(m));
 
 	//linearized.each(m -> {if (m.name != "StdLib") print_string(mutable Interpreter.PrettyPrint().toModule(m));});
-
 	Interpreter.runProgram(linearized) match {
 		| Failure(msg) -> print_string(`RUNTIME ERROR: ${msg}`);
 		| Success(v) ->   print_string(`>  ${v.toOut()}`);
 	};
 }
 
-fun bad_test(p: Vector<String>, _verbose: Bool): void {
-   (_rs,_fs) = Reader::process(p);
-//   if (r.ok) {	 		print_string(`File ${r.path} should have erred.`);			return void;	};
-//	if (verbose) { r.error_report(); } else { print_string("."); };
-}
