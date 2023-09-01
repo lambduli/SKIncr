@@ -8,7 +8,7 @@ type Frames = Vector<mutable Frame>;
 type Modules = Vector<Module>;
 type GlobMap = Map<String, mutable Vals>;  // From module name to module global registers
 
-base class Val() uses Show {
+base class Val() uses Show, Equality {
   children =
   | I(Int)
   | B(Bool)
