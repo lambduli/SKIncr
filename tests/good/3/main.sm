@@ -1,42 +1,12 @@
 (module Main imports (StdLib))
 
-(vars (
-  (let two 2)
-  (let three 3)
-  (let cond (< two three))
-  (let x two)
-  # Does not work: (let x (if cond 0 1)) # this is just to test that the if works, no real reason behind it
-  (let shouldContinue tt)
-))
+(vars ())
 
 (functions (
-
-  (function not (bool)
-    (begin
-    (let res 0)
-    (if bool (set! res ff) (set! res tt))
-    res
-    )
-  )
-
-  # no idea what this function does
-  (function foo ()
-    (begin
-      (let a 23)
-      (while shouldContinue
-        (begin
-          (let one 1)
-          (let y (+ one x))
-          (set! x y)
-          (let eq (== x a))
-          (set! shouldContinue (not eq))
-        )
-      )
-      x
-    )
-  )
-
   (function main ()
-    (foo))
-
+    (begin
+     (let x (read!))
+     (write! x)
+    )
+  )
 ))

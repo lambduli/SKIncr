@@ -1,101 +1,12 @@
 (module Main imports (StdLib))
 
-# this is a comment, it spans until the end of this line
-
-(vars (
-  (let TWO 2)
-  (let THREE 3)
-  (let COND (< TWO THREE))
-  (let Z 0)
-  (let ZZ 0)
-  (let X 1)
-  (let SHOULDCONTINUE tt)
-))
+(vars ())
 
 (functions (
-  (function not (bool)
-    (begin
-    (let res 0)
-    (if bool (set! res ff) (set! res tt))
-    res
-    )
-  )
-
-  # no idea what this function does
-  (function foo ()
-    (begin
-      (let a 23)
-      (while SHOULDCONTINUE
-        (begin
-          (let one 1)
-          (let y (+ one X))
-          (set! X y)
-          (let eq (== X a))
-          (set! SHOULDCONTINUE (not eq))
-        )
-      )
-      X
-    )
-  )
-
-  # if the first argument is smaller than the second argument
-  # then consider the difference between them
-  # and that many times multiply the second argument
-  # that is what the `Z` will be set to
-  (function bar (xx y)
-    (begin
-      (set! Z 0) # resets the `Z` to 0 each time `foo` is called
-      (set! ZZ xx)
-      (while (< Z y)
-        (begin
-          (set! Z (+ y Z))
-          (let one 1)
-          (set! ZZ (+ ZZ one))
-        )
-      )
-      Z # will be equal to `y`
-    )
-  )
-
-
-  (function simple ()
-    (begin
-      (let a 23)
-      a
-    )
-  )
-
   (function main ()
     (begin
-      (let x 0)
-      (if tt (set! x 1) (set! x 2))
-      x ## this is compiled away, which is cool
-      (let a 23)
-      (let b 42)
-      (let c (bar a b)) # c = b = 42
-      (let d (foo)) # 23
-      (+ c d)
-    )
-  )
-
-  # result is `y * y`
-  (function square (y)
-    (begin
-        (set! X 0) # resets the `X` to 0
-        (set! Z 0) # resets the `Z` to 0
-
-        # (let Z 0) # again, should this be legal?
-
-        (while (< X y) # X=0 < y
-          (begin
-            (let one 1)
-            (set! Z (+ y Z)) # Z = y + Z
-            (set! X (+ X one)) # X = X + 1
-          )
-        )
-        Z
+      (let x 10)
+      x
     )
   )
 ))
-# so can there be something?
-# can I end the file without a newline?

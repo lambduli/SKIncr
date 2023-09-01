@@ -1,6 +1,0 @@
-# Missing stuff...
-(module Main imports (StdLib))
-
-(vars (x))
-
-(functions ())

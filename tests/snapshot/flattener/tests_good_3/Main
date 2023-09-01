@@ -1,0 +1,16 @@
+(module Main imports ()
+(vars ())
+(functions (
+  (function main()      (begin 
+      (let %0 (read! ))
+      (let %1 %0)
+      (let %2 [, %1])
+      (let %3 (write!  %2))
+      %3)
+
+  (function init()      (begin 
+      (let %0 0)
+      (let %1 %0)
+      %1)
+
+))
