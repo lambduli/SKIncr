@@ -219,8 +219,8 @@ mutable class Frame(globals: mutable Vals, locals: mutable Vals, mutable pc: Int
 }
 
 // Example runner
-fun runProgram(modules: Modules): Result<Val, String> {
-  eval = Interpreter::mcreate(modules);
+fun runProgram(modules: Modules, io: mutable InterpreterIO = mutable TerminalIO()): Result<Val, String> {
+  eval = Interpreter::mcreate(modules, io);
 	eval.call("main", mutable Vals[]);
 	eval.run();
 }
@@ -232,13 +232,13 @@ fun runProgram(modules: Modules): Result<Val, String> {
 //   -- globals : the globals for each module
 //   -- stack   : the stack of active functions invocations
 // ======================================================================================
-mutable class .Interpreter(modules: Modules, globals: mutable GlobMap, stack: mutable Frames, mutable failure: (Bool, String)) {
+mutable class .Interpreter(modules: Modules, io: mutable InterpreterIO, globals: mutable GlobMap, stack: mutable Frames, mutable failure: (Bool, String)) {
 
   // Creates a fresh interpreter given a set of modules, one of which contains main().
-  static fun mcreate(mods: Modules): mutable this {
+  static fun mcreate(mods: Modules, io: mutable InterpreterIO): mutable this {
     globals = Map::mcreateFromItems(mods.map(m -> (m.name, Vector::mfill(m.globs, zero()))));
-    vm = mutable Interpreter(mods, globals, mutable Frames[], (false, "Didn't fail yet."));
-    //                                                                 ^^^ a default err msg
+    vm = mutable Interpreter(mods, io, globals, mutable Frames[], (false, "Didn't fail yet."));
+    //                                                                     ^^^ a default err msg
     vm.initialize();
     vm
   }
@@ -272,17 +272,17 @@ mutable class .Interpreter(modules: Modules, globals: mutable GlobMap, stack: mu
   // the initialization part of a normal call should be fine, we expect it to always work
   mutable fun call(fname: String, args: mutable Vals): void {
     if (fname == "builtin_bin") {
-      callBuiltin2(args) match {
+      this.callBuiltin2(args) match {
         | Success(val) -> this.nativeReturn(val)
         | Failure(msg) -> this.!failure = (true, `Error: ${msg}`);
       }
     } else if (fname == "builtin_un") {
-      callBuiltin1(args) match {
+      this.callBuiltin1(args) match {
         | Success(val) -> this.nativeReturn(val)
         | Failure(msg) -> this.!failure = (true, `Error: ${msg}`);
       }
     } else if (fname == "builtin_nul") {
-      callBuiltin0(args) match {
+      this.callBuiltin0(args) match {
         | Success(val) -> this.nativeReturn(val)
         | Failure(msg) -> this.!failure = (true, `Error: ${msg}`);
       }
@@ -427,6 +427,153 @@ mutable class .Interpreter(modules: Modules, globals: mutable GlobMap, stack: mu
   readonly fun toStackTrace(): String {
     this.stack.reduce((trace, fr) -> `${trace}\n${fr.toString()}`, "")
   }
+
+  mutable fun callBuiltin2(args: readonly Vals): Result<Val, String> {
+    name = args[0].toOut();
+    name match {
+      | "<"  -> {
+        (args[1], args[2]) match {
+          | (I(x), I(y)) -> Success(B(x < y))
+          | (_, _) -> Failure(`${name} applied to '${args[1].toOut()}' and '${args[2].toOut()}'`)
+        }
+      }
+      | ">" -> {
+        (args[1], args[2]) match {
+          | (I(x), I(y)) -> Success(B(x > y))
+          | (_, _) -> Failure(`${name} applied to '${args[1].toOut()}' and '${args[2].toOut()}'`)
+        }
+      }
+      | "<=" -> {
+        (args[1], args[2]) match {
+          | (I(x), I(y)) -> Success(B(x <= y))
+          | (_, _) -> Failure(`${name} applied to '${args[1].toOut()}' and '${args[2].toOut()}'`)
+        }
+      }
+      | ">=" -> {
+        (args[1], args[2]) match {
+          | (I(x), I(y)) -> Success(B(x >= y))
+          | (_, _) -> Failure(`${name} applied to '${args[1].toOut()}' and '${args[2].toOut()}'`)
+        }
+      }
+      | "+" -> {
+        (args[1], args[2]) match {
+          | (I(x), I(y)) -> Success(I(x + y))
+          | (_, _) -> Failure(`${name} applied to '${args[1].toOut()}' and '${args[2].toOut()}'`)
+        }
+      }
+      | "-" -> {
+        (args[1], args[2]) match {
+          | (I(x), I(y)) -> Success(I(x - y))
+          | (_, _) -> Failure(`${name} applied to '${args[1].toOut()}' and '${args[2].toOut()}'`)
+        }
+      }
+      | "*" -> {
+        (args[1], args[2]) match {
+          | (I(x), I(y)) -> Success(I(x * y))
+          | (_, _) -> Failure(`${name} applied to '${args[1].toOut()}' and '${args[2].toOut()}'`)
+        }
+      }
+      | "/" -> {
+        (args[1], args[2]) match {
+          | (I(x), I(y)) -> Success(I(x / y))
+          | (_, _) -> Failure(`${name} applied to '${args[1].toOut()}' and '${args[2].toOut()}'`)
+        }
+      }
+      | "&&" -> {
+        (args[1], args[2]) match {
+          | (B(x), B(y)) -> Success(B(x && y))
+          | (_, _) -> Failure(`${name} applied to '${args[1].toOut()}' and '${args[2].toOut()}'`)
+        }
+      }
+      | "||" -> {
+        (args[1], args[2]) match {
+          | (B(x), B(y)) -> Success(B(x || y))
+          | (_, _) -> Failure(`${name} applied to '${args[1].toOut()}' and '${args[2].toOut()}'`)
+        }
+      }
+      | "==" -> {
+        (args[1], args[2]) match {
+          | (I(x), I(y)) -> Success(B(x == y))
+          | (C(x), C(y)) -> Success(B(x == y))
+          | (S(x), S(y)) -> Success(B(x == y))
+          | (B(x), B(y)) -> Success(B(x == y))
+          | (_, _) -> Failure(`${name} applied to '${args[1].toOut()}' and '${args[2].toOut()}'`)
+        }
+      }
+      | "at" -> {
+          (args[1], args[2]) match {
+            | (L(vals), I(i)) -> {
+              if (vals.size() >= i) Success(vals[i])
+              else Failure(`Evaluation 'at' was called on a too short list.`)
+            }
+            | (v, i) -> Failure(`'at' called on '${v}' and '${i}', expecting a list and a number.`)
+          }
+        }
+      | "write!" -> {
+        (args[1], args[2]) match {
+        | (v, L(ls)) -> this.io.write(`${v.toOut()}${ls.reduce((s,e) -> `${s}${e.toOut()}`,"")}`)
+        | (v, _) -> this.io.write(`${v.toOut()}`)
+        };
+        Success(Null())
+      }
+      | _ -> Failure(`Uknown builtin '${name}'`)
+    }
+  }
+
+  readonly fun callBuiltin1(args: readonly Vals): Result<Val, String> {
+    name = args[0].toOut();
+    name match {
+      | "!" -> {
+        args[1] match {
+          | B(b) -> Success(B(! b))
+          | _ -> Failure(`${name} applied to '${args[1].toOut()}'`)
+        }
+      }
+      | "head" -> {
+        args[1] match {
+          | L(vals) -> {
+            if (vals.size() > 0) Success(vals[0])
+            else Failure(`'head' was called on an empty list.`)
+          }
+          | v -> Failure(`'head' was called on '${v}'\nwhich is NOT a list.`)
+        }
+      }
+      | "tail" -> {
+          args[1] match {
+            | L(vals) -> {
+              if (vals.size() > 0) Success(L(vals.slice(1)))
+              else Failure(`'tail' was called on an empty list.`)
+            }
+            | v -> Failure(`'tail' was called on '${v}'\nwhich is NOT a list.`)
+          }
+        }
+      | "size" -> {
+          args[1] match {
+            | L(vals) -> Success(I(vals.size()))
+            | v -> Failure(`'tail' was called on '${v}'\nwhich is NOT a list.`)
+          }
+        }
+      | _ -> Failure(`Uknown binary-builtin '${name}'`)
+    }
+  }
+
+  mutable fun callBuiltin0(args: readonly Vals): Result<Val, String> {
+    name = args[0].toOut();
+    name match {
+      | "read!" -> {
+        this.io.read() match {
+          | None() -> Failure(`unable to 'read!' for some reason.`)
+          | Some(line) -> {
+            line.toIntOption() match {
+              | None() -> Failure(`operation 'read!' failed. The input '${line}' is not a number.`);
+              | Some(i) -> Success(I(i))
+            }
+          }
+        }
+      }
+      | _ -> Failure(`Uknown builtin '${name}'`)
+    }
+  }
 }
 
 
@@ -509,152 +656,21 @@ mutable class PrettyPrint(mutable indent: Int = 0) {
 }
 
 
-fun callBuiltin2(args: readonly Vals): Result<Val, String> {
-  name = args[0].toOut();
-  name match {
-    | "<"  -> {
-      (args[1], args[2]) match {
-        | (I(x), I(y)) -> Success(B(x < y))
-        | (_, _) -> Failure(`${name} applied to '${args[1].toOut()}' and '${args[2].toOut()}'`)
-      }
-    }
-    | ">" -> {
-      (args[1], args[2]) match {
-        | (I(x), I(y)) -> Success(B(x > y))
-        | (_, _) -> Failure(`${name} applied to '${args[1].toOut()}' and '${args[2].toOut()}'`)
-      }
-    }
-    | "<=" -> {
-      (args[1], args[2]) match {
-        | (I(x), I(y)) -> Success(B(x <= y))
-        | (_, _) -> Failure(`${name} applied to '${args[1].toOut()}' and '${args[2].toOut()}'`)
-      }
-    }
-    | ">=" -> {
-      (args[1], args[2]) match {
-        | (I(x), I(y)) -> Success(B(x >= y))
-        | (_, _) -> Failure(`${name} applied to '${args[1].toOut()}' and '${args[2].toOut()}'`)
-      }
-    }
-    | "+" -> {
-      (args[1], args[2]) match {
-        | (I(x), I(y)) -> Success(I(x + y))
-        | (_, _) -> Failure(`${name} applied to '${args[1].toOut()}' and '${args[2].toOut()}'`)
-      }
-    }
-    | "-" -> {
-      (args[1], args[2]) match {
-        | (I(x), I(y)) -> Success(I(x - y))
-        | (_, _) -> Failure(`${name} applied to '${args[1].toOut()}' and '${args[2].toOut()}'`)
-      }
-    }
-    | "*" -> {
-      (args[1], args[2]) match {
-        | (I(x), I(y)) -> Success(I(x * y))
-        | (_, _) -> Failure(`${name} applied to '${args[1].toOut()}' and '${args[2].toOut()}'`)
-      }
-    }
-    | "/" -> {
-      (args[1], args[2]) match {
-        | (I(x), I(y)) -> Success(I(x / y))
-        | (_, _) -> Failure(`${name} applied to '${args[1].toOut()}' and '${args[2].toOut()}'`)
-      }
-    }
-    | "&&" -> {
-      (args[1], args[2]) match {
-        | (B(x), B(y)) -> Success(B(x && y))
-        | (_, _) -> Failure(`${name} applied to '${args[1].toOut()}' and '${args[2].toOut()}'`)
-      }
-    }
-    | "||" -> {
-      (args[1], args[2]) match {
-        | (B(x), B(y)) -> Success(B(x || y))
-        | (_, _) -> Failure(`${name} applied to '${args[1].toOut()}' and '${args[2].toOut()}'`)
-      }
-    }
-    | "==" -> {
-      (args[1], args[2]) match {
-        | (I(x), I(y)) -> Success(B(x == y))
-        | (C(x), C(y)) -> Success(B(x == y))
-        | (S(x), S(y)) -> Success(B(x == y))
-        | (B(x), B(y)) -> Success(B(x == y))
-        | (_, _) -> Failure(`${name} applied to '${args[1].toOut()}' and '${args[2].toOut()}'`)
-      }
-    }
-    | "at" -> {
-        (args[1], args[2]) match {
-          | (L(vals), I(i)) -> {
-            if (vals.size() >= i) Success(vals[i])
-            else Failure(`Evaluation 'at' was called on a too short list.`)
-          }
-          | (v, i) -> Failure(`'at' called on '${v}' and '${i}', expecting a list and a number.`)
-        }
-      }
-    | "write!" -> {
- 		  (args[1], args[2]) match {
-			| (v, L(ls)) -> print_string(`${v.toOut()}${ls.reduce((s,e) -> `${s}${e.toOut()}`,"")}`)
-			| (v, _) -> print_string(`${v.toOut()}`)
-      };
-			Success(Null())
-		}
-    | _ -> Failure(`Uknown builtin '${name}'`)
-  }
+
+mutable base class .InterpreterIO {
+  mutable fun read(): Option<String>;
+  mutable fun write(line: String): void;
 }
 
-fun callBuiltin1(args: readonly Vals): Result<Val, String> {
-  name = args[0].toOut();
-  name match {
-    | "!" -> {
-      args[1] match {
-        | B(b) -> Success(B(! b))
-        | _ -> Failure(`${name} applied to '${args[1].toOut()}'`)
-      }
-    }
-    | "head" -> {
-      args[1] match {
-        | L(vals) -> {
-          if (vals.size() > 0) Success(vals[0])
-          else Failure(`'head' was called on an empty list.`)
-        }
-        | v -> Failure(`'head' was called on '${v}'\nwhich is NOT a list.`)
-      }
-    }
-    | "tail" -> {
-        args[1] match {
-          | L(vals) -> {
-            if (vals.size() > 0) Success(L(vals.slice(1)))
-            else Failure(`'tail' was called on an empty list.`)
-          }
-          | v -> Failure(`'tail' was called on '${v}'\nwhich is NOT a list.`)
-        }
-      }
-    | "size" -> {
-        args[1] match {
-          | L(vals) -> Success(I(vals.size()))
-          | v -> Failure(`'tail' was called on '${v}'\nwhich is NOT a list.`)
-        }
-      }
-    | _ -> Failure(`Uknown binary-builtin '${name}'`)
+mutable class TerminalIO() extends InterpreterIO {
+  readonly fun read() : Option<String> {
+    read_line()
+  }
+
+
+  readonly fun write(line: String): void{
+    print_string( line )
   }
 }
-
-fun callBuiltin0(args: readonly Vals): Result<Val, String> {
-  name = args[0].toOut();
-  name match {
-    | "read!" -> {
-      read_line() match {
-        | None() -> Failure(`unable to 'read!' for some reason.`)
-        | Some(line) -> {
-          line.toIntOption() match {
-            | None() -> Failure(`operation 'read!' failed. The input '${line}' is not a number.`);
-            | Some(i) -> Success(I(i))
-          }
-        }
-      }
-    }
-    | _ -> Failure(`Uknown builtin '${name}'`)
-  }
-}
-
 
 module end;
