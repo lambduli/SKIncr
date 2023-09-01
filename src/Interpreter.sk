@@ -19,7 +19,7 @@ type GlobMap = Map<String, mutable Vals>;  // From module name to module global 
 
 // Val.toOut() returns a string representation that can be printed.
 // ------------------------------------------------------------------
-base class Val() uses Show {
+base class Val() uses Show, Equality {
   children =
   | I(Int)
   | B(Bool)
