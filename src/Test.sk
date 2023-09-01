@@ -148,12 +148,12 @@ mutable class .TestRunner( stdLib: String, harness: mutable TestHarness, flatten
     paths.push( this.stdLib );
     paths.extend( files );
 
-    res = this.run_test( paths.chill(), name );
+    res = this.run_test( paths.chill(),NoOpIO::mcreate(), name );
     this.harness.assert_val( name, expectedValue, res );
     this
   }
 
-  mutable fun run_test(files: Vector<String>, testName: String): TestResult {
+  mutable fun run_test(files: Vector<String>, io: mutable InterpreterIO, testName: String): TestResult {
     (rs, fs) = Reader::process(files);
     for ( r in rs ){
       if (!r.ok){
@@ -182,9 +182,23 @@ mutable class .TestRunner( stdLib: String, harness: mutable TestHarness, flatten
     linearized: Vector<Interpreter.Module> = translated.map(m -> l.mod(m));
     //linearized.each(m -> {if (m.name != "StdLib") print_string(mutable Interpreter.PrettyPrint().toModule(m));});
 
-    Interpreter.runProgram( linearized ) match {
+    Interpreter.runProgram( linearized, io ) match {
       | Success(val) -> Successful(val)
       | Failure(msg) -> ExecutionError(msg)
     };
+  }
+}
+
+mutable class NoOpIO() extends InterpreterIO {
+  static fun mcreate(): mutable NoOpIO {
+    mutable NoOpIO()
+  }
+
+  readonly fun read(): Option<String> {
+    None()
+  }
+
+  readonly fun write(_: String): void {
+    void
   }
 }
