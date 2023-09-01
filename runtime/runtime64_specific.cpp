@@ -17,6 +17,7 @@
 #include <sys/mman.h>
 #include <linux/limits.h>
 #include <pthread.h>
+#include <filesystem>
 
 namespace skip {
 struct SkipException : std::exception {
@@ -338,12 +339,25 @@ int64_t SKIP_numThreads() {
 
 void SKIP_string_to_file(char* str, char* file) {
   FILE *out = fopen(file, "w");
+  if ( out == nullptr ){
+    printf( "%s\n", strerror( errno ) );
+  }
   size_t size = SKIP_String_byteSize(str);
   while(size != 0) {
     size_t written = fwrite(str, 1, size, out);
     size -= written;
   }
   fclose(out);
+}
+
+void SKIP_ensure_directory(char* dirname){
+  namespace fs = std::filesystem;
+  fs::create_directories( fs::path( dirname ) );
+}
+
+bool SKIP_file_exists( char* filename ){
+  namespace fs = std::filesystem;
+  return fs::exists( fs::path( filename ) );
 }
 
 int64_t SKIP_get_mtime(char *path) {

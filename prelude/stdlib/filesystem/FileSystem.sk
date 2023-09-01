@@ -32,7 +32,7 @@ fun writeTextFile(filename: String, contents: String): void {
 @cpp_runtime
 native fun appendTextFile(filename: String, contents: String): void;
 
-@cpp_runtime
+@cpp_extern("SKIP_file_exists")
 native fun exists(filename: String): Bool;
 
 fun isDirectory(filename: String): Bool {
@@ -105,7 +105,7 @@ private native fun .string_to_file(s: String, file: String): void;
 private native fun is_directory(filename: String): Bool;
 
 @debug
-@cpp_runtime
+@cpp_extern("SKIP_ensure_directory")
 private native fun ensure_directory(dirname: String): void;
 
 @cpp_runtime
