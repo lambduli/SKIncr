@@ -41,6 +41,21 @@ mutable class TestHarness( tests: mutable Vector<TestCase> ){
     this.pushTestCase( TestCase(name, msg) );
   }
 
+  mutable fun assert_no_fail( name: String, result: TestResult ): void {
+    msg = result match {
+      | Successful(_) -> {
+        None()
+      }
+      | ReaderError(msg) -> {
+        Some( `Reader failed with message: ${msg}` )
+      }
+      | ExecutionError(msg) -> {
+        Some( `Execution failed with message: ${msg}` )
+      }
+    };
+    this.pushTestCase( TestCase(name, msg) );
+  }
+
   // Assert that execution failed in runtime
   mutable fun assert_execution_fail( name: String, result: TestResult ): void {
     msg = result match {
@@ -96,7 +111,6 @@ class SnapshotTest( snapshotName: String, inputsFolder: String, outputsFolder: S
     inputPath = Path.join( inputFolder, fileName );
     outputPath = Path.join( outputFolder, fileName );
 
-    // Does not compile
     msg = if ( ! FileSystem.exists( inputPath ) ){
       if (this.log) {
         print_string( `Creating snapshot file ${inputPath}` )
@@ -140,7 +154,7 @@ mutable class .TestRunner( stdLib: String, harness: mutable TestHarness, flatten
     );
   }
 
-  mutable fun good_test( files: Vector<String>, expectedValue: Interpreter.Val ): mutable this {
+  readonly fun prepareFiles( files: Vector<String> ): (String, Vector<String>){
     name = Path.dirname( files[0] );
 
     // Prepend the stdLib
@@ -148,8 +162,26 @@ mutable class .TestRunner( stdLib: String, harness: mutable TestHarness, flatten
     paths.push( this.stdLib );
     paths.extend( files );
 
-    res = this.run_test( paths.chill(),NoOpIO::mcreate(), name );
+    (name, paths.chill())
+  }
+
+  mutable fun good_test( files: Vector<String>, expectedValue: Interpreter.Val ): mutable this {
+    (name, paths) = this.prepareFiles( files );
+
+    res = this.run_test( paths, mutable NoOpIO(), name );
     this.harness.assert_val( name, expectedValue, res );
+    this
+  }
+
+  mutable fun io_test( files: Vector<String>, reads: Vector<String>, writes: Vector<String> ): mutable this {
+    (name, paths) = this.prepareFiles( files );
+    io = MockIO::mcreate( reads );
+
+    runRes = this.run_test( paths, io, name );
+    this.harness.assert_no_fail( name, runRes );
+
+    ioRes = io.validateWrites( "io/" + name, writes );
+    this.harness.pushTestCase( ioRes );
     this
   }
 
@@ -190,15 +222,50 @@ mutable class .TestRunner( stdLib: String, harness: mutable TestHarness, flatten
 }
 
 mutable class NoOpIO() extends InterpreterIO {
-  static fun mcreate(): mutable NoOpIO {
-    mutable NoOpIO()
-  }
-
   readonly fun read(): Option<String> {
     None()
   }
 
   readonly fun write(_: String): void {
     void
+  }
+}
+
+mutable class MockIO( reads: Vector<String>, mutable readIdx: Int, writes: mutable Vector<String> ) extends InterpreterIO {
+  static fun mcreate(reads: Vector<String>): mutable MockIO {
+    mutable MockIO( reads, 0, Vector<String>::mcreate() )
+  }
+
+  mutable fun read(): Option<String> {
+    if ( this.readIdx < this.reads.size() ){
+      res = this.reads[this.readIdx];
+      this.!readIdx = this.readIdx + 1;
+      Some( res )
+    } else {
+      None()
+    }
+  }
+
+  mutable fun write(line: String): void {
+    this.writes.push(line)
+  }
+
+  readonly fun validateWrites(testName: String, expectedWrites: Vector<String>): TestCase{
+    msg = if ( this.writes.size() < expectedWrites.size() ){
+      Some("Not enought writes")
+    } else if ( this.writes.size() > expectedWrites.size() ){
+      Some("Too many writes")
+    } else {
+      this.writes.zipWith( expectedWrites, (val, expected) -> {
+        if ( val != expected ) {
+          Some(`Expected write ${expected}, actually ${val}`)
+        } else {
+            None()
+        }
+      }).filterNone()
+      .maybeGet( 0 )
+    };
+
+    TestCase( testName, msg )
   }
 }
