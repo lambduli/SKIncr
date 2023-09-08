@@ -189,7 +189,7 @@ mutable class Linearize(mutable cntr: Int) {
         this.inc();
         beforeNegative = this.cntr;
         cond = CondJump(cExpr.r, beforeNegative); // skip the positive if the condition is false/zero
-        negative = iElse.map(s -> this.statement(s)).flatten(); // body of the negative branch
+        negative = ifElse.map(s -> this.statement(s)).flatten(); // body of the negative branch
         afterNegative = this.cntr;
         skipNegative = Jump(afterNegative);
         instrs = (mutable Vector<Stmt>[cond]);
