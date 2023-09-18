@@ -141,7 +141,8 @@ mutable class .TestRunner(
   harness: mutable TestHarness,
   flattenerSnapshot: SnapshotTest,
   translatorSnapshot: SnapshotTest,
-  linearizedSnapshot: SnapshotTest
+  linearizedSnapshot: SnapshotTest,
+  readerErrorSnapshot: SnapshotTest
 ){
   static fun mcreate( stdLib: String, inputSnapshotFolder: String, outputSnapshotFolder: String ): mutable this {
     mkSnapshot = name ~> {
@@ -158,7 +159,8 @@ mutable class .TestRunner(
       TestHarness::mcreate(),
       mkSnapshot("flattener"),
       mkSnapshot("translator"),
-      mkSnapshot("linearized")
+      mkSnapshot("linearized"),
+      mkSnapshot("readerError")
     );
   }
 
@@ -181,6 +183,22 @@ mutable class .TestRunner(
     this
   }
 
+  mutable fun reader_fail (files: Vector<String> ): mutable this {
+    (name, paths) = this.prepareFiles( files );
+
+    (rs, _) = Reader::process(paths);
+    for ( r in rs ){
+      if ( !r.ok ){
+        case = this.readerErrorSnapshot.createOrValidate( name, "err", r.error );
+        this.harness.pushTestCase( case );
+        return this;
+      }
+    };
+
+    this.harness.pushTestCase( TestCase( name, Some("Reader should have failed, it did not")) );
+    this
+  }
+
   mutable fun io_test( files: Vector<String>, reads: Vector<String>, writes: Vector<String> ): mutable this {
     (name, paths) = this.prepareFiles( files );
     io = MockIO::mcreate( reads );
@@ -200,7 +218,6 @@ mutable class .TestRunner(
         return ReaderError( r.error );
       };
     };
-
 
     flat = mutable Flattener();
     flatFs = fs.map( f -> flat.file(f) );

@@ -1,0 +1,15 @@
+(module Main imports (StdLib))
+
+(vars ())
+
+(functions (
+  (function foo () 0)
+
+  (function main ()
+    (begin
+      (write! foo)
+    )
+  )
+))
+
+

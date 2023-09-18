@@ -1,0 +1,13 @@
+(module Main imports (StdLib))
+
+(vars ())
+
+(functions (
+  (function vararg (y ...x) 0)
+
+  (function main ()
+    (begin
+      (vararg)
+    )
+  )
+))

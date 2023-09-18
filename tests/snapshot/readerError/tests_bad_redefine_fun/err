@@ -1,0 +1,5 @@
+File tests/bad/redefine_fun/main.sm at line 5
+  3| 
+  4| (functions (
+  5|   (function foo () 1)
+       ^--foo already defined

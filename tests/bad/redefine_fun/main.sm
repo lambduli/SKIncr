@@ -1,0 +1,11 @@
+(module Main imports (StdLib Foo))
+
+(vars ())
+
+(functions (
+  (function foo () 1)
+
+  (function main ()
+    0
+  )
+))

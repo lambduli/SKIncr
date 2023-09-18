@@ -1,0 +1,5 @@
+File tests/bad/arity_check/main.sm at line 9
+  7|   (function main ()
+  8|     (begin
+  9|       (vararg)
+           ^--function vararg has 1+ parameters but got 0 arguments
