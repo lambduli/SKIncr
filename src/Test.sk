@@ -9,23 +9,10 @@ base class TestResult(){
   | Successful( Interpreter.Val )
   | ReaderError( String )
   | ExecutionError( String )
-}
 
-// A class for collecting TestCases
-mutable class TestHarness( tests: mutable Vector<TestCase> ){
-
-  static fun mcreate() : mutable this {
-    mutable TestHarness( mutable Vector<TestCase>[] )
-  }
-
-  mutable fun pushTestCase( case: TestCase ): void {
-    this.tests.push( case )
-  }
-
-  // TODO refactor out?
   // Assert that result equals to a expected value
-  mutable fun assert_val( name: String, expectedValue: Interpreter.Val, result: TestResult ): void {
-    msg = result match {
+  fun assert_val( name: String, expectedValue: Interpreter.Val ): TestCase {
+    msg = this match {
       | Successful(val) if (val == expectedValue) -> {
         None()
       }
@@ -39,11 +26,11 @@ mutable class TestHarness( tests: mutable Vector<TestCase> ){
         Some( `Execution failed with message: ${msg}` )
       }
     };
-    this.pushTestCase( TestCase(name, msg) );
+    TestCase(name, msg)
   }
 
-  mutable fun assert_no_fail( name: String, result: TestResult ): void {
-    msg = result match {
+  fun assert_no_fail( name: String ): TestCase {
+    msg = this match {
       | Successful(_) -> {
         None()
       }
@@ -54,12 +41,12 @@ mutable class TestHarness( tests: mutable Vector<TestCase> ){
         Some( `Execution failed with message: ${msg}` )
       }
     };
-    this.pushTestCase( TestCase(name, msg) );
+    TestCase(name, msg)
   }
 
   // Assert that execution failed in runtime
-  mutable fun assert_execution_fail( name: String, result: TestResult ): void {
-    msg = result match {
+  fun assert_execution_fail( name: String ): TestCase {
+    msg = this match {
       | Successful(val) -> {
         Some( `Expected execution failure, got ${val}` )
       }
@@ -70,24 +57,34 @@ mutable class TestHarness( tests: mutable Vector<TestCase> ){
         None()
       }
     };
-    this.pushTestCase( TestCase(name, msg) );
+    TestCase(name, msg)
+  }
+}
+
+// A class for collecting TestCases
+mutable class TestHarness( tests: mutable Vector<TestCase> ){
+
+  static fun mcreate() : mutable this {
+    mutable TestHarness( mutable Vector<TestCase>[] )
+  }
+
+  mutable fun pushTestCase( case: TestCase ): void {
+    this.tests.push( case )
   }
 
   // Report all failed tests and the count of all, failed and succesful tests
   readonly fun report(): String {
     allCnt = this.tests.size();
     successfulCnt = this.tests.filter( test -> test.message.isNone() ).size();
-    errs: Vector<(String, String)> = this.tests.map( test -> test.message match {
-      | Some( msg ) -> Some( (test.name, msg) )
+    errs: Vector<String> = this.tests.map( test -> test.message match {
+      | Some( msg ) -> Some( `    ${test.name}: ${msg}`  )
       | None() -> None()
     }).filterNone();
     unsuccessfulCnt = errs.size();
 
     err = if ( unsuccessfulCnt != 0 ){
       "Errors:\n" +
-      "\n".join(
-        errs.map( err -> err match { | (test, msg) -> `    ${test}: ${msg}` } )
-      ) +
+      "\n".join( errs ) +
       "\n\n"
     } else {
       ""
@@ -173,7 +170,7 @@ mutable class .TestRunner( stdLib: String, harness: mutable TestHarness, flatten
     (name, paths) = this.prepareFiles( files );
 
     res = this.run_test( paths, mutable NoOpIO(), name );
-    this.harness.assert_val( name, expectedValue, res );
+    this.harness.pushTestCase( res.assert_val( name, expectedValue ) );
     this
   }
 
@@ -182,7 +179,7 @@ mutable class .TestRunner( stdLib: String, harness: mutable TestHarness, flatten
     io = MockIO::mcreate( reads );
 
     runRes = this.run_test( paths, io, name );
-    this.harness.assert_no_fail( name, runRes );
+    this.harness.pushTestCase( runRes.assert_no_fail( name ) );
 
     ioRes = io.validateWrites( "io/" + name, writes );
     this.harness.pushTestCase( ioRes );
@@ -225,6 +222,7 @@ mutable class .TestRunner( stdLib: String, harness: mutable TestHarness, flatten
   }
 }
 
+// Do-nothing interpreter IO
 mutable class NoOpIO() extends InterpreterIO {
   readonly fun read(): Option<String> {
     None()
