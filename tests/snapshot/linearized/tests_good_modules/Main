@@ -1,0 +1,10 @@
+module Main
+function main (0) [1]
+0: %0 ← foo()
+1: ret %0
+
+function init (0) [2]
+0: %0 ← 0
+1: %1 ← %0
+2: ret %1
+

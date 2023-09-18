@@ -1,0 +1,32 @@
+(module Main imports ()
+(vars (
+  (let X 20)
+))
+(functions (
+  (function main()      (begin 
+      (let %0 (getX ))
+      (let %1 [, %0])
+      (let %2 (write!  %1))
+      (let %3 (load  %0))
+      (let %4 [, %3])
+      (let %5 (write!  %4))
+      (let %6 30)
+      (let %7 (setX  %6))
+      (let %8 40)
+      (gset!  %0 %8)
+      (let %9 (getX ))
+      (let %10 [, %9])
+      (let %11 (write!  %10))
+      (let %12 (load  %0))
+      (let %13 [, %12])
+      (let %14 (write!  %13))
+      %14)
+
+  (function init()      (begin 
+      (let %0 20)
+      (gset!  %0 %0)
+      (let %1 0)
+      (let %2 %1)
+      %2)
+
+))

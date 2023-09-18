@@ -1,0 +1,18 @@
+(module Foo imports (StdLib))
+
+(vars (
+  (let X 10)
+))
+
+(functions (
+  (function setX (newVal)
+    (begin
+      (set! X newVal)
+      0
+    )
+  )
+
+  (function getX ()
+    X
+  )
+))

@@ -1,0 +1,11 @@
+(module Main imports ((functions (
+  (function main(0 | 1) 
+    %0 = (foo )
+    return %0)
+
+  (function init(0 | 2) 
+    %0 = 0
+    %1 = %0
+    return %1)
+
+))

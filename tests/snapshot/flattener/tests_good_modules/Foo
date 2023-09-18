@@ -1,0 +1,13 @@
+(module Foo imports ()
+(vars ())
+(functions (
+  (function foo()      (begin 
+      (let %0 42)
+      %0)
+
+  (function init()      (begin 
+      (let %0 0)
+      (let %1 %0)
+      %1)
+
+))

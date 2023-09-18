@@ -1,0 +1,12 @@
+(module Main imports (StdLib))
+
+(vars ())
+
+(functions (
+  (function main ()
+    (if tt
+      10
+      20
+    )
+  )
+))

@@ -1,0 +1,22 @@
+(module Foo imports ()
+(vars (
+  (let X 10)
+))
+(functions (
+  (function setX( newVal)      (begin 
+      (gset!  %0 %0)
+      (let %1 0)
+      %1)
+
+  (function getX()      (begin 
+      (let %0 (load  %0))
+      %0)
+
+  (function init()      (begin 
+      (let %0 10)
+      (gset!  %0 %0)
+      (let %1 0)
+      (let %2 %1)
+      %2)
+
+))

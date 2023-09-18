@@ -1,0 +1,28 @@
+(module Main imports ((functions (
+  (function main(0 | 15) 
+    %0 = (getX )
+    %1 = [, %0]
+    %2 = (write!  %1)
+    %3 = load %0
+    %4 = [, %3]
+    %5 = (write!  %4)
+    %6 = 30
+    %7 = (setX  %6)
+    %8 = 40
+    %0 ^= %8
+    %9 = (getX )
+    %10 = [, %9]
+    %11 = (write!  %10)
+    %12 = load %0
+    %13 = [, %12]
+    %14 = (write!  %13)
+    return %14)
+
+  (function init(0 | 3) 
+    %0 = 20
+    %0 ^= %0
+    %1 = 0
+    %2 = %1
+    return %2)
+
+))
