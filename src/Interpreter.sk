@@ -602,7 +602,7 @@ mutable class .Interpreter(modules: Modules, io: mutable InterpreterIO, globals:
 }
 
 
-mutable class PrettyPrint(mutable indent: Int = 0) {
+mutable class PrettyPrint(color: Bool = true, mutable indent: Int = 0) {
   readonly fun pad(): String {
 	  s = "";
     n = this.indent;
@@ -611,7 +611,11 @@ mutable class PrettyPrint(mutable indent: Int = 0) {
   }
 
   mutable fun toModule(m: Module): String {
-     s = `\e[4;31mmodule\e[0m ${m.name}\n`;
+    s = if ( this.color ){
+      `\e[4;31mmodule\e[0m ${m.name}\n`
+    } else {
+      `module ${m.name}`
+    };
      if (m.funs.size() == 0) {
        !s = s + "\n";
      } else {
@@ -622,7 +626,11 @@ mutable class PrettyPrint(mutable indent: Int = 0) {
   }
 
   mutable fun function(f: Fun): String {
-    s = `\e[4;31mfunction\e[0m ${f.name} (${f.params}) [${f.locals}]`;
+    s = if( this.color ) {
+      `\e[4;31mfunction\e[0m ${f.name} (${f.params}) [${f.locals}]`
+    } else {
+      `function ${f.name} (${f.params}) [${f.locals}]`
+    };
     !s = s + this.code(f.body);
     !s = s + "\n";
     s

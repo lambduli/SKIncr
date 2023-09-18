@@ -136,7 +136,13 @@ class SnapshotTest( snapshotName: String, inputsFolder: String, outputsFolder: S
 }
 
 // An overall runner of test, encapsulating snapshot tests and TestHarness
-mutable class .TestRunner( stdLib: String, harness: mutable TestHarness, flattenerSnapshot: SnapshotTest, translatorSnapshot: SnapshotTest ){
+mutable class .TestRunner(
+  stdLib: String,
+  harness: mutable TestHarness,
+  flattenerSnapshot: SnapshotTest,
+  translatorSnapshot: SnapshotTest,
+  linearizedSnapshot: SnapshotTest
+){
   static fun mcreate( stdLib: String, inputSnapshotFolder: String, outputSnapshotFolder: String ): mutable this {
     mkSnapshot = name ~> {
       SnapshotTest(
@@ -151,7 +157,8 @@ mutable class .TestRunner( stdLib: String, harness: mutable TestHarness, flatten
       stdLib,
       TestHarness::mcreate(),
       mkSnapshot("flattener"),
-      mkSnapshot("translator")
+      mkSnapshot("translator"),
+      mkSnapshot("linearized")
     );
   }
 
@@ -194,6 +201,7 @@ mutable class .TestRunner( stdLib: String, harness: mutable TestHarness, flatten
       };
     };
 
+
     flat = mutable Flattener();
     flatFs = fs.map( f -> flat.file(f) );
     pp = mutable PrettyPrint();
@@ -213,7 +221,11 @@ mutable class .TestRunner( stdLib: String, harness: mutable TestHarness, flatten
 
     l = Interpreter.Linearize::mcreate();
     linearized: Vector<Interpreter.Module> = translated.map(m -> l.mod(m));
-    //linearized.each(m -> {if (m.name != "StdLib") print_string(mutable Interpreter.PrettyPrint().toModule(m));});
+    linearized.filter(m -> m.name.lowercase() != "stdlib").each(m -> {
+      prettyOut = (mutable Interpreter.PrettyPrint(false)).toModule(m);
+      case = this.linearizedSnapshot.createOrValidate( testName, m.name, prettyOut );
+      this.harness.pushTestCase( case );
+    });
 
     Interpreter.runProgram( linearized, io ) match {
       | Success(val) -> Successful(val)
