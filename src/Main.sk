@@ -27,9 +27,9 @@ type VS = Vector<String>;
 fun test(): void {
   report =
     TestRunner::mcreate( "tests/stdlib.sm", "tests/snapshot", "build/snapshots" )
-      .good_test(VS["tests/good/1/main.sm"], Interpreter.S("Hello world!"))
-      .good_test(VS["tests/good/2/main.sm"], Interpreter.I(10))
-      .io_test  (VS["tests/good/3/main.sm"], VS["42"], VS["42"])
+      .good_test(VS["tests/good/hello_world/main.sm"], Interpreter.S("Hello world!"))
+      .good_test(VS["tests/good/let/main.sm"], Interpreter.I(10))
+      .io_test  (VS["tests/good/simple_io/main.sm"], VS["42"], VS["42"])
       .harness.report();
   print_string( report )
 }
