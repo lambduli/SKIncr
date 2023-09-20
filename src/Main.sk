@@ -30,7 +30,7 @@ fun test(): void {
       .good_test  (VS["tests/good/hello_world/main.sm"], Interpreter.S("Hello world!"))
       .good_test  (VS["tests/good/let/main.sm"], Interpreter.I(10))
       .good_test  (VS["tests/good/modules/foo.sm", "tests/good/modules/main.sm"], Interpreter.I(42))
-      // .good_test  (VS["tests/good/if_value/main.sm"], Interpreter.I(10)) // TODO Crashes during runtime
+      .good_test  (VS["tests/good/if_value/main.sm"], Interpreter.I(10))
       .io_test    (VS["tests/good/simple_io/main.sm"], VS["42"], VS["42"])
       .io_test    (VS["tests/good/local_var/foo.sm", "tests/good/local_var/main.sm"], VS[], VS["10", "20", "30", "40"])
       .reader_fail(VS["tests/bad/leaky_var/main.sm"])

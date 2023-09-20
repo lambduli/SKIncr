@@ -1,0 +1,15 @@
+(module Main imports ()
+(vars ())
+(functions (
+  (function main()      (begin 
+      (let %0 true)
+      (if %0
+(let %1 10)
+(let %2 20)))
+
+  (function init()      (begin 
+      (let %0 0)
+      (let %1 %0)
+      %1)
+
+))

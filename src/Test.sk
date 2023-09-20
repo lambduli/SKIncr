@@ -9,6 +9,7 @@ base class TestResult(){
   | Successful( Interpreter.Val )
   | ReaderError( String )
   | ExecutionError( String )
+  | ExceptionError ( String )
 
   // Assert that result equals to a expected value
   fun assert_val( name: String, expectedValue: Interpreter.Val ): TestCase {
@@ -25,6 +26,9 @@ base class TestResult(){
       | ExecutionError(msg) -> {
         Some( `Execution failed with message: ${msg}` )
       }
+      | ExceptionError(msg) -> {
+        Some ( `Exception was raised: ${msg}`)
+      }
     };
     TestCase(name, msg)
   }
@@ -39,6 +43,9 @@ base class TestResult(){
       }
       | ExecutionError(msg) -> {
         Some( `Execution failed with message: ${msg}` )
+      }
+      | ExceptionError(msg) -> {
+        Some ( `Exception was raised: ${msg}`)
       }
     };
     TestCase(name, msg)
@@ -55,6 +62,9 @@ base class TestResult(){
       }
       | ExecutionError(_) -> {
         None()
+      }
+      | ExceptionError(msg) -> {
+        Some ( `Exception was raised: ${msg}`)
       }
     };
     TestCase(name, msg)
@@ -76,8 +86,9 @@ mutable class TestHarness( tests: mutable Vector<TestCase> ){
   readonly fun report(): String {
     allCnt = this.tests.size();
     successfulCnt = this.tests.filter( test -> test.message.isNone() ).size();
+    maxTestNameSize = this.tests.map( test -> test.name.length() ).max().default( 0 );
     errs: Vector<String> = this.tests.map( test -> test.message match {
-      | Some( msg ) -> Some( `    ${test.name}: ${msg}`  )
+      | Some( msg ) -> Some( `    ${test.name.padRight( maxTestNameSize, ' ' )} ${msg}`  )
       | None() -> None()
     }).filterNone();
     unsuccessfulCnt = errs.size();
@@ -91,8 +102,8 @@ mutable class TestHarness( tests: mutable Vector<TestCase> ){
     };
 
     err +
-    `Total tests: ${allCnt}\n` +
-    `Failed tests: ${unsuccessfulCnt}\n` +
+    `Total tests:   ${allCnt}\n` +
+    `Failed tests:  ${unsuccessfulCnt}\n` +
     `Passing tests: ${successfulCnt}\n`
   }
 }
@@ -212,42 +223,48 @@ mutable class .TestRunner(
   }
 
   mutable fun run_test(files: Vector<String>, io: mutable InterpreterIO, testName: String): TestResult {
-    (rs, fs) = Reader::process(files);
-    for ( r in rs ){
-      if (!r.ok){
-        return ReaderError( r.error );
+    Result::guard( () -> {
+      (rs, fs) = Reader::process(files);
+      for ( r in rs ){
+        if (!r.ok){
+          err: TestResult = ReaderError( r.error );
+          return err;
+        };
       };
-    };
 
-    flat = mutable Flattener();
-    flatFs = fs.map( f -> flat.file(f) );
-    pp = mutable PrettyPrint();
-    flatFs.filter(f -> f.name.lowercase() != "stdlib").each( f -> {
-      prettyOut = pp.file(f);
-      case = this.flattenerSnapshot.createOrValidate( testName, f.name, prettyOut );
-      this.harness.pushTestCase( case );
-    });
+      flat = mutable Flattener();
+      flatFs = fs.map( f -> flat.file(f) );
+      pp = mutable PrettyPrint();
+      flatFs.filter(f -> f.name.lowercase() != "stdlib").each( f -> {
+        prettyOut = pp.file(f);
+        case = this.flattenerSnapshot.createOrValidate( testName, f.name, prettyOut );
+        this.harness.pushTestCase( case );
+      });
 
-    t = Translator();
-    translated = flatFs.map(d -> t.file(d));
-    translated.filter(m -> m.name.lowercase() != "stdlib").each(m -> {
-      prettyOut = (mutable PrettyPrint2()).toModule(m);
-      case = this.translatorSnapshot.createOrValidate( testName, m.name, prettyOut );
-      this.harness.pushTestCase( case );
-    });
+      t = Translator();
+      translated = flatFs.map(d -> t.file(d));
+      translated.filter(m -> m.name.lowercase() != "stdlib").each(m -> {
+        prettyOut = (mutable PrettyPrint2()).toModule(m);
+        case = this.translatorSnapshot.createOrValidate( testName, m.name, prettyOut );
+        this.harness.pushTestCase( case );
+      });
 
-    l = Interpreter.Linearize::mcreate();
-    linearized: Vector<Interpreter.Module> = translated.map(m -> l.mod(m));
-    linearized.filter(m -> m.name.lowercase() != "stdlib").each(m -> {
-      prettyOut = (mutable Interpreter.PrettyPrint(false)).toModule(m);
-      case = this.linearizedSnapshot.createOrValidate( testName, m.name, prettyOut );
-      this.harness.pushTestCase( case );
-    });
+      l = Interpreter.Linearize::mcreate();
+      linearized: Vector<Interpreter.Module> = translated.map(m -> l.mod(m));
+      linearized.filter(m -> m.name.lowercase() != "stdlib").each(m -> {
+        prettyOut = (mutable Interpreter.PrettyPrint(false)).toModule(m);
+        case = this.linearizedSnapshot.createOrValidate( testName, m.name, prettyOut );
+        this.harness.pushTestCase( case );
+      });
 
-    Interpreter.runProgram( linearized, io ) match {
-      | Success(val) -> Successful(val)
-      | Failure(msg) -> ExecutionError(msg)
-    };
+      Interpreter.runProgram( linearized, io ) match {
+        | Success(val) -> Successful(val)
+        | Failure(msg) -> ExecutionError(msg)
+      };
+    }) match {
+      | Success(res) -> res
+      | Failure(e) -> ExceptionError( e.getMessage() )
+    }
   }
 }
 
