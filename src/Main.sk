@@ -14,8 +14,10 @@ fun main(): void {
 	if (paths.size() == 0) {
     test()
   }
-  else {
-	  run(Vector::createFromItems(paths))
+  else if ( paths[0] == "-v") {
+	  run(Vector::createFromItems(paths.drop(1)), true)
+  } else {
+	  run(Vector::createFromItems(paths), false)
   }
 }
 
@@ -48,28 +50,37 @@ fun test(): void {
 // it contains all the primitives.
 //
 
-fun run(files: Vector<String>): void {
-   (rs, fs) = Reader::process(files);
-   for ( r in rs ){
-    if (!r.ok){
-      print_string( r.error );
-      return void;
-    };
+fun run(files: Vector<String>, verbose: Bool): void {
+  (rs, fs) = Reader::process(files);
+  for ( r in rs ){
+   if (!r.ok){
+     print_string( r.error );
+     return void;
    };
+  };
 
-	 flat = mutable Flattener();
-	 flatFs = fs.map( f -> flat.file(f) );
-	 p = mutable PrettyPrint();
-   flatFs.each(f -> if(f.name != "StdLib") { print_string(p.file(f)); });
+  p = mutable PrettyPrint();
+	flat = mutable Flattener();
+  flatFs = fs.map( f -> flat.file(f) );
+  if (verbose){
+    flatFs.filter(f -> f.name.lowercase() != "stdlib")
+      .each(f -> print_string(p.file(f)))
+  };
 
-	 t = Translator();
-	 translated = flatFs.map(d -> t.file(d));
-//	 translated.each(m -> {	print_string(mutable PrettyPrint2().toModule(m)); });
+	t = Translator();
+	translated = flatFs.map(d -> t.file(d));
+  if (verbose){
+    translated.filter(m -> m.name.lowercase() != "stdlib")
+      .each(m -> print_string((mutable PrettyPrint2()).toModule(m)) )
+  };
 
 	l = Interpreter.Linearize::mcreate();
 	linearized: Vector<Interpreter.Module> = translated.map(m -> l.mod(m));
+	if (verbose){
+    linearized.filter(m -> m.name.lowercase() != "stdlib")
+      .each(m -> print_string((mutable Interpreter.PrettyPrint()).toModule(m)) )
+  };
 
-	//linearized.each(m -> {if (m.name != "StdLib") print_string(mutable Interpreter.PrettyPrint().toModule(m));});
 	Interpreter.runProgram(linearized) match {
 		| Failure(msg) -> print_string(`RUNTIME ERROR: ${msg}`);
 		| Success(v) ->   print_string(`>  ${v.toOut()}`);
