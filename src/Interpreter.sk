@@ -662,15 +662,11 @@ mutable class PrettyPrint(color: Bool = true, mutable indent: Int = 0) {
     | LitI(i) -> `${i}`
     | LitB(b) -> `${b}`
     | LitS(s) -> `"${s}"`
-    | LitL(regs) -> `[${regs.reduce((s, r) -> `${s} ${this.expression(r)}, `, "")}]`
+    | LitL(regs) -> `[${regs.map(r -> this.expression(r)).join( ", ")}]`
     | LitC(ch) -> `'${ch}'`
     | Register(r) -> `%${r}`
     | Load(r) -> `@${r}`
-    | Invoke(n, regs) -> {
-       s = `${n}(`;
-       regs.each(r -> !s = s + ` %${r}`);
-       s + ")"
-    }
+    | Invoke(n, regs) -> `${n}(${regs.map(r -> `%${r}`).join( " " )})`;
     }
   }
 

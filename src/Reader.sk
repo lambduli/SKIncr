@@ -158,10 +158,10 @@ mutable class .PrettyPrint(mutable indent: Int = 0) {
     | LitBool(_, b) -> `${b}`
     | LitChar(_, ch) -> `'${ch}'`
     | LitString(_, str) -> `"${str}"`
-    | LitList(_, exs) -> `[${exs.reduce((s, e) -> `${s}, ${this.expression(e)}`, "")}]`
+    | LitList(_, exs) -> `[${exs.map(e -> this.expression(e)).join( ", " )}]`
     | Var(_, s) -> { s }
     | Decl(_, n, e) -> `(let ${n} ${this.expression(e)})`
-    | Call(_, n, es) -> `(${n} ${es.reduce((s, e) -> `${s} ${this.expression(e)}`, "")})`
+    | Call(_, n, es) -> `(${n} ${es.map(e -> this.expression(e)).join( " " )})`
     | Block(_t, es) -> {
       s = `${this.pad()}(begin `;
       this.inc();

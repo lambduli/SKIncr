@@ -399,14 +399,10 @@ mutable class .PrettyPrint2(mutable indent: Int = 0) {
     | VBool(b) -> `${b}`
     | VString(s) -> `"${s}"`
     | VChar(ch) -> `'${ch}'`
-    | VList(regs) -> `[${regs.reduce((s, r) -> `${s}, ${this.expression(r)}`, "")}]`
+    | VList(regs) -> `[${regs.map( r -> this.expression(r) ).join( ", " )}]`
     | Register(s) -> s
     | Load(s) -> `load ${s}`
-    | Invoke(n, es) -> {
-      s = `(${n} `;
-       es.each(e -> !s = s + " " + this.expression(e));
-      s + ")"
-    }
+    | Invoke(n, es) -> `(${n} ${es.map( e -> this.expression(e)).join( " " )})`
     }
   }
 
