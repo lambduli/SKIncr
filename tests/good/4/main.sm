@@ -11,6 +11,7 @@
 	(set! x (+ x 1))
        )
      )
+     x ## note that if we omit x we crash :-(, the checker fails to check!
     )
   )
  )

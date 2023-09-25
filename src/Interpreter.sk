@@ -200,7 +200,12 @@ mutable class Frame(
 				code: Statements,
 				fname: String) {
 
-  static fun mcreate(globals: mutable Vals, locals: mutable Vals, code: Statements, fname: String): mutable Frame {
+  static fun mcreate(
+    globals: mutable Vals,
+		locals: mutable Vals,
+		code: Statements,
+		fname: String): mutable Frame
+  {
     mutable Frame(globals, locals, 0, code, fname)
   }
 
@@ -244,11 +249,14 @@ mutable class .Interpreter(
 				stack: mutable Frames,
 				mutable failure: (Bool, String)) {
 
+  mutable fun fail(msg: String): void { this.!failure = (false, `Error: ${msg}`) }
+  readonly fun ok(): Bool { this.failure.i0 }
+  readonly fun why(): String { this.failure.i1 }
+
   // Creates a fresh interpreter given a set of modules, one of which contains main().
   static fun mcreate(mods: Modules, io: mutable InterpreterIO): mutable this {
     globals = Map::mcreateFromItems(mods.map(m -> (m.name, Vector::mfill(m.globs, zero()))));
-    vm = mutable Interpreter(mods, io, globals, mutable Frames[], (false, "Didn't fail yet."));
-    //                                                                     ^^^ a default err msg
+    vm = mutable Interpreter(mods, io, globals, mutable Frames[], (true, "default: no error"));
     vm.initialize();
     vm
   }
@@ -261,7 +269,7 @@ mutable class .Interpreter(
     // We can't use it as `init` is not unique function in the whole program.
     this.modules.each(mod -> {
       mod.funs.find(f -> f.name == "init") match {
-        | None() -> void; // this should never happen anyway
+        | None() -> void; // this should never happen
         | Some(init) -> {
             globs = this.globals.get(mod.name);
             locals = Vals::mfill(init.locals, Null());
@@ -283,17 +291,17 @@ mutable class .Interpreter(
     if (fname == "builtin_bin") {
       this.callBuiltin2(args) match {
         | Success(val) -> this.nativeReturn(val)
-        | Failure(msg) -> this.!failure = (true, `Error: ${msg}`);
+        | Failure(msg) -> this.fail(msg)
       }
     } else if (fname == "builtin_un") {
       this.callBuiltin1(args) match {
         | Success(val) -> this.nativeReturn(val)
-        | Failure(msg) -> this.!failure = (true, `Error: ${msg}`);
+        | Failure(msg) -> this.fail(msg)
       }
     } else if (fname == "builtin_nul") {
       this.callBuiltin0(args) match {
         | Success(val) -> this.nativeReturn(val)
-        | Failure(msg) -> this.!failure = (true, `Error: ${msg}`);
+        | Failure(msg) -> this.fail(msg)
       }
     } else {
       func = this.functionFor(fname);
@@ -384,7 +392,7 @@ mutable class .Interpreter(
     loop {
       frame = this.top();
       instr = frame.instruction();
-      if (this.failure.i0) return Failure(this.failure.i1);
+      if (!this.ok()) return Failure(this.why());
 			print_string(instr.toString());
       instr match {
         | Store(r, e) -> frame.setLocal(r, this.expression(e))
@@ -393,17 +401,11 @@ mutable class .Interpreter(
             loc = frame.getLocal(r);
             this.toBool(loc) match {
               | Success(true) -> void
-              | Success(false) -> {
-                frame.setPC(tgt);
-                continue;
-              }
+              | Success(false) -> { frame.setPC(tgt); continue; }
               | Failure(m) -> return Failure(m)
             }
         }
-        | Jump(tgt) -> {
-          frame.setPC(tgt);
-          continue;
-        }
+        | Jump(tgt) -> { frame.setPC(tgt); continue; }
         | Return(expr) -> {
 				  if (this.stack.size() == 1)
             return Success(this.expression(expr)) // main is finished, we are done
@@ -412,9 +414,7 @@ mutable class .Interpreter(
 						callInstr = prevFrame.prevInstruction();
 						retVal = this.expression(expr);
 						callInstr match {
-						 | Store(r, _) -> {
-              prevFrame.setLocal(r, retVal)
-             }
+						 | Store(r, _) ->  prevFrame.setLocal(r, retVal)
 						 | GStore(r, _) -> prevFrame.setLocal(r, retVal)
 						 | bad -> {
                 print_string(this.toStackTrace());
