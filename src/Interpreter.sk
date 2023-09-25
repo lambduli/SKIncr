@@ -193,7 +193,12 @@ mutable class Linearize(mutable cntr: Int) {
 //
 // Frame are mutable as we perform updates to the state in place.
 // ======================================================================================
-mutable class Frame(globals: mutable Vals, locals: mutable Vals, mutable pc: Int, code: Statements, fname: String) {
+mutable class Frame(
+				globals: mutable Vals,
+				locals: mutable Vals,
+				mutable pc: Int,
+				code: Statements,
+				fname: String) {
 
   static fun mcreate(globals: mutable Vals, locals: mutable Vals, code: Statements, fname: String): mutable Frame {
     mutable Frame(globals, locals, 0, code, fname)
@@ -232,7 +237,12 @@ fun runProgram(modules: Modules, io: mutable InterpreterIO = mutable TerminalIO(
 //   -- globals : the globals for each module
 //   -- stack   : the stack of active functions invocations
 // ======================================================================================
-mutable class .Interpreter(modules: Modules, io: mutable InterpreterIO, globals: mutable GlobMap, stack: mutable Frames, mutable failure: (Bool, String)) {
+mutable class .Interpreter(
+				modules: Modules,
+				io: mutable InterpreterIO,
+				globals: mutable GlobMap,
+				stack: mutable Frames,
+				mutable failure: (Bool, String)) {
 
   // Creates a fresh interpreter given a set of modules, one of which contains main().
   static fun mcreate(mods: Modules, io: mutable InterpreterIO): mutable this {
@@ -242,7 +252,6 @@ mutable class .Interpreter(modules: Modules, io: mutable InterpreterIO, globals:
     vm.initialize();
     vm
   }
-
 
   // [###] This might fail at runtime
   // errors like some module not having an init or such should not really happen
@@ -318,8 +327,8 @@ mutable class .Interpreter(modules: Modules, io: mutable InterpreterIO, globals:
 	  this.funAndModFor(fname).i1
 	}
 
-  // Relies on the uniqueness of function names and the fact that previous passes have
-	// checked that all called functions are defined.
+  // Relies on the uniqueness of function names and that previous
+  // passes checked that all called functions are defined.
   readonly fun funAndModFor(fname: String): (Fun, Module) {
     for (m in this.modules) {
 		  for (f in m.funs) {
@@ -327,12 +336,10 @@ mutable class .Interpreter(modules: Modules, io: mutable InterpreterIO, globals:
 				  return (f, m);
    		}
 		};
-    print_string(`## IMPOSSIBLE ## There is no function named '${fname}'.`);
-		invariant_violation(`## IMPOSSIBLE ## There is no function named '${fname}'.`)
+		invariant_violation(`No function named '${fname}'.`)
   }
 
-  // Returns the top of call stack.
-	// Relies on the fact that stack is never empty
+  // Returns the top of call stack.  Relies that stack is never empty
   mutable fun top(): mutable Frame { this.stack[this.stack.size() - 1] }
   mutable fun prev(): mutable Frame { this.stack[this.stack.size() - 2] }
 
@@ -366,21 +373,19 @@ mutable class .Interpreter(modules: Modules, io: mutable InterpreterIO, globals:
    }
 	}
 
-  // The main interpreter run loop. It terminates when we return from
-  // stack of size 1 (i.e. return from main) The loop work with the
-  // top of stack, the current frame. It reads the current
-  // instruction, decodes and executes it. Then advances the program
-  // counter on that frame.
-	//
-	// Function calls push a new frame, to the next time the loop comes
-	// to the top it picks up the top frame.
+  // The main interpreter run loop terminates when we return from
+	// stack of size 1 (i.e. return from main) The loop work with the
+	// top of stack, the current frame. It reads the current
+	// instruction, decodes and executes it. Then advances the program
+	// counter on that frame.  Function calls push a new frame, to the
+	// next time the loop comes to the top it picks up the top frame.
 	//
   mutable fun run(): Result<Val, String> {
     loop {
       frame = this.top();
       instr = frame.instruction();
       if (this.failure.i0) return Failure(this.failure.i1);
-
+			print_string(instr.toString());
       instr match {
         | Store(r, e) -> frame.setLocal(r, this.expression(e))
         | GStore(r, expr) -> frame.setGlobal(r, this.expression(expr))
@@ -413,7 +418,7 @@ mutable class .Interpreter(modules: Modules, io: mutable InterpreterIO, globals:
 						 | GStore(r, _) -> prevFrame.setLocal(r, retVal)
 						 | bad -> {
                 print_string(this.toStackTrace());
-                return Failure(`## IMPOSSIBLE: A function call wasn't done as a Store or GStore! | it was=${bad}`)
+                return Failure(`A function call wasn't done as a Store or GStore! | it was=${bad}`)
               }
 	  				 };
 						_ = this.stack.pop();
@@ -656,21 +661,14 @@ mutable class PrettyPrint(mutable indent: Int = 0) {
 }
 
 
-
 mutable base class .InterpreterIO {
   mutable fun read(): Option<String>;
   mutable fun write(line: String): void;
 }
 
 mutable class TerminalIO() extends InterpreterIO {
-  readonly fun read() : Option<String> {
-    read_line()
-  }
-
-
-  readonly fun write(line: String): void{
-    print_string( line )
-  }
+  readonly fun read() : Option<String> { read_line() }
+  readonly fun write(line: String): void{ print_string( line ) }
 }
 
 module end;
