@@ -57,9 +57,9 @@ base class Stmt {
 
   fun toString(): String {
     this match {
-      | Store(reg, expr) -> `store ${reg} ${expr}`
-      | GStore(reg, expr) -> `gstore ${reg} ${expr}`
-      | CondJump(cond, tgt) -> `condjmp ${cond} ${tgt}`
+      | Store(reg, expr) -> `%${reg} =  ${expr}`
+      | GStore(reg, expr) -> `g${reg} = ${expr}`
+      | CondJump(cond, tgt) -> `if ${cond} jmp ${tgt}`
       | Jump(instr) -> `jmp ${instr}`
       | Return(expr) -> `ret ${expr}`
     }
@@ -85,8 +85,8 @@ base class Expr uses Show {
       | LitS(str) -> `LitS(${str})`
       | LitC(ch) -> `LitC(${ch})`
       | LitL(regs) -> `LitL(${regs})`
-      | Register(r) -> `Register(${r})`
-      | Invoke(fname, args) -> `Invoke(${fname}, ${args})`
+      | Register(r) -> `%${r}`
+      | Invoke(fname, args) -> `${fname}(${args})`
       | Load(r) -> `Load(${r})`
     }
   }
