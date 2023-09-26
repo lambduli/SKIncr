@@ -775,6 +775,7 @@ mutable class Scope(mutable top: Bool, env: mutable Vector<mutable Names>) {
 }
 
 // ===============================================================================================
+
 // -------------- Class Checker ----------------------------------------------------------
 // Enforces well-formdness rules. Require all imported files as we
 // need their function definitions.
@@ -822,15 +823,11 @@ mutable class Checker(env: mutable Scope, r: mutable Reader) {
   }
 
 	// ============================================================================
-  // Check one file
-	//
-	// We assume `StdLib` is correct, so it can be skipped.
-	//
+  // Check one file.  We assume `StdLib` is correct, so it is skipped.
 	//
   mutable fun file(file: File, fs: Vector<File>): void {
     if (file.name == "StdLib") return void;
     // Check the import list: it should include StdLib and all imported files should be in `fs`
-
     found = false; file.imports.each(name -> if (name == "StdLib") {!found = true;} );
     if (!found) return this.r.fail(file.tok, `Does not import StdLib`);
 

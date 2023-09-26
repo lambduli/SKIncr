@@ -35,6 +35,8 @@ fun test(): void {
 fun run(files: Strings): void {
 	 linearized = prepareFiles(files, true);
 	 if (linearized.size() == 0) return void;
+	 Interpreter.analyzeAll(linearized);
+   if (true) return void;
 	 Interpreter.runProgram(linearized) match {
 		| Failure(msg) -> print_string(`RUNTIME ERROR: ${msg}`);
 		| Success(v) ->   print_string(`>  ${v.toOut()}`);
@@ -55,16 +57,22 @@ fun prepareFiles(files: Strings, verbose: Bool): Vector<Interpreter.Module> {
   flatFs = fs.map( f -> flat.file(f) );
   p = mutable PrettyPrint();
   if (verbose) {
+    print_string("Parsed::");
  	  flatFs.each(f -> if(f.name != "StdLib") { print_string(p.file(f)); });
   };
   t = Translator();
   translated = flatFs.map(d -> t.file(d));
 	if (verbose) {
+	  print_string("Intermediate::");
 	  pp2 = mutable PrettyPrint2();
     translated.each(m -> { if (m.name != "StdLib") { print_string(pp2.toModule(m)); } });
 	};
   l = Interpreter.Linearize::mcreate();
   linearized: Vector<Interpreter.Module> = translated.map(m -> l.mod(m));
-	// linearized.each(m -> {if (m.name != "StdLib") print_string(mutable Interpreter.PrettyPrint().toModule(m));});
+	if (verbose) {
+	  print_string("Bytecode::");
+	  pp = mutable Interpreter.PrettyPrint();
+	  linearized.each(m -> {if (m.name != "StdLib") print_string(pp.toModule(m));});
+	};
 	linearized
 }

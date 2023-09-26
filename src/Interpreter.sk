@@ -8,6 +8,7 @@ type Frames = Vector<mutable Frame>;
 type Modules = Vector<Module>;
 type GlobMap = Map<String, mutable Vals>;  // From module name to module global registers
 
+// === class Val ===========================================================================
 base class Val() uses Show, Equality {
   children =
   | I(Int)
@@ -42,11 +43,16 @@ base class Val() uses Show, Equality {
 
 fun zero(): Val { I(0) }
 
-
+// === class Module ===========================================================================
 value class Module(name: String, globs: Int, funs: Funs) {}
+
+// === class Fun ===========================================================================
 value class Fun(name: String, params: Int, body: Statements, locals: Int) {}
+
+// === class Code ===========================================================================
 value class Code(stmts: Statements) {}
 
+// === class Stmt ===========================================================================
 base class Stmt {
   children =
 	| Store(reg: Int, Expr)
@@ -66,6 +72,7 @@ base class Stmt {
   }
 }
 
+// === class Expr ===========================================================================
 // Expressions include immediate constants, variable lookup and function call
 base class Expr uses Show {
   children =
@@ -101,7 +108,7 @@ mutable class Linearize(mutable cntr: Int) {
 
  static fun mcreate(): mutable this {  mutable Linearize(0) }
 
-  mutable fun mod(m: Reader.Module): Module {
+ mutable fun mod(m: Reader.Module): Module {
     funs = m.funs.map(f -> this.function(f));
     Module(m.name, m.globs, funs)
   }
@@ -131,6 +138,7 @@ mutable class Linearize(mutable cntr: Int) {
   }
 
   mutable fun statement(s: Reader.Stmt): Statements {
+	  print_string(s.toString());
     is = s match {
       | Reader.Set(regExpr, e) -> {
         this.!cntr = this.cntr + 1;
@@ -181,6 +189,262 @@ mutable class Linearize(mutable cntr: Int) {
 }
 
 
+
+value class State(entry: Vector<RD>, exit: Vector<RD>) {
+
+  static fun create(vars: Int, labels: Int): State {
+		(entries, exits, i) = (mutable Vector[], mutable Vector[], 0);
+		while (i < labels) {
+			 entries.push(RD::create(vars, labels));
+ 			 exits.push(RD::create(vars, labels));
+			 !i = i+1;
+		};
+		State(entries.chill(), exits.chill())
+  }
+
+  fun entryAt(i: Int): RD { this.entry[i] }
+  fun exitAt(i: Int): RD { this.exit[i] }
+
+  fun copyWith(entry: Bool, label: Int, d: RD): State {
+		(entries, exits, i) = (mutable Vector[], mutable Vector[], 0);
+		while (i < this.entry.size()) {
+		   eElem = if (entry && i == label) { d } else { this.entry[i] };
+			 entries.push(eElem);
+		   xElem = if (!entry && i == label) d else this.exit[i];
+			 exits.push(xElem);
+			 !i = i+1;
+		};
+		State(entries.chill(), exits.chill())
+  }
+
+  fun toStringAt(entry: Bool, label: Int): String {
+     rd = if (entry) this.entry[label] else this.exit[label];
+		 rd.toString()
+	}
+
+
+  fun toString(): String {
+	  (s, i) =  ("{", 0);
+		while (i < this.entry.size()) {
+		   !s = `${s}${this.toStringAt(true, i)}\n${i}\n${this.toStringAt(false, i)}\n\n`;
+			 !i = i+1;
+    };
+    s + "}"
+  }
+
+}
+
+
+// class BitVec ==========================================================================
+// A BitVec is an immutable class that starts with all bits set to
+// false, a bit can be set and unset, a bitvec can include
+// another if all the bits set in the other are also set in this, two
+// bitvecs can be joined to yield a new bitvec that has the union of
+// bits sets.
+// ======================================================================================
+value class BitVec(bits: Vector<Bool>) {
+ static fun create(card: Int): BitVec {
+		(i, vec) = (0, mutable Vector[]);
+		while(i < card) { vec.push(false); !i=i+1 };
+		BitVec(vec.chill())
+	}
+  // -------------------------------------
+  fun set(pos: Int): BitVec { this.setTo(pos, true) }
+  fun unset(pos: Int): BitVec { this.setTo(pos, false) }
+  // -------------------------------------
+  fun setTo(pos: Int, val: Bool): BitVec {
+		(i, vec) = (0, mutable Vector[]);
+		while(i < this.bits.size()) {
+		  if (i == pos) { vec.push(val) } else { vec.push(this.bits[i]) };
+			!i=i+1
+		};
+		BitVec(vec.chill())
+	}
+  // -------------------------------------
+  fun join(other: BitVec): BitVec {
+		(i, vec) = (0, mutable Vector[]);
+		while(i < this.bits.size()) { vec.push(this.bits[i] || other.bits[i]); !i=i+1	};
+		BitVec(vec.chill())
+	}
+  // -------------------------------------
+	fun includes(other: BitVec): Bool {
+		(i, res) = (0, true);
+		while(res && i < this.bits.size()) { if (other.bits[i]) !res = res && this.bits[i]; !i=i+1	};
+		res
+	}
+  // -------------------------------------
+  fun isSet(pos: Int): Bool { this.bits[pos] }
+
+  fun size(): Int { this.bits.size() }
+
+  fun count(): Int {
+	  (i, res) = (0, 0);
+		while (i < this.size()) { if (this.bits[i]) !res = res+1;	!i = i+1 };
+    res
+  }
+
+  fun toString(): String {
+	  (s, i) = ("[", 0);
+		while (i < this.bits.size()) {
+		  !s = s + if (this.bits[i]) "1" else "0";
+			!i = i+1;
+		};
+	  s+"]"
+	}
+}
+// ==========================================================================================
+
+
+// === class RD ==============================================================================
+// RD tracks the reaching definitions of variables. In the context of
+// our language, each local variable is identified by a positive
+// integer, and each definition is identified by a label, a positive
+// integer as well. Labels correspond to statements in the program.
+// ==========================================================================================
+value class RD(vars: Vector<BitVec>) {
+
+  static fun create(varCard: Int, labelCard: Int): RD {
+		(i, vec) = (0, mutable Vector[]);
+		while(i < varCard) { vec.push(BitVec::create(labelCard)); !i=i+1 };
+		RD(vec.chill())
+  }
+
+  fun set(var: Int, label: Int): RD {
+		(i, vec) = (0, mutable Vector[]);
+		while(i < this.vars.size()) {
+		  if (i == var) { vec.push(this.vars[i].set(label)) } else { vec.push(this.vars[i])	};
+			!i=i+1
+		};
+		RD(vec.chill())
+	}
+
+  fun isSet(var: Int, label: Int): Bool { this.vars[var].isSet(label) }
+
+  fun clear(var: Int): RD {
+		(i, vec, vars) = (0, mutable Vector[], this.vars);
+		while(i < vars.size()) {
+      if (i == var) { vec.push(BitVec::create(vars[i].size())) } else { vec.push(vars[i])	};
+			!i=i+1
+		};
+		RD(vec.chill())
+	}
+
+
+  fun join(other: RD): RD {
+    (i, vec) = (0, mutable Vector[]);
+    while(i < this.vars.size()) { vec.push(this.vars[i].join(other.vars[i])); !i=i+1	};
+		RD(vec.chill())
+  }
+
+  fun includes(other: RD): Bool {
+		(i, res) = (0, true);
+		while(res && i < this.vars.size()) { !res = res && this.vars[i].includes(other.vars[i]); !i=i+1 };
+		res
+	}
+
+  fun toString(): String {
+	   (s, i) = ("(", 0);
+		 while (i < this.vars.size()) {
+		   v = this.vars[i];
+			 if (v.count() > 0) {
+			   (!s, j) = (`${s} ${i}<-[`, 0);
+				 while (j < v.size()) {
+				   if (v.isSet(j)) !s = `${s}${j}, `;
+					 !j = j+1
+				  };
+  			 !s = s + "]";
+ 			 };
+		   !i = i+1;
+		 };
+		 s + ")"
+	}
+}
+
+// === class TransferFunction =============================================================
+// Abstract class that defines the eval() function to take a state and return a new
+// state as well as a bool to tell if there was a change.
+// ========================================================================================
+base class TransferFunction() {
+  fun eval(s: State): (Bool, State);
+}
+
+// === Edge ==============================================================================
+// An edge in the control flow graph tranfer information from the exit
+// of a node to the entry of another node. The new information is
+// joined with the existing contents.
+// =======================================================================================
+class Edge(from: Int, to: Int) extends TransferFunction {
+  // As an optimization, if the entry already has all the information
+  // contained in exit, we do nothing.
+  fun eval(s: State): (Bool, State) {
+	  (exit, entry) = (s.exitAt(this.from), s.entryAt(this.to));
+		if (entry.includes(exit)) { (false, s) } else { (true, s.copyWith(true, this.to, entry.join(exit))) }
+	}
+}
+
+// === class Identity ====================================================================
+// An node that does not change the state only propagates it.
+// =======================================================================================
+class Identity(label: Int) extends TransferFunction {
+  fun eval(s: State): (Bool, State) {
+	  (exit, entry) = (s.exitAt(this.label), s.entryAt(this.label));
+		if (exit.includes(entry)) { (false, s) } else { (true, s.copyWith(false, this.label, exit.join(entry))) }
+	}
+}
+
+// == class Store ========================================================================
+// Store into a local variable. This kills all definitions for that variable and adds the
+// new one.
+// ======================================================================================
+class Def(label: Int, reg: Int) extends TransferFunction {
+  fun eval(s: State): (Bool, State)  {
+	  (exit, entry) = (s.exitAt(this.label), s.entryAt(this.label));
+		!entry = entry.clear(this.reg).set(this.reg, this.label);
+		if (exit.includes(entry)) { (false, s) } else { (true, s.copyWith(false, this.label, exit.join(entry))) }
+	}
+}
+
+
+
+fun analyzeAll(modules: Modules): void { modules.each(m -> if (m.name != "StdLib") analyzeModule(m)) }
+
+fun analyzeModule(m: Module) : void { m.funs.each(f -> if (f.name == "main") analyzeFun(f)) }
+
+fun analyzeFun(f: Fun): void {
+	(s, i) = (`Analyzing function ${f.name} with ${f.params} parameters and ${f.locals} locals`, 0);
+	f.body.each(stmt -> { !s=`${s}\n ${i} ${stmt.toString()}`; !i=i+1; } );
+	print_string(s);
+  state = fixpoint(initFunctions(f), State::create(f.locals, f.body.size()));
+	print_string(state.toString());
+}
+
+fun initFunctions(f: Fun): Vector<TransferFunction> {
+	(funs, i) = (mutable Vector<TransferFunction>[], 0);
+	while (i < f.body.size()) {
+	f.body[i] match {
+    | Store(reg, _) -> { funs.push(Def(i, reg)); funs.push(Edge(i, i+1))	}
+    | GStore(_, _) -> { funs.push(Identity(i)); funs.push(Edge(i, i+1))	}
+    | CondJump(_, tgt) -> { funs.push(Identity(i)); funs.push(Edge(i, i+1)); funs.push(Edge(i, tgt)) }
+    | Jump(tgt) -> { funs.push(Identity(i)); funs.push(Edge(i, tgt)) }
+    | Return(_) -> funs.push(Identity(i))
+		};
+    !i = i+1;
+  };
+  funs.chill();
+}
+
+fun fixpoint(functions: Vector<TransferFunction>, state: State): State {
+	current = state;
+  loop {
+	   (i, change) = (0, false);
+		 while (i < functions.size()) {
+			 (update, !current) = functions[i].eval(current);
+			 print_string(`${i} ${update}`);
+       (!change, !i) = (change || update, i+1);
+     };
+     if (!change) return current;
+  };
+}
 
 // =======================================================================================
 // Frame represents one function's execution state, it has:
@@ -393,7 +657,6 @@ mutable class .Interpreter(
       frame = this.top();
       instr = frame.instruction();
       if (!this.ok()) return Failure(this.why());
-			print_string(instr.toString());
       instr match {
         | Store(r, e) -> frame.setLocal(r, this.expression(e))
         | GStore(r, expr) -> frame.setGlobal(r, this.expression(expr))
