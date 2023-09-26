@@ -109,14 +109,12 @@ mutable class Linearize(mutable cntr: Int) {
  static fun mcreate(): mutable this {  mutable Linearize(0) }
 
  mutable fun mod(m: Reader.Module): Module {
-    funs = m.funs.map(f -> this.function(f));
-    Module(m.name, m.globs, funs)
+    Module(m.name, m.globs, m.funs.map(f -> this.function(f)))
   }
 
   mutable fun function(f: Reader.Fun): Fun {
-    !this.cntr = 0;
-    b = f.body.stmts.map(s -> this.statement(s)).flatten();
-    Fun(f.name, f.params, b, f.locals)
+    this.!cntr = 0;
+    Fun(f.name, f.params, f.body.stmts.map(s -> this.statement(s)).flatten(), f.locals)
   }
 
   mutable fun expression(e: Reader.Exp): Expr {
@@ -137,23 +135,24 @@ mutable class Linearize(mutable cntr: Int) {
     e match { | Reader.Register(s) -> strToReg(s) | _ -> Register(-1) }
   }
 
+  mutable fun advance(): void { this.!cntr = this.cntr+1 }
+
   mutable fun statement(s: Reader.Stmt): Statements {
-	  print_string(s.toString());
     is = s match {
       | Reader.Set(regExpr, e) -> {
-        this.!cntr = this.cntr + 1;
+        this.advance();
         Statements[Store(this.expToReg(regExpr).r, this.expression(e))]
       }
       | Reader.GSet(regExpr, e) -> {
-        this.!cntr = this.cntr + 1;
+        this.advance();
         Statements[GStore(this.expToReg(regExpr).r, this.expression(e))]
       }
       | Reader.Loop(cnd, Reader.Code(body)) -> {
         cexpr = this.expToReg(cnd);
         topOfLoop = this.cntr;
-        this.!cntr = this.cntr + 1; // the CondJump instruction is BEFORE all those
+        this.advance(); // the CondJump instruction is BEFORE all those
         stmts = body.map(s -> this.statement(s)).flatten(); // body of the loop
-        this.!cntr = this.cntr + 1; // for jump to loop's top
+        this.advance(); // for jump to loop's top
         instrs = mutable Statements[];
         instrs.push(CondJump(cexpr.r, this.cntr));
         instrs.extend(stmts);
@@ -162,11 +161,11 @@ mutable class Linearize(mutable cntr: Int) {
       }
       | Reader.Branch(cndExpr, Reader.Code(ifYes), Reader.Code(ifNo)) -> {
         cExpr = this.expToReg(cndExpr); // cndExpr has to be a Register
-        !this.cntr = this.cntr + 1; // the CondJump instr is BEFORE both branches
+        this.advance(); // the CondJump instr is BEFORE both branches
         positive = ifYes.map(s -> this.statement(s)).flatten(); // body of the positive branch
         // at the end of positive branch we need to skip to the end of the negative one
         // so there's gonna be a Jump
-        !this.cntr = this.cntr + 1;
+        this.advance();
         beforeNegative = this.cntr;
         cond = CondJump(cExpr.r, beforeNegative); // skip the positive if the condition is false/zero
         negative = ifNo.map(s -> this.statement(s)).flatten(); // body of the negative branch
@@ -179,7 +178,7 @@ mutable class Linearize(mutable cntr: Int) {
         instrs
       }
       | Reader.Return(expr) -> {
-        this.!cntr = this.cntr + 1;
+				this.advance();
         Vector<Stmt>[Return(this.expression(expr))]
       }
 			// either a constant, load from a global register or a (local) register
@@ -187,7 +186,7 @@ mutable class Linearize(mutable cntr: Int) {
 		is.chill()
   }
 }
-
+// =================================================================================
 
 
 value class State(entry: Vector<RD>, exit: Vector<RD>) {
@@ -352,7 +351,7 @@ value class RD(vars: Vector<BitVec>) {
 				   if (v.isSet(j)) !s = `${s}${j}, `;
 					 !j = j+1
 				  };
-  			 !s = s + "]";
+					!s = s.stripSuffix(", ") + "]";
  			 };
 		   !i = i+1;
 		 };
@@ -439,7 +438,7 @@ fun fixpoint(functions: Vector<TransferFunction>, state: State): State {
 	   (i, change) = (0, false);
 		 while (i < functions.size()) {
 			 (update, !current) = functions[i].eval(current);
-			 print_string(`${i} ${update}`);
+			 //print_string(`${i} ${update}`);
        (!change, !i) = (change || update, i+1);
      };
      if (!change) return current;
@@ -584,29 +583,19 @@ mutable class .Interpreter(
   }
 
 	// Relies on the uniqueness of function names.
-  mutable fun globalsFor(fname: String): mutable Vals {
-    modName = this.moduleFor(fname).name;
-    this.globals.get(modName)
-  }
+  mutable fun globalsFor(fname: String): mutable Vals { this.globals.get(this.moduleFor(fname).name) }
 
   // Relies on the uniqueness of function names.
-  readonly fun functionFor(fname: String): Fun {
-	  this.funAndModFor(fname).i0
-	}
+  readonly fun functionFor(fname: String): Fun { this.funAndModFor(fname).i0 }
 
   // Relies on the uniqueness of function names.
-  readonly fun moduleFor(fname: String): Module {
-	  this.funAndModFor(fname).i1
-	}
+  readonly fun moduleFor(fname: String): Module { this.funAndModFor(fname).i1	}
 
   // Relies on the uniqueness of function names and that previous
   // passes checked that all called functions are defined.
   readonly fun funAndModFor(fname: String): (Fun, Module) {
     for (m in this.modules) {
-		  for (f in m.funs) {
-			  if (f.name == fname)
-				  return (f, m);
-   		}
+		  for (f in m.funs) { if (f.name == fname) return (f, m);	}
 		};
 		invariant_violation(`No function named '${fname}'.`)
   }
@@ -620,7 +609,7 @@ mutable class .Interpreter(
   // also those calls to getLocal and getGlobal might fail
   mutable fun expression(e: Expr): Val {
     e match {
-      | LitI(v) ->  I(v)
+      | LitI(v) -> I(v)
       | LitB(v) -> B(v)
       | LitS(v) -> S(v)
       | LitC(v) -> C(v)
@@ -639,19 +628,16 @@ mutable class .Interpreter(
   // [###] This might fail at runtime
   // this would be a type error, I think
   mutable fun toBool(v: Val): Result<Bool, String> {
-	 v match {
-    | B(b) -> Success(b)
-    | _ -> Failure(`The value '${v}' can not be used as a boolean!`)
-   }
+	 v match { | B(b) -> Success(b) | _ -> Failure(`Value '${v}' is not a boolean!`) }
 	}
 
-  // The main interpreter run loop terminates when we return from
-	// stack of size 1 (i.e. return from main) The loop work with the
-	// top of stack, the current frame. It reads the current
-	// instruction, decodes and executes it. Then advances the program
-	// counter on that frame.  Function calls push a new frame, to the
-	// next time the loop comes to the top it picks up the top frame.
-	//
+  // run() -----------------------------------------------------------
+  // The interpreter's run loop terminates when we return from a stack
+  // of size 1 (i.e. from main) The loop has the top of stack and the
+  // current frame. It reads the current instruction, decodes and
+  // executes it. Then advances the program counter on that frame.
+  // Function calls push a new frame so the next time the loop comes
+  // around it picks up the new top frame.
   mutable fun run(): Result<Val, String> {
     loop {
       frame = this.top();
@@ -671,19 +657,16 @@ mutable class .Interpreter(
         | Jump(tgt) -> { frame.setPC(tgt); continue; }
         | Return(expr) -> {
 				  if (this.stack.size() == 1)
-            return Success(this.expression(expr)) // main is finished, we are done
+            return Success(this.expression(expr)) // main finished, we're done
 					else {
 					  prevFrame = this.prev();
 						callInstr = prevFrame.prevInstruction();
 						retVal = this.expression(expr);
 						callInstr match {
 						 | Store(r, _) ->  prevFrame.setLocal(r, retVal)
-						 | GStore(r, _) -> prevFrame.setLocal(r, retVal)
-						 | bad -> {
-                print_string(this.toStackTrace());
-                return Failure(`A function call wasn't done as a Store or GStore! | it was=${bad}`)
-              }
-	  				 };
+						 | GStore(r, _) -> prevFrame.setGlobal(r, retVal)
+						 | bad -> return Failure(`A call was missing a Store or GStore! | ${bad}`)
+   				  };
 						_ = this.stack.pop();
 					}
 				}
@@ -692,93 +675,80 @@ mutable class .Interpreter(
     };
   }
 
-  readonly fun toStackTrace(): String {
-    this.stack.reduce((trace, fr) -> `${trace}\n${fr.toString()}`, "")
-  }
+  readonly fun toStackTrace(): String { this.stack.reduce((trace, fr) -> `${trace}\n${fr.toString()}`, "") }
 
   mutable fun callBuiltin2(args: readonly Vals): Result<Val, String> {
-    name = args[0].toOut();
+    (name, a, b) = (args[0].toOut(), args[1], args[2]);
     name match {
       | "<"  -> {
-        (args[1], args[2]) match {
-          | (I(x), I(y)) -> Success(B(x < y))
-          | (_, _) -> Failure(`${name} applied to '${args[1].toOut()}' and '${args[2].toOut()}'`)
+        (a, b) match {
+          | (I(x), I(y)) -> Success(B(x < y)) | _ -> Failure(`(< ${a.toOut()} ${b.toOut()})`)
         }
       }
       | ">" -> {
-        (args[1], args[2]) match {
-          | (I(x), I(y)) -> Success(B(x > y))
-          | (_, _) -> Failure(`${name} applied to '${args[1].toOut()}' and '${args[2].toOut()}'`)
+        (a, b) match {
+          | (I(x), I(y)) -> Success(B(x > y)) | _ -> Failure(`(> ${a.toOut()} ${b.toOut()})`)
         }
       }
       | "<=" -> {
-        (args[1], args[2]) match {
-          | (I(x), I(y)) -> Success(B(x <= y))
-          | (_, _) -> Failure(`${name} applied to '${args[1].toOut()}' and '${args[2].toOut()}'`)
+        (a, b) match {
+          | (I(x), I(y)) -> Success(B(x <= y)) | _ -> Failure(`(<= ${a.toOut()} ${b.toOut()})`)
         }
       }
       | ">=" -> {
-        (args[1], args[2]) match {
-          | (I(x), I(y)) -> Success(B(x >= y))
-          | (_, _) -> Failure(`${name} applied to '${args[1].toOut()}' and '${args[2].toOut()}'`)
+        (a, b) match {
+          | (I(x), I(y)) -> Success(B(x >= y)) | _ -> Failure(`(${name} ${a.toOut()} ${b.toOut()})`)
         }
       }
       | "+" -> {
-        (args[1], args[2]) match {
-          | (I(x), I(y)) -> Success(I(x + y))
-          | (_, _) -> Failure(`${name} applied to '${args[1].toOut()}' and '${args[2].toOut()}'`)
+        (a, b) match {
+          | (I(x), I(y)) -> Success(I(x + y)) | _ -> Failure(`(+ ${a.toOut()} ${b.toOut()})`)
         }
       }
       | "-" -> {
-        (args[1], args[2]) match {
-          | (I(x), I(y)) -> Success(I(x - y))
-          | (_, _) -> Failure(`${name} applied to '${args[1].toOut()}' and '${args[2].toOut()}'`)
+        (a, b) match {
+          | (I(x), I(y)) -> Success(I(x - y)) | _ -> Failure(`(- ${a.toOut()} ${b.toOut()})`)
         }
       }
       | "*" -> {
-        (args[1], args[2]) match {
-          | (I(x), I(y)) -> Success(I(x * y))
-          | (_, _) -> Failure(`${name} applied to '${args[1].toOut()}' and '${args[2].toOut()}'`)
+        (a, b) match {
+          | (I(x), I(y)) -> Success(I(x * y)) | _ -> Failure(`* ${a.toOut()} ${b.toOut()})`)
         }
       }
       | "/" -> {
-        (args[1], args[2]) match {
-          | (I(x), I(y)) -> Success(I(x / y))
-          | (_, _) -> Failure(`${name} applied to '${args[1].toOut()}' and '${args[2].toOut()}'`)
+        (a, b) match {
+          | (I(x), I(y)) -> Success(I(x / y)) | _ -> Failure(`(/ ${a.toOut()} ${b.toOut()})`)
         }
       }
       | "&&" -> {
-        (args[1], args[2]) match {
-          | (B(x), B(y)) -> Success(B(x && y))
-          | (_, _) -> Failure(`${name} applied to '${args[1].toOut()}' and '${args[2].toOut()}'`)
+        (a, b) match {
+          | (B(x), B(y)) -> Success(B(x && y)) | _ -> Failure(`(&&  ${a.toOut()} ${b.toOut()})`)
         }
       }
       | "||" -> {
-        (args[1], args[2]) match {
-          | (B(x), B(y)) -> Success(B(x || y))
-          | (_, _) -> Failure(`${name} applied to '${args[1].toOut()}' and '${args[2].toOut()}'`)
+        (a, b) match {
+          | (B(x), B(y)) -> Success(B(x || y)) | _ -> Failure(`(|| ${a.toOut()} ${b.toOut()})`)
         }
       }
       | "==" -> {
-        (args[1], args[2]) match {
+        (a, b) match {
           | (I(x), I(y)) -> Success(B(x == y))
           | (C(x), C(y)) -> Success(B(x == y))
           | (S(x), S(y)) -> Success(B(x == y))
           | (B(x), B(y)) -> Success(B(x == y))
-          | (_, _) -> Failure(`${name} applied to '${args[1].toOut()}' and '${args[2].toOut()}'`)
+          | _ -> Failure(`(== ${a.toOut()} ${b.toOut()})`)
         }
       }
       | "at" -> {
-          (args[1], args[2]) match {
+          (a, b) match {
             | (L(vals), I(i)) -> {
-              if (vals.size() >= i) Success(vals[i])
-              else Failure(`Evaluation 'at' was called on a too short list.`)
+              if (vals.size() >= i) Success(vals[i]) else Failure(`at called on a too short list.`)
             }
-            | (v, i) -> Failure(`'at' called on '${v}' and '${i}', expecting a list and a number.`)
+            | (v, i) -> Failure(`at called on '${v}' and '${i}', expecting a list and a number.`)
           }
         }
       | "write!" -> {
-        (args[1], args[2]) match {
+        (a, b) match {
         | (v, L(ls)) -> this.io.write(`${v.toOut()}${ls.reduce((s,e) -> `${s}${e.toOut()}`,"")}`)
         | (v, _) -> this.io.write(`${v.toOut()}`)
         };
@@ -801,24 +771,24 @@ mutable class .Interpreter(
         args[1] match {
           | L(vals) -> {
             if (vals.size() > 0) Success(vals[0])
-            else Failure(`'head' was called on an empty list.`)
+            else Failure(`head called on an empty list.`)
           }
-          | v -> Failure(`'head' was called on '${v}'\nwhich is NOT a list.`)
+          | v -> Failure(`head called on '${v}' which is not a list.`)
         }
       }
       | "tail" -> {
           args[1] match {
             | L(vals) -> {
               if (vals.size() > 0) Success(L(vals.slice(1)))
-              else Failure(`'tail' was called on an empty list.`)
+              else Failure(`'tail' called on an empty list.`)
             }
-            | v -> Failure(`'tail' was called on '${v}'\nwhich is NOT a list.`)
+            | v -> Failure(`'tail' called on '${v}' which is not a list.`)
           }
         }
       | "size" -> {
           args[1] match {
             | L(vals) -> Success(I(vals.size()))
-            | v -> Failure(`'tail' was called on '${v}'\nwhich is NOT a list.`)
+            | v -> Failure(`'tail' called on '${v}' which is not a list.`)
           }
         }
       | _ -> Failure(`Uknown binary-builtin '${name}'`)
@@ -830,10 +800,10 @@ mutable class .Interpreter(
     name match {
       | "read!" -> {
         this.io.read() match {
-          | None() -> Failure(`unable to 'read!' for some reason.`)
+          | None() -> Failure(`unable to read!.`)
           | Some(line) -> {
             line.toIntOption() match {
-              | None() -> Failure(`operation 'read!' failed. The input '${line}' is not a number.`);
+              | None() -> Failure(`read! failed. The input '${line}' is not a number.`);
               | Some(i) -> Success(I(i))
             }
           }
@@ -844,22 +814,23 @@ mutable class .Interpreter(
   }
 }
 
+// === class PrettyPrint ===============================================================
 
 mutable class PrettyPrint(mutable indent: Int = 0) {
+
   readonly fun pad(): String {
-	  s = "";
-    n = this.indent;
-    while (n > 0) { !s = s + " "; !n = n - 1; };
+	  (s, n) = ("", this.indent);
+    while (n > 0)  (!s, !n) = (s+" ",  n-1);
     s
   }
 
   mutable fun toModule(m: Module): String {
      s = `\e[4;31mmodule\e[0m ${m.name}\n`;
      if (m.funs.size() == 0) {
-       !s = s + "\n";
+       !s = s + "\n"
      } else {
        m.funs.each(f -> !s = s + "\n" + this.pad() + this.function(f));
-        !s = s + "\n";
+       !s = s + "\n"
      };
      s
   }
@@ -872,8 +843,7 @@ mutable class PrettyPrint(mutable indent: Int = 0) {
   }
 
   readonly fun padFor(i: Int, max: Int): String {
-	  mlen = max.toString().length();
-		istr = i.toString();
+	  (mlen, istr) = (max.toString().length(), i.toString());
 		ilen = istr.length();
 		while (ilen < mlen) {
 		  !istr  = " " + istr;
@@ -901,11 +871,7 @@ mutable class PrettyPrint(mutable indent: Int = 0) {
     | LitC(ch) -> `'${ch}'`
     | Register(r) -> `%${r}`
     | Load(r) -> `@${r}`
-    | Invoke(n, regs) -> {
-       s = `${n}(`;
-       regs.each(r -> !s = s + ` %${r}`);
-       s + ")"
-    }
+    | Invoke(n, regs) -> { s = `${n}(`; regs.each(r -> !s = s + ` %${r}`); s + ")" }
     }
   }
 
