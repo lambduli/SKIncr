@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y \
  git \
  emacs \
  clang-10 \
- && rm -rf /var/lib/apt/lists/* \
+ && rm -rf /var/lib/apt/lists/*
 
 #start the container from bash
 CMD [ "/bin/bash" ]
