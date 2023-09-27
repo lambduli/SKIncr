@@ -1,5 +1,8 @@
 module Interpreter;
 
+type TransferFunctions = Vector<TransferFunction>;
+type Ints = Vector<Int>;
+type Bools = Vector<Bool>;
 type Strings = Vector<String>;
 type Funs = Vector<Fun>;
 type Statements = Vector<Stmt>;
@@ -44,13 +47,33 @@ base class Val() uses Show, Equality {
 fun zero(): Val { I(0) }
 
 // === class Module ===========================================================================
-value class Module(name: String, globs: Int, funs: Funs) {}
+value class Module(name: String, globs: Int, funs: Funs) {
+  fun toString(): String {
+	   s =  `\e[4;31mmodule\e[0m ${this.name}\n`;
+     if (this.funs.size() != 0) this.funs.each(f -> !s =`${s}\n`+ f.toString());
+     s + "\n"
+  }
+}
 
 // === class Fun ===========================================================================
-value class Fun(name: String, params: Int, body: Statements, locals: Int) {}
+value class Fun(name: String, params: Int, body: Statements, locals: Int) {
+  fun toString(): String {
+    `\e[4;31mfunction\e[0m ${this.name} (${this.params}) [${this.locals}]` + Code(this.body).toString() + "\n"
+  }
+}
 
 // === class Code ===========================================================================
-value class Code(stmts: Statements) {}
+value class Code(stmts: Statements) {
+ fun toString(): String {
+    (res, ln, maxlen) = ("", 0, this.stmts.size().toString().length());
+    this.stmts.each(s -> {
+			lnstr = ln.toString();
+      !res = `${res}\n` + lnstr.padLeft(maxlen -lnstr.length(), ' ')	+ `: ` + s.toString();
+			!ln = ln + 1
+    });
+    res
+  }
+}
 
 // === class Stmt ===========================================================================
 base class Stmt {
@@ -63,11 +86,11 @@ base class Stmt {
 
   fun toString(): String {
     this match {
-      | Store(reg, expr) -> `%${reg} =  ${expr}`
-      | GStore(reg, expr) -> `g${reg} = ${expr}`
-      | CondJump(cond, tgt) -> `if ${cond} jmp ${tgt}`
-      | Jump(instr) -> `jmp ${instr}`
-      | Return(expr) -> `ret ${expr}`
+    | Store(r, e) -> `%${r} \u2190 ${e.toString()}`
+    | GStore(r, e) -> `@${r} \u2190 ${e.toString()}`
+    | CondJump(r, tgt) -> `if %${r} jmp #${tgt}`
+    | Jump(tgt) -> `jmp #${tgt}`
+    | Return(e) -> `ret ${e.toString()}`
     }
   }
 }
@@ -82,19 +105,19 @@ base class Expr uses Show {
 	| LitC(Char)
   | LitL(Vector<Register>)
 	| Register(r: Int)
-  | Invoke(fname: String, args: Vector<Int>)
+  | Invoke(fname: String, args: Ints)
   | Load(r: Int)
 
   fun toString(): String {
     this match {
-      | LitI(i) -> `LitI(${i})`
-      | LitB(b) -> `LitB(${b})`
-      | LitS(str) -> `LitS(${str})`
-      | LitC(ch) -> `LitC(${ch})`
-      | LitL(regs) -> `LitL(${regs})`
-      | Register(r) -> `%${r}`
-      | Invoke(fname, args) -> `${fname}(${args})`
-      | Load(r) -> `Load(${r})`
+    | LitI(i) -> `${i}`
+    | LitB(b) -> `${b}`
+    | LitS(s) -> `"${s}"`
+    | LitL(regs) -> "[" + regs.reduce((s, r) -> `${s} ${r.toString()}, `, "") + "]"
+    | LitC(ch) -> `'${ch}'`
+    | Register(r) -> `%${r}`
+    | Load(r) -> `@${r}`
+    | Invoke(n, regs) -> { s = `${n}(`; regs.each(r -> !s = s + ` %${r}`); s + ")" }
     }
   }
 }
@@ -221,18 +244,16 @@ value class State(entry: Vector<RD>, exit: Vector<RD>) {
 		 rd.toString()
 	}
 
-
-  fun toString(): String {
-	  (s, i) =  ("{", 0);
+  fun toString(f: Fun): String {
+	  (s, i) =  ("", 0);
 		while (i < this.entry.size()) {
-		   !s = `${s}${this.toStringAt(true, i)}\n${i}\n${this.toStringAt(false, i)}\n\n`;
+		   is = f.body[i].toString();
+		   !s = `${s}${this.toStringAt(true, i)}\n${i} ${is}\n${this.toStringAt(false, i)}\n\n`;
 			 !i = i+1;
     };
-    s + "}"
+    s
   }
-
 }
-
 
 // class BitVec ==========================================================================
 // A BitVec is an immutable class that starts with all bits set to
@@ -241,7 +262,7 @@ value class State(entry: Vector<RD>, exit: Vector<RD>) {
 // bitvecs can be joined to yield a new bitvec that has the union of
 // bits sets.
 // ======================================================================================
-value class BitVec(bits: Vector<Bool>) {
+value class BitVec(bits: Bools) {
  static fun create(card: Int): BitVec {
 		(i, vec) = (0, mutable Vector[]);
 		while(i < card) { vec.push(false); !i=i+1 };
@@ -284,10 +305,7 @@ value class BitVec(bits: Vector<Bool>) {
 
   fun toString(): String {
 	  (s, i) = ("[", 0);
-		while (i < this.bits.size()) {
-		  !s = s + if (this.bits[i]) "1" else "0";
-			!i = i+1;
-		};
+		while (i < this.bits.size()) { !s = s + if (this.bits[i]) "1" else "0"; !i = i+1 };
 	  s+"]"
 	}
 }
@@ -331,7 +349,7 @@ value class RD(vars: Vector<BitVec>) {
 
   fun join(other: RD): RD {
     (i, vec) = (0, mutable Vector[]);
-    while(i < this.vars.size()) { vec.push(this.vars[i].join(other.vars[i])); !i=i+1	};
+    while(i < this.vars.size()) { vec.push(this.vars[i].join(other.vars[i])); !i=i+1 };
 		RD(vec.chill())
   }
 
@@ -342,20 +360,20 @@ value class RD(vars: Vector<BitVec>) {
 	}
 
   fun toString(): String {
-	   (s, i) = ("(", 0);
+	   (s, i) = ("", 0);
 		 while (i < this.vars.size()) {
 		   v = this.vars[i];
 			 if (v.count() > 0) {
-			   (!s, j) = (`${s} ${i}<-[`, 0);
+			   (!s, j) = (`${s}${i}<-[`, 0);
 				 while (j < v.size()) {
 				   if (v.isSet(j)) !s = `${s}${j}, `;
 					 !j = j+1
 				  };
-					!s = s.stripSuffix(", ") + "]";
+					!s = s.stripSuffix(", ") + "] ";
  			 };
 		   !i = i+1;
 		 };
-		 s + ")"
+		 s
 	}
 }
 
@@ -410,17 +428,16 @@ fun analyzeAll(modules: Modules): void { modules.each(m -> if (m.name != "StdLib
 fun analyzeModule(m: Module) : void { m.funs.each(f -> if (f.name == "main") analyzeFun(f)) }
 
 fun analyzeFun(f: Fun): void {
-	(s, i) = (`Analyzing function ${f.name} with ${f.params} parameters and ${f.locals} locals`, 0);
-	f.body.each(stmt -> { !s=`${s}\n ${i} ${stmt.toString()}`; !i=i+1; } );
-	print_string(s);
+	print_string(`Analyzing function ${f.name} with ${f.params} parameters and ${f.locals} locals`);
   state = fixpoint(initFunctions(f), State::create(f.locals, f.body.size()));
-	print_string(state.toString());
+	print_string(state.toString(f));
 }
 
-fun initFunctions(f: Fun): Vector<TransferFunction> {
-	(funs, i) = (mutable Vector<TransferFunction>[], 0);
+
+fun initFunctions(f: Fun): TransferFunctions {
+	(funs, i) = (mutable TransferFunctions[], 0);
 	while (i < f.body.size()) {
-	f.body[i] match {
+	  f.body[i] match {
     | Store(reg, _) -> { funs.push(Def(i, reg)); funs.push(Edge(i, i+1))	}
     | GStore(_, _) -> { funs.push(Identity(i)); funs.push(Edge(i, i+1))	}
     | CondJump(_, tgt) -> { funs.push(Identity(i)); funs.push(Edge(i, i+1)); funs.push(Edge(i, tgt)) }
@@ -432,15 +449,31 @@ fun initFunctions(f: Fun): Vector<TransferFunction> {
   funs.chill();
 }
 
-fun fixpoint(functions: Vector<TransferFunction>, state: State): State {
-	current = state;
+fun indexes(functions: TransferFunctions): Ints {
+   (vec, i, len) = (mutable Vector[], 0, functions.size());
+	 while (i < len) { vec.push(i); !i = i+1 };
+	 if (false) vec.chill() else permute(vec)
+}
+
+fun permute(vec: mutable Ints): Ints {
+  (i, len, rnd) = (0, (vec.size()/2).toInt(), Random::mcreate(42)); // FIXSKIP: crashes when now().toInt()));
+	while (i < len) {
+	  (r1, r2) = (rnd.random(0, vec.size()), rnd.random(0, vec.size()));
+		(a, b, !i) = (vec[r1], vec[r2], i+1);
+		vec.set(r2, a); vec.set(r1, b);
+	};
+	vec.chill()
+}
+
+fun fixpoint(functions: TransferFunctions, state: State): State {
+	(current, steps) = (state, 0);
   loop {
-	   (i, change) = (0, false);
-		 while (i < functions.size()) {
-			 (update, !current) = functions[i].eval(current);
-			 //print_string(`${i} ${update}`);
-       (!change, !i) = (change || update, i+1);
+	   (i, change, indexes) = (0, false, indexes(functions));
+		 while (i < indexes.size()) {
+			 (update, !current) = functions[indexes[i]].eval(current);
+       (!change, !i, !steps) = (change || update, i+1, steps+1);
      };
+		 print_string("steps so far "+steps);
      if (!change) return current;
   };
 }
@@ -539,7 +572,6 @@ mutable class .Interpreter(
             this.stack.push(Frame::mcreate(globs, locals, init.body, "init"));
             _ = this.run();
             _ = this.stack.pop();
-            void
         }
       }
     });
@@ -680,57 +712,27 @@ mutable class .Interpreter(
   mutable fun callBuiltin2(args: readonly Vals): Result<Val, String> {
     (name, a, b) = (args[0].toOut(), args[1], args[2]);
     name match {
-      | "<"  -> {
-        (a, b) match {
-          | (I(x), I(y)) -> Success(B(x < y)) | _ -> Failure(`(< ${a.toOut()} ${b.toOut()})`)
-        }
-      }
-      | ">" -> {
-        (a, b) match {
-          | (I(x), I(y)) -> Success(B(x > y)) | _ -> Failure(`(> ${a.toOut()} ${b.toOut()})`)
-        }
-      }
-      | "<=" -> {
-        (a, b) match {
-          | (I(x), I(y)) -> Success(B(x <= y)) | _ -> Failure(`(<= ${a.toOut()} ${b.toOut()})`)
-        }
-      }
-      | ">=" -> {
-        (a, b) match {
-          | (I(x), I(y)) -> Success(B(x >= y)) | _ -> Failure(`(${name} ${a.toOut()} ${b.toOut()})`)
-        }
-      }
-      | "+" -> {
-        (a, b) match {
-          | (I(x), I(y)) -> Success(I(x + y)) | _ -> Failure(`(+ ${a.toOut()} ${b.toOut()})`)
-        }
-      }
-      | "-" -> {
-        (a, b) match {
-          | (I(x), I(y)) -> Success(I(x - y)) | _ -> Failure(`(- ${a.toOut()} ${b.toOut()})`)
-        }
-      }
-      | "*" -> {
-        (a, b) match {
-          | (I(x), I(y)) -> Success(I(x * y)) | _ -> Failure(`* ${a.toOut()} ${b.toOut()})`)
-        }
-      }
-      | "/" -> {
-        (a, b) match {
-          | (I(x), I(y)) -> Success(I(x / y)) | _ -> Failure(`(/ ${a.toOut()} ${b.toOut()})`)
-        }
-      }
-      | "&&" -> {
-        (a, b) match {
-          | (B(x), B(y)) -> Success(B(x && y)) | _ -> Failure(`(&&  ${a.toOut()} ${b.toOut()})`)
-        }
-      }
-      | "||" -> {
-        (a, b) match {
-          | (B(x), B(y)) -> Success(B(x || y)) | _ -> Failure(`(|| ${a.toOut()} ${b.toOut()})`)
-        }
-      }
-      | "==" -> {
+      | "<"  ->
+			  (a, b) match { | (I(x), I(y)) -> Success(B(x < y))  | _ -> Failure(`(< ${a.toOut()} ${b.toOut()})`) }
+      | ">" ->
+        (a, b) match { | (I(x), I(y)) -> Success(B(x > y))  | _ -> Failure(`(> ${a.toOut()} ${b.toOut()})`) }
+      | "<=" ->
+        (a, b) match { | (I(x), I(y)) -> Success(B(x <= y)) | _ -> Failure(`(<= ${a.toOut()} ${b.toOut()})`) }
+      | ">=" ->
+        (a, b) match { | (I(x), I(y)) -> Success(B(x >= y)) | _ -> Failure(`(>= ${a.toOut()} ${b.toOut()})`) }
+      | "+" ->
+        (a, b) match { | (I(x), I(y)) -> Success(I(x + y))  | _ -> Failure(`(+ ${a.toOut()} ${b.toOut()})`) }
+      | "-" ->
+			  (a, b) match { | (I(x), I(y)) -> Success(I(x - y))  | _ -> Failure(`(- ${a.toOut()} ${b.toOut()})`) }
+      | "*" ->
+        (a, b) match { | (I(x), I(y)) -> Success(I(x * y))  | _ -> Failure(`* ${a.toOut()} ${b.toOut()})`) }
+      | "/" ->
+			  (a, b) match { | (I(x), I(y)) -> Success(I(x / y))  | _ -> Failure(`(/ ${a.toOut()} ${b.toOut()})`) }
+      | "&&" ->
+        (a, b) match { | (B(x), B(y)) -> Success(B(x && y)) | _ -> Failure(`(&&  ${a.toOut()} ${b.toOut()})`) }
+      | "||" ->
+        (a, b) match { | (B(x), B(y)) -> Success(B(x || y)) | _ -> Failure(`(|| ${a.toOut()} ${b.toOut()})`) }
+      | "==" ->
         (a, b) match {
           | (I(x), I(y)) -> Success(B(x == y))
           | (C(x), C(y)) -> Success(B(x == y))
@@ -738,15 +740,11 @@ mutable class .Interpreter(
           | (B(x), B(y)) -> Success(B(x == y))
           | _ -> Failure(`(== ${a.toOut()} ${b.toOut()})`)
         }
-      }
-      | "at" -> {
+      | "at" ->
           (a, b) match {
-            | (L(vals), I(i)) -> {
-              if (vals.size() >= i) Success(vals[i]) else Failure(`at called on a too short list.`)
-            }
-            | (v, i) -> Failure(`at called on '${v}' and '${i}', expecting a list and a number.`)
+            | (L(vals), I(i)) -> if (vals.size() >= i) Success(vals[i]) else Failure(`at: index out of bounds`)
+            | (v, i) -> Failure(`at: '${v}' and '${i}' should be a list and a number`)
           }
-        }
       | "write!" -> {
         (a, b) match {
         | (v, L(ls)) -> this.io.write(`${v.toOut()}${ls.reduce((s,e) -> `${s}${e.toOut()}`,"")}`)
@@ -759,38 +757,18 @@ mutable class .Interpreter(
   }
 
   readonly fun callBuiltin1(args: readonly Vals): Result<Val, String> {
-    name = args[0].toOut();
+    (name, a) = (args[0].toOut(), args[1]);
     name match {
-      | "!" -> {
-        args[1] match {
-          | B(b) -> Success(B(! b))
-          | _ -> Failure(`${name} applied to '${args[1].toOut()}'`)
+      | "!" -> a match { | B(b) -> Success(B(! b)) | _ -> Failure(`(! ${a.toOut()})`) }
+      | "head" -> a match {
+          | L(vals) -> if (vals.size() > 0) Success(vals[0]) else Failure(`head of empty list`)
+					| v -> Failure(`head: '${v}' is not a list`)
         }
-      }
-      | "head" -> {
-        args[1] match {
-          | L(vals) -> {
-            if (vals.size() > 0) Success(vals[0])
-            else Failure(`head called on an empty list.`)
+      | "tail" -> a match {
+            | L(vals) -> if (vals.size() > 0) Success(L(vals.slice(1))) else Failure(`tail of empty list`)
+            | v -> Failure(`tail: ${v} is not a list`)
           }
-          | v -> Failure(`head called on '${v}' which is not a list.`)
-        }
-      }
-      | "tail" -> {
-          args[1] match {
-            | L(vals) -> {
-              if (vals.size() > 0) Success(L(vals.slice(1)))
-              else Failure(`'tail' called on an empty list.`)
-            }
-            | v -> Failure(`'tail' called on '${v}' which is not a list.`)
-          }
-        }
-      | "size" -> {
-          args[1] match {
-            | L(vals) -> Success(I(vals.size()))
-            | v -> Failure(`'tail' called on '${v}' which is not a list.`)
-          }
-        }
+      | "size" -> a match { | L(vals) -> Success(I(vals.size())) | v -> Failure(`size: ${v} is not a list`) }
       | _ -> Failure(`Uknown binary-builtin '${name}'`)
     }
   }
@@ -798,95 +776,18 @@ mutable class .Interpreter(
   mutable fun callBuiltin0(args: readonly Vals): Result<Val, String> {
     name = args[0].toOut();
     name match {
-      | "read!" -> {
+      | "read!" ->
         this.io.read() match {
           | None() -> Failure(`unable to read!.`)
-          | Some(line) -> {
+          | Some(line) ->
             line.toIntOption() match {
-              | None() -> Failure(`read! failed. The input '${line}' is not a number.`);
+						  | None() -> Failure(`read! failed: '${line}' not a number`)
               | Some(i) -> Success(I(i))
             }
-          }
-        }
       }
       | _ -> Failure(`Uknown builtin '${name}'`)
     }
   }
-}
-
-// === class PrettyPrint ===============================================================
-
-mutable class PrettyPrint(mutable indent: Int = 0) {
-
-  readonly fun pad(): String {
-	  (s, n) = ("", this.indent);
-    while (n > 0)  (!s, !n) = (s+" ",  n-1);
-    s
-  }
-
-  mutable fun toModule(m: Module): String {
-     s = `\e[4;31mmodule\e[0m ${m.name}\n`;
-     if (m.funs.size() == 0) {
-       !s = s + "\n"
-     } else {
-       m.funs.each(f -> !s = s + "\n" + this.pad() + this.function(f));
-       !s = s + "\n"
-     };
-     s
-  }
-
-  mutable fun function(f: Fun): String {
-    s = `\e[4;31mfunction\e[0m ${f.name} (${f.params}) [${f.locals}]`;
-    !s = s + this.code(f.body);
-    !s = s + "\n";
-    s
-  }
-
-  readonly fun padFor(i: Int, max: Int): String {
-	  (mlen, istr) = (max.toString().length(), i.toString());
-		ilen = istr.length();
-		while (ilen < mlen) {
-		  !istr  = " " + istr;
-			!ilen  = ilen + 1;
-		};
-    istr
-  }
-
-  mutable fun code(stmts: Statements): String {
-    res = "";
-		ln = 0;
-    stmts.each(s -> {
-      !res = res + "\n" + this.padFor(ln, stmts.size()) + ": " + this.statement(s);
-			!ln = ln + 1
-    });
-    res
-  }
-
-  mutable fun expression(e0: Expr): String {
-    e0 match {
-    | LitI(i) -> `${i}`
-    | LitB(b) -> `${b}`
-    | LitS(s) -> `"${s}"`
-    | LitL(regs) -> `[${regs.reduce((s, r) -> `${s} ${this.expression(r)}, `, "")}]`
-    | LitC(ch) -> `'${ch}'`
-    | Register(r) -> `%${r}`
-    | Load(r) -> `@${r}`
-    | Invoke(n, regs) -> { s = `${n}(`; regs.each(r -> !s = s + ` %${r}`); s + ")" }
-    }
-  }
-
-  mutable fun statement(st: Stmt): String {
-    st match {
-    | Store(reg, expr) -> `%${reg} \u2190 ${this.expression(expr)}`
-    | GStore(reg, expr) -> `@${reg} \u2190 ${this.expression(expr)}`
-    | CondJump(reg, tgt) -> `if %${reg} jmp #${tgt}`
-    | Jump(tgt) -> `jmp #${tgt}`
-    | Return(expr) -> `ret ${this.expression(expr)}`
-    }
-  }
-
-  mutable fun inc(): void { this.!indent = this.indent + 2; }
-  mutable fun dec(): void { this.!indent = this.indent - 2; }
 }
 
 

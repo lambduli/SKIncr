@@ -56,13 +56,13 @@ fun prepareFiles(files: Strings, verbose: Bool): Vector<Interpreter.Module> {
   flat = mutable Flattener();
   flatFs = fs.map( f -> flat.file(f) );
   p = mutable PrettyPrint();
-  if (verbose) {
+  if (false) {
     print_string("Parsed::");
  	  flatFs.each(f -> if(f.name != "StdLib") { print_string(p.file(f)); });
   };
   t = Translator();
   translated = flatFs.map(d -> t.file(d));
-	if (verbose) {
+	if (false) {
 	  print_string("Intermediate::");
 	  pp2 = mutable PrettyPrint2();
     translated.each(m -> { if (m.name != "StdLib") { print_string(pp2.toModule(m)); } });
@@ -71,8 +71,7 @@ fun prepareFiles(files: Strings, verbose: Bool): Vector<Interpreter.Module> {
   linearized: Vector<Interpreter.Module> = translated.map(m -> l.mod(m));
 	if (verbose) {
 	  print_string("Bytecode::");
-	  pp = mutable Interpreter.PrettyPrint();
-	  linearized.each(m -> {if (m.name != "StdLib") print_string(pp.toModule(m));});
+	  linearized.each(m -> {if (m.name != "StdLib") print_string(m.toString()) });
 	};
 	linearized
 }
