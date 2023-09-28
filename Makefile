@@ -1,5 +1,5 @@
 CC=clang-10
-CPP=clang++
+CPP=clang++-10
 LLC=llc-10
 
 OLEVEL=-O2

@@ -1,23 +1,49 @@
 # SKIncr
 
-SKIncr is a research project on incremental compilation and static analysis based on SKIP.
-The gist of the idea is simple, many static-analysis and compilation schemes are abandonned because they are too expensive.
-But what if they were incremental? A lot of those schemes would become practical.
+To run this version of Skip you need a particular release of LLVM (10). The most portable way to do this is to build a docker image using some variant of the Docker file in the top directory.
 
-# In the repo
+In the Dockerfile you may have to change the first line
 
-You will find a port of the abstract interpreter found in https://books.google.com.co/books/about/Principles_of_Abstract_Interpretation.html?id=Cwk_EAAAQBAJ&redir_esc=y
+> FROM  --platform=linux/arm64   ubuntu:20.04
 
-A few things have been abstracted away in the SKIP version, to be able to work with any domain.
+to the right architecture. The above is for a Mac M2 processor.
 
-# State of SKIP
+Then you can build the image with:
 
-The Skip compiler should be open-sourced by the end of january 2023, in the mean time, I included a copy of the compiler that we can later remove.
+> docker build . --tag skip
 
-# INSTALL
+Once built, you will start the Docker deamon and run the following
 
-Make sure to have clang-10 install on your machine.
-```
-  make
-  make examples
-```
+> docker run -it -v /Users/jan/SKIncr:/SKIncr skip bash
+
+where "/Users/jan/SKIncr" is the path to your clone of the repo. and "/SKIncr" is the path in the docker image.
+
+This will allow you to edit files on your machine and run the compiler within git.
+
+To build the project
+
+> cd /SKIncr
+
+> make
+
+And to run the example:
+
+>  ./build/skia tests/stdlib.sm tests/good/4/main.sm 
+
+From time to time I have had to muck with the Makefile
+
+> head Makefile
+CC=clang-10
+CPP=clang++-10
+LLC=llc-10
+
+The first two lines depend on your install. These should be good with what is in the image.
+
+If you encounter any issues ping me.
+
+
+# SKIP
+
+Skip is a language developed and open source by Facebook. The version we are running has been forked and is being revamped. This versions has limited libraries and exceptions are not working. This should be fixed soonish.
+
+Documentation on skip is at : skiplang.com
