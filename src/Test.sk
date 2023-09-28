@@ -82,6 +82,7 @@ mutable class TestHarness( tests: mutable Vector<TestCase> ){
     this.tests.push( case )
   }
 
+
   // Report all failed tests and the count of all, failed and succesful tests
   readonly fun report(): String {
     allCnt = this.tests.size();
@@ -252,7 +253,7 @@ mutable class .TestRunner(
       l = Interpreter.Linearize::mcreate();
       linearized: Vector<Interpreter.Module> = translated.map(m -> l.mod(m));
       linearized.filter(m -> m.name.lowercase() != "stdlib").each(m -> {
-        prettyOut = (mutable Interpreter.PrettyPrint(false)).toModule(m);
+        prettyOut = m.toString();
         case = this.linearizedSnapshot.createOrValidate( testName, m.name, prettyOut );
         this.harness.pushTestCase( case );
       });
@@ -269,6 +270,7 @@ mutable class .TestRunner(
 }
 
 // Do-nothing interpreter IO
+
 mutable class NoOpIO() extends InterpreterIO {
   readonly fun read(): Option<String> {
     None()

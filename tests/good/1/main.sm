@@ -1,0 +1,9 @@
+(module Main imports (StdLib))
+
+(vars ())
+
+(functions (
+  (function main ()
+    "Hello world!"
+  )
+))

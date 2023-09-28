@@ -20,6 +20,16 @@ base class Stmt {
   //Function into a return (and store the result into the register
   //first).  This will be helped when we check sanity of function
   //definitions. See comment on top of Checker.sk
+
+  fun toString(): String {
+	  this match {
+     | Set(r, e) -> `(set! ${r.toString()} ${e.toString()})`
+     | GSet(r, e) -> `(gset! ${r.toString()} ${e.toString()})`
+     | Loop(e, _c) -> `(while (${e.toString()}) ... )`
+     | Branch(e, _, _) -> `(if (${e.toString()} (...) (...))`
+     | Return(e) -> `(ret ${e.toString()} )`
+    }
+  }
 }
 
 base class Exp {
@@ -32,6 +42,19 @@ base class Exp {
   | Register(name: String)
   | Load(String) // TODO: can all loads be statements? would make expr simpler, but we already have invoke
   | Invoke(String, Vector<Register>)
+
+  fun toString(): String {
+	  this match {
+     | VInt(v) -> `${v}`
+     | VBool(v) -> `${v}`
+     | VString(v) -> `${v}`
+     | VChar(v) -> `${v}`
+     | VList(_v) -> `[...]`
+     | Register(name) -> `${name}`
+     | Load(v)  -> `g${v}`
+     | Invoke(f, _vs) -> `(${f} ...)`
+		}
+  }
 }
 
 

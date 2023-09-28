@@ -82,21 +82,25 @@ type Declarations = Vector<Decl>;
 type Files = Vector<File>;
 type Functions = Vector<Function>;
 
+
+
 // -------------------------------------------------------------------------------------
 // ---------------------- ABSTRACT SYNTAX TREE -----------------------------------------
 // -------------------------------------------------------------------------------------
 
 // A file that contains .sm code
 value class File(tok: Tok, name: String, imports: Strings, decls: Declarations, funs: Functions) {
-//fun print(): void {
-//	  if (this.name == "StdLib") return void;
-//		printer = mutable PretyPrint();
-	//	print_string(printer.file(this));
-	//}
 }
 
 // A .sm function
-value class Function(tok: Tok, name: String, params: Strings, polyArg: Option<String>, body: Expr, locals: Int) {}
+value class Function(
+			tok: Tok,
+			name: String,
+			params: Strings,
+			polyArg: Option<String>,
+			body: Expr,
+			locals: Int
+		) {}
 
 // The core of the AST is the Expr type with its children.
 base class Expr {
@@ -229,13 +233,13 @@ mutable class .Reader{
     fs = rs.map(r -> r.file()); // Parsed files
     fail = false;
     rs.each(r -> if (!r.ok) { r.reportError(); !fail = true; });
-    if (fail) return (rs, fs);
+    if (fail) return (Vector[], Vector[]);
     i = 0;
     while (i < rs.size()) {
 			Checker::create(rs[i]).file(fs[i], fs);
       !i = i + 1;
     };
-    (rs, fs)  // Return parsed and checked files
+    (rs, fs)
   }
 
   // ------------- PARSING -----------------------------------------------------
@@ -325,39 +329,39 @@ mutable class .Reader{
 
   mutable fun identifiers(): Strings {
     vec = mutable Strings[];
-    while (! (this.isNext(")") || this.isNext("...") )) vec.push(this.identifier());
+    while (this.ok && !(this.isNext(")") || this.isNext("..."))) vec.push(this.identifier());
     vec.chill()
   }
 
   mutable fun expressions(): Expressions {
     vec = mutable Expressions[];
-    while (!this.isNext(")")) vec.push(this.expression());
+    while (this.ok && !this.isNext(")")) vec.push(this.expression());
     vec.chill()
   }
 
   // Parse declarations
   mutable fun declarations(): Declarations {
     vec = mutable Declarations[];
-    while (!this.isNext(")")) vec.push(this.declaration());
+    while (this.ok && !this.isNext(")")) vec.push(this.declaration());
     vec.chill()
   }
 
   // Parse functions
   mutable fun functions(): Functions {
     vec = mutable Functions[];
-    while (!this.isNext(")")) vec.push(this.function());
+    while (this.ok && !this.isNext(")")) vec.push(this.function());
     vec.chill()
   }
 
  // Is the given string the next token?
-  mutable fun isNext(s: String): Bool { this.hasMoreTokens() && this.curToken().asString() == s }
+  mutable fun isNext(s: String): Bool { this.ok && this.hasMoreTokens() && this.curToken().asString() == s }
 
   // Do we have more tokens?
   readonly fun hasMoreTokens(): Bool { this.ok && this.tokPos < this.tokens.size(); }
 
   // Consume the requested token, or fail
   mutable fun eat(s: String): mutable Reader {
-    if (this.hasMoreTokens()) {
+    if (this.ok && this.hasMoreTokens()) {
        tok = this.curToken();
       if (tok.asString() != s) this.fail(tok, `expected ${s}`);
       this.advanceTok();
@@ -402,9 +406,11 @@ mutable class .Reader{
 
   // Return an identifier and fail if this is not well-formed
   mutable fun identifier(): String {
+	  if (!this.ok) { return "ERR"; };
     if (!this.hasMoreTokens()) this.fail(this.prevToken(), "premature end of file");
     tok = this.curToken();
     if (!this.isIdentifier(tok)) this.fail(tok, "expected an identifier");
+	  if (!this.ok) { return "ERR"; };
     this.advanceTok();
     tok.asString()
   }
@@ -416,13 +422,23 @@ mutable class .Reader{
 
   // Return the current char and advance cursor.
   mutable fun charNext(): Char {
+		 if (this.pos >= this.text.size()) {
+         this.fail(Tok(), "premature end of file");
+				 return '\n'; // TODO perhaps retun EOF, it should not matter because we have failed()
+		 };
      c = this.text[this.pos];
      this.!pos = this.pos + 1;
      c
   }
 
   // Unreads the last character
-  mutable fun unread():void { if (this.pos > 0) this.!pos = this.pos - 1; }
+  mutable fun unread():void {
+		 if (this.pos > 0) {
+		   this.!pos = this.pos - 1;
+		 } else {
+		   this.fail(Tok(), "internal error: unread");
+		 };
+  }
 
   // Reader is ok and there is at least one more char.
   readonly fun hasMore(): Bool { this.ok && this.pos < this.text.size()  }
@@ -707,6 +723,7 @@ value class .Tok(start: Int = 0,
 }
 
 
+
 // -------------------------------------------------------------------------------------
 // ----------- CHECKING THE AST --------------------------------------------------------
 // -------------------------------------------------------------------------------------
@@ -715,8 +732,8 @@ value class Name(name: String, tok: Tok, arity: Arity) { }
 
 base class Arity() uses Show {
   children =
-    | Exactly(a: Int) // for functions like     (function foo (a b c) 0)      or    (function blub () 0)
-    | AtLeast(a: Int) // for functions like     (function bar (x y ...z) 0)   or    (function baz (...args) 0)
+    | Exactly(a: Int) // for functions like   (function foo (a b c) 0)     or  (function blub () 0)
+    | AtLeast(a: Int) // for functions like   (function bar (x y ...z) 0)  or  (function baz (...args) 0)
 
   fun canBeCalledWith(argsCnt: Int): Bool { // TODO: check that the call is legal!
     this match { | Exactly(a) -> argsCnt == a | AtLeast(a) -> argsCnt >= a }
@@ -756,6 +773,8 @@ mutable class Scope(mutable top: Bool, env: mutable Vector<mutable Names>) {
      print_string("======================");
   }
 }
+
+// ===============================================================================================
 
 // -------------- Class Checker ----------------------------------------------------------
 // Enforces well-formdness rules. Require all imported files as we
@@ -804,15 +823,11 @@ mutable class Checker(env: mutable Scope, r: mutable Reader) {
   }
 
 	// ============================================================================
-  // Check one file
-	//
-	// We assume `StdLib` is correct, so it can be skipped.
-	//
+  // Check one file.  We assume `StdLib` is correct, so it is skipped.
 	//
   mutable fun file(file: File, fs: Vector<File>): void {
     if (file.name == "StdLib") return void;
     // Check the import list: it should include StdLib and all imported files should be in `fs`
-
     found = false; file.imports.each(name -> if (name == "StdLib") {!found = true;} );
     if (!found) return this.r.fail(file.tok, `Does not import StdLib`);
 
@@ -824,10 +839,12 @@ mutable class Checker(env: mutable Scope, r: mutable Reader) {
     // Checking global variables
     env = this.env;
     env.pushScope();
-    // Should we enforce that expressions in global decls do not call functions other than builtins?
-    // It is simpler to initialize all globals without worrying about circular import lists.
-    // By processing decls before functions we naturally do not have those in the environment.
-    // Perhaps we should just have access to basic StdLib functions?
+    // Should we enforce that expressions in global decls do not call
+    // functions other than builtins?  It is simpler to initialize all
+    // globals without worrying about circular import lists.  By
+    // processing decls before functions we naturally do not have
+    // those in the environment.  Perhaps we should just have access
+    // to basic StdLib functions?
     env.setTop(true);
     fs.each(file -> if (file.name == "StdLib") {
       file.funs.each(func -> {

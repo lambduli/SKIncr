@@ -1,5 +1,5 @@
- #we are using ubuntu base image
-FROM  --platform=linux/arm64   ubuntu:20.04
+#we are using ubuntu base image
+FROM  --platform=linux/amd64   ubuntu:20.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 
@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y \
  git \
  emacs \
  clang-10 \
- && rm -rf /var/lib/apt/lists/* 
+ && rm -rf /var/lib/apt/lists/*
+
 #start the container from bash
 CMD [ "/bin/bash" ]
