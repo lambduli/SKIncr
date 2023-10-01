@@ -83,7 +83,6 @@ type Files = Vector<File>;
 type Functions = Vector<Function>;
 
 
-
 // -------------------------------------------------------------------------------------
 // ---------------------- ABSTRACT SYNTAX TREE -----------------------------------------
 // -------------------------------------------------------------------------------------
@@ -206,8 +205,8 @@ mutable class .PrettyPrint(mutable indent: Int = 0) {
 // ----------------------------------------------------------------------------------
 mutable class .Reader{
   path: String,                 // path to the target file
-  text: Chars,                  // contents of the file
-  mutable tokens: mutable Tokens, // stream of lexed tokens
+  text: Chars = Chars[],        // contents of the file
+  mutable tokens: mutable Tokens = mutable Tokens[], // stream of lexed tokens
   mutable tokPos: Int = 0,      // position in the token stream
   mutable ok: Bool = true,      // was there any error processing
   mutable error: String = "",   // message to report to the user
@@ -217,14 +216,10 @@ mutable class .Reader{
 
   // create: returns a new reader for the provided file.
   static fun create(p: String): mutable Reader {
-    if (true /*FileSystem.exists(p)*/) {  // TODO: exists() fails to compile, unclear why. ?
-      txt = FileSystem.readTextFile(p).chars();
-      r = mutable Reader{path=>p, text=>txt, tokens=>mutable Tokens[]};
-      r.!tokens = r.lex();
-      r
-     } else {
-       mutable Reader{path=>p, text=>Chars[], tokens=>mutable Tokens[], ok=>false, error=>`File ${p} not found`}
-    }
+    if (!FileSystem.exists(p)) return mutable Reader{path=>p, ok=>false, error=>`File ${p} not found`};
+    r = mutable Reader{path=>p, text=>FileSystem.readTextFile(p).chars(), tokens=>mutable Tokens[]};
+    r.!tokens = r.lex();
+    r
   }
 
   // process: given a list of files, parses and check them
@@ -247,10 +242,10 @@ mutable class .Reader{
   // Parse a file, always returns something. Clients check the Reader for an error.
   mutable fun file(): File {
     tok = this.curToken();
-    (name, _) = (this.eat("(").eat("module").identifier(), this.eat("imports").eat("("));
+    (name, _)    = (this.eat("(").eat("module").identifier(), this.eat("imports").eat("("));
     (imports, _) = (this.identifiers(), this.eat(")").eat(")").eat("(").eat("vars").eat("("));
-    (decls, _) = (this.declarations(), this.eat(")").eat(")").eat("(").eat("functions").eat("("));
-    (funs, _) = (this.functions(), this.eat(")").eat(")"));
+    (decls, _)   = (this.declarations(), this.eat(")").eat(")").eat("(").eat("functions").eat("("));
+    (funs, _)    = (this.functions(), this.eat(")").eat(")"));
     File(Tok::createFrom(tok, this.curToken().end, this), name, imports, decls, funs)
   }
 

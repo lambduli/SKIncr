@@ -28,7 +28,7 @@ To build the project
 
 And to run the example:
 
->  ./build/skia tests/stdlib.sm tests/good/4/main.sm 
+>  ./build/skia --print_ir --analyze tests/stdlib.sm tests/good/4/main.sm 
 
 From time to time I have had to muck with the Makefile
 
