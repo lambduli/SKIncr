@@ -1,91 +1,119 @@
-// =====================================================================================
+// ============================================================================
 // The entry point for the interpreter and analyzer.
 //
 // `main()` gets a `paths` from the command line.  If `paths` is the
 // empty list, run the tests.  Otherwise, `path` is expected to
 // contain file names (including one that has module `Main`).  Parse
 // the files and run `Main`.
-// =====================================================================================
+// ============================================================================
+
+module alias AP = ArgumentParser;
+
+type Strings = Vector<String>;
+type Modules = Vector<Interpreter.Module>;
+
+const schema: Array<AP.Param> = Array[
+  AP.BoolParam{name => "help",                         negatable => false},
+  AP.BoolParam{name => "verbose",
+	             help => "print more details",  				 negatable => false,},
+  AP.BoolParam{name => "print_ast",
+	             help => "print the AST representation", negatable => false,},
+  AP.BoolParam{name => "print_ir",
+	             help => "print the bytecode",					 negatable => false},
+  AP.BoolParam{name => "test",
+  						 help => "run the tests",   						 negatable => false},
+  AP.BoolParam{name => "run",
+  						 help => "run the program", 						 negatable => false},
+  AP.BoolParam{name => "analyze",
+	             help => "analyze the program", 				 negatable => false},
+];
+
+// === class Context =========================================================
+value class Context(verbose: Bool,
+			              printAST: Bool,
+										printIR: Bool,
+										run: Bool,
+										analyze: Bool,
+										paths: Strings){}
+
+// === main ==================================================================
 fun main(): void {
-	paths = arguments();
-	if (paths.size() == 0) {  test()
-    } else if ( paths[0] == "-v") {
-	  run(Vector::createFromItems(paths.drop(1))) //FIXME what was that, true)
-  } else {
-	  run(Vector::createFromItems(paths)) // FIXME what was that, false)
-  }
+  AP.parse(schema, arguments()) match {
+ 	 | Success(r) -> {
+	   if (r.getBool("help")) print_string(AP.help(schema))
+ 		 else if (r.getBool("test")) test()
+		 else
+       run(Context(r.getBool("verbose"),
+			                r.getBool("print_ast"),
+											r.getBool("print_ir"),
+											r.getBool("run"),
+											r.getBool("analyze"),
+											Vector::createFromItems(r.unknown)))
+   }
+	 | Failure(err) -> print_string(err.getMessage())
+	};
 }
 
-
-type VS = Vector<String>;
-type Strings = Vector<String>;
-
-// ====================================================================================
-// test(): Run tests. Good ones do not fail, bad ones can.
+// === test ====================================================================
+// Run tests. Good ones don't fail, bad ones do.
 fun test(): void {
-  report =
-    TestRunner::mcreate( "tests/stdlib.sm", "tests/snapshot", "build/snapshots" )
-      .good_test  (VS["tests/good/hello_world/main.sm"], Interpreter.S("Hello world!"))
-      .good_test  (VS["tests/good/let/main.sm"], Interpreter.I(10))
-      .good_test  (VS["tests/good/modules/foo.sm", "tests/good/modules/main.sm"], Interpreter.I(42))
-      .good_test  (VS["tests/good/if_value/main.sm"], Interpreter.I(10))
-      .io_test    (VS["tests/good/simple_io/main.sm"], VS["42"], VS["42"])
-      .io_test    (VS["tests/good/local_var/foo.sm", "tests/good/local_var/main.sm"], VS[], VS["10", "20", "30", "40"])
-      .reader_fail(VS["tests/bad/leaky_var/main.sm"])
-      .reader_fail(VS["tests/bad/overwrite_fun/main.sm"])
-      .reader_fail(VS["tests/bad/arity_check/main.sm"])
-      .reader_fail(VS["tests/bad/function_as_value/main.sm"])
-      .reader_fail(VS["tests/bad/redefine_fun/foo.sm", "tests/bad/redefine_fun/main.sm"])
-      .harness.report();
+  t = "tests/";
+  (g, b, gl) = (t+"good/", t+"bad/", t+"local_var");
+	(i10, i42) = (Interpreter.I(10), Interpreter.I(42));
+	(nostrings, fourStrings) = (Strings[], Strings["10", "20", "30", "40"]);
+  report = TestRunner::mcreate( t+"stdlib.sm", t+"snapshot", "build/snapshots")
+    .good_test(Strings[g+"hello_world/main.sm"], Interpreter.S("Hello world!"))
+    .good_test(Strings[g+"let/main.sm"], i10)
+    .good_test(Strings[g+"modules/foo.sm", g+"modules/main.sm"], i42)
+    .good_test(Strings[g+"if_value/main.sm"], i10)
+    .io_test(Strings[g+"simple_io/main.sm"], Strings["42"], Strings["42"])
+    .io_test(Strings[gl+"foo.sm", gl+"main.sm"], nostrings, fourStrings)
+    .reader_fail(Strings[b+"leaky_var/main.sm"])
+    .reader_fail(Strings[b+"overwrite_fun/main.sm"])
+    .reader_fail(Strings[b+"arity_check/main.sm"])
+    .reader_fail(Strings[b+"function_as_value/main.sm"])
+    .reader_fail(Strings[b+"redefine_fun/foo.sm", b+"redefine_fun/main.sm"])
+    .harness.report();
   print_string( report )
 }
 
-// ====================================================================================
-// `run(files)`: `files` has a list of file names, we read, parse and
-// check each file, then run `Main`.  `files` must include `StdLib` as
-// it contains all the primitives.
-// ====================================================================================
-
-fun run(files: Strings): void {
-	 linearized = prepareFiles(files, true);
-	 if (linearized.size() == 0) return void;
-	 Interpreter.analyzeAll(linearized);
-   if (true) return void;
-	 Interpreter.runProgram(linearized) match {
-		| Failure(msg) -> print_string(`RUNTIME ERROR: ${msg}`);
-		| Success(v) ->   print_string(`>  ${v.toOut()}`);
-		};
+// ============================================================================
+// `run`: `ctxt.paths` has a list of file names, we read, parse and
+// check each file, then analyze and/or run `Main`.  `ctxt.paths` must
+// include `StdLib` as it contains all the primitives.
+// ============================================================================
+fun run(ctxt: Context): void {
+   modules = prepareFiles(ctxt);
+   if (modules.size() == 0) return void;
+   if (ctxt.analyze)
+	   Interpreter.analyzeAll(modules);
+   if (ctxt.run)
+     print_string(Interpreter.runProgram(modules) match {
+      | Failure(msg) -> `ERR: ${msg}` | Success(v) -> `> ${v.toOut()}`
+      })
 }
 
-// =====================================================================================================
+// ============================================================================
 
-fun prepareFiles(files: Strings, verbose: Bool): Vector<Interpreter.Module> {
-  if (verbose) {
-		 s = "processing files: [";
-		 for (f in files) { !s = s + f + ","; };
-		 print_string(s + "]");
-	};
-  (rs, fs) = Reader::process(files);
-	if (rs.size() == 0) return Vector[];
+fun prepareFiles(ctxt: Context): Modules {
+  if (ctxt.verbose) {
+     s = "processing files: [";
+     for (f in ctxt.paths) { !s = s + f + "," };
+     print_string(s + "]");
+  };
+  (rs, fs) = Reader::process(ctxt.paths);
+  if (rs.size() == 0) return Vector[];
   flat = mutable Flattener();
   flatFs = fs.map( f -> flat.file(f) );
-  p = mutable PrettyPrint();
-  if (false) {
-    print_string("Parsed::");
- 	  flatFs.each(f -> if(f.name != "StdLib") { print_string(p.file(f)); });
+  if (ctxt.printAST) {
+    p = mutable PrettyPrint();
+    flatFs.each(f -> if(f.name != "StdLib") { print_string(p.file(f)) })
   };
   t = Translator();
   translated = flatFs.map(d -> t.file(d));
-	if (false) {
-	  print_string("Intermediate::");
-	  pp2 = mutable PrettyPrint2();
-    translated.each(m -> { if (m.name != "StdLib") { print_string(pp2.toModule(m)); } });
-	};
   l = Interpreter.Linearize::mcreate();
-  linearized: Vector<Interpreter.Module> = translated.map(m -> l.mod(m));
-	if (verbose) {
-	  print_string("Bytecode::");
-	  linearized.each(m -> {if (m.name != "StdLib") print_string(m.toString()) });
-	};
-	linearized
+  modules = translated.map(m -> l.mod(m));
+  if (ctxt.printIR)
+    modules.each(m -> {if (m.name != "StdLib") print_string(m.toString()) });
+  modules
 }
