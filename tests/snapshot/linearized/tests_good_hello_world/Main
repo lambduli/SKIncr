@@ -1,4 +1,5 @@
 module Main
+
 function main (0) [1]
 0: %0 ← "Hello world!"
 1: ret %0

@@ -253,7 +253,7 @@ mutable class .TestRunner(
       l = Interpreter.Linearize::mcreate();
       linearized: Vector<Interpreter.Module> = translated.map(m -> l.mod(m));
       linearized.filter(m -> m.name.lowercase() != "stdlib").each(m -> {
-        prettyOut = m.toString();
+        prettyOut = m.toStringUnformatted();
         case = this.linearizedSnapshot.createOrValidate( testName, m.name, prettyOut );
         this.harness.pushTestCase( case );
       });
@@ -302,9 +302,9 @@ mutable class MockIO( reads: Vector<String>, mutable readIdx: Int, writes: mutab
 
   readonly fun validateWrites(testName: String, expectedWrites: Vector<String>): TestCase{
     msg = if ( this.writes.size() < expectedWrites.size() ){
-      Some("Not enought writes")
+      Some(`Not enought writes, expected ${expectedWrites}, actually ${this.writes}`)
     } else if ( this.writes.size() > expectedWrites.size() ){
-      Some("Too many writes")
+      Some(`Too many writes, expected ${expectedWrites}, actually ${this.writes}`)
     } else {
       this.writes.zipWith( expectedWrites, (val, expected) -> {
         if ( val != expected ) {
