@@ -538,6 +538,38 @@ fun fixpoint(functions: TransferFunctions, state: State): State {
   };
 }
 
+/*
+fun fixpoint2(functions: TransferFunctions, state: State): State {
+  (work, currrent, step) = (mutable Ints[], state, 0);
+  work.push(0);
+	while (work.size() > 0) {
+	   !step = step + 1;
+     i = work.pop();
+		 (update, !current) = functions[i].eval(current);
+		 if (update) {
+		    thisNode node = functions[i] match {
+			   | Edge(_, to) -> to
+				 | Identity(l) -> l
+				 | Def(l) -> l
+  			 };
+				 functions.each(f -> {
+            f match {
+    			   | Edge(from,_) ->  if (from = thisNode) work.push(j);
+		    		 | Identity(l) ->
+				     | Def(l) -> l
+
+            };
+
+         });
+        // what is the current label
+				// find all successor transfer functions
+     }
+  }
+  print_string("steps so far "+steps);
+  current
+}
+*/
+
 // =======================================================================================
 // Frame represents one function's execution state, it has:
 //   - globals: a reference to the module's shared array of global registers
