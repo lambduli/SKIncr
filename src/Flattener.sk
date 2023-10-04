@@ -258,87 +258,88 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), mutabl
       }
     }
     | Decl(t, n, e) -> {
-       (v2, e2) = this.expression(e, locals);
+      (v2, e2) = this.expression(e, locals);
       varname = this.nextVar();
       locals.add(n, varname);
       v2.push(Decl(t, varname, e2));
       (v2, undef)
     }
+    | Call(t, n@"set!", es) -> {
+      (tok, origVName) = es[0] match {| Var(t2, nm) -> (t2, nm) | _ -> (t, "Error")};
+      if (this.glob.containsKey(origVName)) {
+        !n = "gset!"
+      };
+      vname = this.toRegister(origVName, locals);
+      (v2, e2) = this.expression(es[1], locals);
+      args = Exprs[Var(tok, vname), e2];
+      v2.push(Call(t, n, args));
+      (v2, undef)
+    }
+    | Call(t, n@"gset!", es) -> {
+      (tok, origVName) = es[0] match {| Var(t2, nm) -> (t2, nm) | _ -> (t, "Error")};
+      vname = this.toRegister(origVName, locals);
+      (v2, e2) = this.expression(es[1], locals);
+      args = Exprs[Var(tok, vname), e2];
+      v2.push(Call(t, n, args));
+      (v2, undef)
+    }
     | Call(t, n, es) -> {
       es2 = mutable Exprs[];
-      if (n == "set!") {
-         (vexp, exp) = (es[0], es[1]);
-         (tok, origVName) = vexp match {| Var(t2, nm) -> (t2, nm) | _ -> (t, "Error")};
-         !n = if (this.glob.containsKey(origVName)) { "gset!" } else { "set!" };
-         vname = this.toRegister(origVName, locals);
-         (v2, e2) = this.expression(exp, locals);
-         args = Exprs[Var(tok, vname), e2];
-         v2.push(Call(t, n, args));
-         (v2, undef)
-      } else if (n == "gset!") {
-        (tok, origVName) = es[0] match {| Var(t2, nm) -> (t2, nm) | _ -> (t, "Error")};
-        vname = this.toRegister(origVName, locals);
-        (v2, e2) = this.expression(es[1], locals);
-        args = Exprs[Var(tok, vname), e2];
-        v2.push(Call(t, n, args));
-        (v2, undef)
-      } else {
-        _argsCnt = es.size();
-        arity = this.arityOf(n);
-        arity match {
-          | Exactly(_) -> {
-            // that `n` must be equal to `argsCnt`, but at this point it will
-            es.each(e -> {
-              (v2, e2) = this.expression(e, locals);
-              es2.push(e2);
-              ve.extend(v2.chill());
-            });
-            varname = this.nextVar();
-            ve.push(Decl(t, varname, Call(t, n, es2.chill())));
-            (ve, Var(t,varname))
-          }
-          | AtLeast(_) -> {
-            // that `ordCnt` must be smaller than `argsCnt`, but at
-            // this point it will I will have to construct a new
-            // variable and store a list in it that list will contain
-            // all the additional arguments (rest of `es`) so I take
-            // first `n` arguments and deal with them the same way as
-            // above but then I create a new variable after I deal
-            // with the rest of the arguments in such a way that the
-            // new variable can host a List that contains all the
-            // second parts of each tuple I then construct the call,
-            // it will be almost exactly what is above, but I will
-            // push one more argument to it that will be the new
-            // variable with the list
+      _argsCnt = es.size();
+      arity = this.arityOf(n);
+      arity match {
+        | Exactly(_) -> {
+          // that `n` must be equal to `argsCnt`, but at this point it will
+          es.each(e -> {
+            (v2, e2) = this.expression(e, locals);
+            es2.push(e2);
+            ve.extend(v2.chill());
+          });
+          varname = this.nextVar();
+          ve.push(Decl(t, varname, Call(t, n, es2.chill())));
+          (ve, Var(t,varname))
+        }
+        | AtLeast(_) -> {
+          // that `ordCnt` must be smaller than `argsCnt`, but at
+          // this point it will I will have to construct a new
+          // variable and store a list in it that list will contain
+          // all the additional arguments (rest of `es`) so I take
+          // first `n` arguments and deal with them the same way as
+          // above but then I create a new variable after I deal
+          // with the rest of the arguments in such a way that the
+          // new variable can host a List that contains all the
+          // second parts of each tuple I then construct the call,
+          // it will be almost exactly what is above, but I will
+          // push one more argument to it that will be the new
+          // variable with the list
 
-            // we know that every polyvariadic function is translated
-            // into a function with a single parameter we therefore
-            // need to put all the arguments into a list and only pass
-            // that list into the call
+          // we know that every polyvariadic function is translated
+          // into a function with a single parameter we therefore
+          // need to put all the arguments into a list and only pass
+          // that list into the call
 
-            // TODO: there are no ordinary arguments, everything goes into a list together with the rest thing
-            // ordinary = es.slice(0, ordCnt); // only first `n` arguments
-            // ordinary.each(e -> {
-            //   (v2, e2) = this.expression(e, locals);
-            //   es2.push(e2);
-            //   ve.extend(v2.chill());
-            // });
+          // TODO: there are no ordinary arguments, everything goes into a list together with the rest thing
+          // ordinary = es.slice(0, ordCnt); // only first `n` arguments
+          // ordinary.each(e -> {
+          //   (v2, e2) = this.expression(e, locals);
+          //   es2.push(e2);
+          //   ve.extend(v2.chill());
+          // });
 
-            // rest = es.slice(ordCnt); // until the end
-            listvars = mutable Exprs[];
-            // all original arguments will be flattened and put into a list-value
-            es.each(e -> {
-              (v2, e2) = this.expression(e, locals);
-              listvars.push(e2);
-              ve.extend(v2.chill());
-            });
-            listvarname = this.nextVar();
-            ve.push(Decl(t, listvarname, LitList(t, listvars.chill())));
-            es2.push(Var(t, listvarname));
-            varname = this.nextVar();
-            ve.push(Decl(t, varname, Call(t, n, es2.chill())));
-            (ve, Var(t,varname))
-          }
+          // rest = es.slice(ordCnt); // until the end
+          listvars = mutable Exprs[];
+          // all original arguments will be flattened and put into a list-value
+          es.each(e -> {
+            (v2, e2) = this.expression(e, locals);
+            listvars.push(e2);
+            ve.extend(v2.chill());
+          });
+          listvarname = this.nextVar();
+          ve.push(Decl(t, listvarname, LitList(t, listvars.chill())));
+          es2.push(Var(t, listvarname));
+          varname = this.nextVar();
+          ve.push(Decl(t, varname, Call(t, n, es2.chill())));
+          (ve, Var(t,varname))
         }
       }
     }
