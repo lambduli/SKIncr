@@ -72,5 +72,5 @@ build/out64.ll: $(SKIP_FILES) build/skc
 clean:
 	rm -Rf build
 
-test:
-	./build/skia
+test: build/skia
+	./build/skia --test
