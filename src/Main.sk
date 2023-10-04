@@ -58,7 +58,8 @@ fun main(): void {
 // Run tests. Good ones don't fail, bad ones do.
 fun test(): void {
   t = "tests/";
-  (g, b, gl) = (t+"good/", t+"bad/", t+"local_var");
+  (g, b) = (t+"good/", t+"bad/");
+  gl = g+"local_var/";
 	(i10, i42) = (Interpreter.I(10), Interpreter.I(42));
 	(nostrings, fourStrings) = (Strings[], Strings["10", "20", "30", "40"]);
   report = TestRunner::mcreate( t+"stdlib.sm", t+"snapshot", "build/snapshots")
