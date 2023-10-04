@@ -71,6 +71,12 @@ value class Module(name: String, globs: Int, funs: Funs) {
      if (this.funs.size() != 0) this.funs.each(f -> !s =`${s}\n`+ f.toString());
      s + "\n"
   }
+
+  fun toStringUnformatted(): String {
+     s = `module ${this.name}\n`;
+     if (this.funs.size() != 0) this.funs.each(f -> !s =`${s}\n`+ f.toStringUnformatted());
+     s + "\n"
+  }
 }
 
 // ==========================================================================================
@@ -82,6 +88,10 @@ value class Module(name: String, globs: Int, funs: Funs) {
 value class Fun(name: String, params: Int, body: Statements, locals: Int) {
   fun toString(): String {
     `\e[4;31mfunction\e[0m ${this.name} (${this.params}) [${this.locals}]` + Code(this.body).toString() + "\n"
+  }
+
+  fun toStringUnformatted(): String {
+    `function ${this.name} (${this.params}) [${this.locals}]` + Code(this.body).toString() + "\n"
   }
 }
 
@@ -137,11 +147,11 @@ base class Expr uses Show {
     | LitI(i) -> `${i}`
     | LitB(b) -> `${b}`
     | LitS(s) -> `"${s}"`
-    | LitL(regs) -> "[" + regs.reduce((s, r) -> `${s} ${r.toString()}, `, "") + "]"
+    | LitL(regs) -> "[" + regs.map(r -> r.toString()).join(", ") + "]"
     | LitC(ch) -> `'${ch}'`
     | Register(r) -> `%${r}`
     | Load(r) -> `@${r}`
-    | Invoke(n, regs) -> { s = `${n}(`; regs.each(r -> !s = s + ` %${r}`); s + ")" }
+    | Invoke(n, regs) -> `${n}(` + regs.map( r -> `%${r}` ).join(" ") + ")"
     }
   }
 }

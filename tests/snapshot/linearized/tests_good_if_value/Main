@@ -1,4 +1,5 @@
 module Main
+
 function main (0) [3]
 0: %0 ← true
 1: if %0 jmp #4
