@@ -154,6 +154,19 @@ base class Expr uses Show {
     | Invoke(n, regs) -> `${n}(` + regs.map( r -> `%${r}` ).join(" ") + ")"
     }
   }
+
+  // Returns the registers used by the expression
+  fun usedRegisters(): Ints {
+    this match {
+    | LitL(regs) -> regs.map(reg -> reg match {
+                                    | Register(r) -> r
+                                    })
+    | Register(r) -> Vector[r]
+    | Load(r) -> Vector[r]
+    | Invoke(_, regs) -> regs
+    | _ -> Vector[]
+    }
+  }
 }
 
 // =========================================================================================
@@ -243,33 +256,33 @@ mutable class Linearize(mutable cntr: Int) {
 // ANALYIS ANALYIS ANALYIS ANALYIS ANALYIS ANALYIS ANALYIS ANALYIS ANALYIS ANALYIS ANALYIS
 
 // === class State =================================================================
-// The State of a RD analysis contains two vectors of RD (reaching definitions)
-// for each label in the program. These vectors contain on bitvec per variable.
-// Thus the size of the state is 2 x |label| x |variables| x |label| (give or take)
+// The State of a LV analysis contains two bitvecs of live variables
+// for each label in the program.
+// Thus the size of the state is 2 x |label| x |variables| (give or take)
 // By design, State is an immutable class, every change creates a copy.
 // Variables and labels are modelled by integers starting at 0.
 // =================================================================================
-value class State(entry: Vector<RD>, exit: Vector<RD>) {
+value class State(entry: Vector<BitVec>, exit: Vector<BitVec>) {
   // creates a State given the number of labels and variables.
   static fun create(vars: Int, labels: Int): State {
 		(entries, exits, i) = (mutable Vector[], mutable Vector[], 0);
 		while (i < labels) {
-			 entries.push(RD::create(vars, labels));
- 			 exits.push(RD::create(vars, labels));
+			 entries.push(BitVec::create(vars));
+    	 exits.push(BitVec::create(vars));
 			 !i = i+1;
 		};
 		State(entries.chill(), exits.chill())
   }
 
-  // get the RD of the entry node for label i
-  fun entryAt(i: Int): RD { this.entry[i] }
+  // get the bitvec of the entry node for label i
+  fun entryAt(i: Int): BitVec { this.entry[i] }
 
-  // get the RD of the exit node for label i
-  fun exitAt(i: Int): RD { this.exit[i] }
+  // get the bitvec of the exit node for label i
+  fun exitAt(i: Int): BitVec { this.exit[i] }
 
-  // internal cuisine: copy this State but with RD d set at label,
+  // internal cuisine: copy this State but with bitvec d set at label,
 	// if entry is true, this done for the entry otherwise the exit.
-  fun copyWith(entry: Bool, label: Int, d: RD): State {
+  fun copyWith(entry: Bool, label: Int, d: BitVec): State {
 		(entries, exits, i) = (mutable Vector[], mutable Vector[], 0);
 		while (i < this.entry.size()) {
 		   eElem = if (entry && i == label) { d } else { this.entry[i] };
@@ -345,6 +358,42 @@ value class BitVec(bits: Bools) {
 		res
 	}
 
+  // returns this \ kills + gens
+  fun killGen(kills: Ints, gens: Ints): BitVec {
+    i = 0;
+    vec = mutable Vector[];
+    while (i < this.bits.size()) {
+      vec.push(this.bits[i]);
+      !i=i+1
+    };
+    !i = 0;
+    while(i < kills.size()) {
+		  vec![kills[i]] = false;
+			!i=i+1
+		};
+    !i = 0;
+    while(i < gens.size()) {
+		  vec![gens[i]] = true;
+			!i=i+1
+		};
+    BitVec(vec.chill())
+  }
+
+  // returns whether all bits match with the other vector
+  fun sameAs(other: BitVec): Bool {
+    if (this.bits.size() == other.bits.size()) {
+      i = 0;
+      same = true;
+      while (i < this.bits.size()) {
+        !same = same && this.bits[i] == other.bits[i];
+        !i = i + 1
+      };
+      same
+    } else {
+      false
+    }
+  }
+
   // returns the value of bit pos
   fun isSet(pos: Int): Bool { this.bits[pos] }
 
@@ -358,86 +407,19 @@ value class BitVec(bits: Bools) {
     res
   }
 
-  // string representation, e.g. [1001110]
+  // string representation, e.g. [ 1 4 8 ]
   fun toString(): String {
 	  (s, i) = ("[", 0);
-		while (i < this.bits.size()) { !s = s + if (this.bits[i]) "1" else "0"; !i = i+1 };
+		while (i < this.bits.size()) {
+      if (this.bits[i]) {
+        !s = s + " " + i + " "
+      };
+      !i = i+1
+    };
 	  s+"]"
 	}
 }
 // ==========================================================================================
-
-
-// === class RD ==============================================================================
-// RD tracks the reaching definitions of variables. In the context of
-// our language, each local variable is identified by a positive
-// integer, and each definition is identified by a label, a positive
-// integer as well. Labels correspond to statements in the program.
-// ==========================================================================================
-value class RD(vars: Vector<BitVec>) {
-
-  // creates an empty RD object for varCard variables and labelCard labels
-  static fun create(varCard: Int, labelCard: Int): RD {
-		(i, vec) = (0, mutable Vector[]);
-		while(i < varCard) { vec.push(BitVec::create(labelCard)); !i=i+1 };
-		RD(vec.chill())
-  }
-
-  // set var at label to true, returns a new RD
-  fun set(var: Int, label: Int): RD {
-		(i, vec) = (0, mutable Vector[]);
-		while(i < this.vars.size()) {
-		  if (i == var) { vec.push(this.vars[i].set(label)) } else { vec.push(this.vars[i])	};
-			!i=i+1
-		};
-		RD(vec.chill())
-	}
-
-  // is var at label true?
-  fun isSet(var: Int, label: Int): Bool { this.vars[var].isSet(label) }
-
-  // clears all the bits for var
-  fun clear(var: Int): RD {
-		(i, vec, vars) = (0, mutable Vector[], this.vars);
-		while(i < vars.size()) {
-      if (i == var) { vec.push(BitVec::create(vars[i].size())) } else { vec.push(vars[i])	};
-			!i=i+1
-		};
-		RD(vec.chill())
-	}
-
-  // the union of two RD objects: for each var we || the bitvecs
-  fun join(other: RD): RD {
-    (i, vec) = (0, mutable Vector[]);
-    while(i < this.vars.size()) { vec.push(this.vars[i].join(other.vars[i])); !i=i+1 };
-		RD(vec.chill())
-  }
-
-  // is other included in this? I.e. for every var are the bitvecs included
-  fun includes(other: RD): Bool {
-		(i, res) = (0, true);
-		while(res && i < this.vars.size()) { !res = res && this.vars[i].includes(other.vars[i]); !i=i+1 };
-		res
-	}
-
-  // string representation, eg. "1<-[3,4] 2<-[0,2,12]", variable with empty bitvecs are omitted
-  fun toString(): String {
-	   (s, i) = ("", 0);
-		 while (i < this.vars.size()) {
-		   v = this.vars[i];
-			 if (v.count() > 0) {
-			   (!s, j) = (`${s}${i}<-[`, 0);
-				 while (j < v.size()) {
-				   if (v.isSet(j)) !s = `${s}${j}, `;
-					 !j = j+1
-				  };
-					!s = s.stripSuffix(", ") + "] ";
- 			 };
-		   !i = i+1;
-		 };
-		 s
-	}
-}
 
 // === class TransferFunction =============================================================
 // Abstract class that defines the eval() function to take a state and return a new
@@ -448,16 +430,16 @@ base class TransferFunction() {
 }
 
 // === Edge ==============================================================================
-// An edge in the control flow graph tranfer information from the exit
-// of a node to the entry of another node. The new information is
+// An edge in the control flow graph tranfer information from the entry
+// of a node to the exit of another node. The new information is
 // joined with the existing contents.
 // =======================================================================================
 class Edge(from: Int, to: Int) extends TransferFunction {
   // As an optimization, if the entry already has all the information
   // contained in exit, we do nothing.
   fun eval(s: State): (Bool, State) {
-	  (exit, entry) = (s.exitAt(this.from), s.entryAt(this.to));
-		if (entry.includes(exit)) { (false, s) } else { (true, s.copyWith(true, this.to, entry.join(exit))) }
+	  (exit, entry) = (s.exitAt(this.to), s.entryAt(this.from));
+		if (exit.includes(entry)) { (false, s) } else { (true, s.copyWith(false, this.to, exit.join(entry))) }
 	}
 }
 
@@ -467,19 +449,22 @@ class Edge(from: Int, to: Int) extends TransferFunction {
 class Identity(label: Int) extends TransferFunction {
   fun eval(s: State): (Bool, State) {
 	  (exit, entry) = (s.exitAt(this.label), s.entryAt(this.label));
-		if (exit.includes(entry)) { (false, s) } else { (true, s.copyWith(false, this.label, exit.join(entry))) }
+		if (entry.includes(exit)) { (false, s) } else { (true, s.copyWith(true, this.label, entry.join(exit))) }
 	}
 }
 
-// == class Store ========================================================================
-// Store into a local variable. This kills all definitions for that variable and adds the
-// new one.
+// == class KillGen ========================================================================
+// Kills and gens the specified variables from the exit to the entry.
 // ======================================================================================
-class Def(label: Int, reg: Int) extends TransferFunction {
+class KillGen(label: Int, kills: Ints, gens: Ints) extends TransferFunction {
   fun eval(s: State): (Bool, State)  {
 	  (exit, entry) = (s.exitAt(this.label), s.entryAt(this.label));
-		!entry = entry.clear(this.reg).set(this.reg, this.label);
-		if (exit.includes(entry)) { (false, s) } else { (true, s.copyWith(false, this.label, exit.join(entry))) }
+    updated = exit.killGen(this.kills, this.gens);
+    if (entry.sameAs(updated)) {
+      (false, s)
+    } else {
+      (true, s.copyWith(true, this.label, updated))
+    }
 	}
 }
 
@@ -502,11 +487,11 @@ fun initFunctions(f: Fun): TransferFunctions {
 	(funs, i) = (mutable TransferFunctions[], 0);
 	while (i < f.body.size()) {
 	  f.body[i] match {
-    | Store(reg, _) -> { funs.push(Def(i, reg)); funs.push(Edge(i, i+1))	}
-    | GStore(_, _) -> { funs.push(Identity(i)); funs.push(Edge(i, i+1))	}
-    | CondJump(_, tgt) -> { funs.push(Identity(i)); funs.push(Edge(i, i+1)); funs.push(Edge(i, tgt)) }
-    | Jump(tgt) -> { funs.push(Identity(i)); funs.push(Edge(i, tgt)) }
-    | Return(_) -> funs.push(Identity(i))
+    | Store(reg, expr) -> { funs.push(KillGen(i, Vector[reg], expr.usedRegisters())); funs.push(Edge(i+1, i))	}
+    | GStore(_, expr) -> { funs.push(KillGen(i, Vector[], expr.usedRegisters())); funs.push(Edge(i+1, i))	}
+    | CondJump(reg, tgt) -> { funs.push(KillGen(i, Vector[], Vector[reg])); funs.push(Edge(i+1, i)); funs.push(Edge(tgt, i)) }
+    | Jump(tgt) -> { funs.push(Identity(i)); funs.push(Edge(tgt, i)) }
+    | Return(expr) -> funs.push(KillGen(i, Vector[], expr.usedRegisters()))
 		};
     !i = i+1;
   };
