@@ -33,6 +33,12 @@
   (function tail (lst) ( builtin_un "tail" lst ))
   (function size (lst) ( builtin_un "size" lst ))
 
+  # functions on arrays
+  (function array (...elements) (builtin_un "array" elements) )
+  (function arr_set! (arr idx val) 0)
+  (function arr_get (arr idx) (builtin_bin "arr_get" arr idx))
+  (function arr_length (arr) (builtin_un "arr_length" arr))
+
   # number airthmetics
   (function + (x y) ( builtin_bin "+" x y ))
   (function - (x y) ( builtin_bin "-" x y ))

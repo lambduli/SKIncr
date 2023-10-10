@@ -29,6 +29,7 @@ base class Val() uses Show, Equality {
   | C(Char)
   | S(String)
   | L(Vals)
+  | A(Vals) // Array
   | Null()
 
   fun toString(): String {
@@ -38,6 +39,7 @@ base class Val() uses Show, Equality {
       | C(ch) -> `C(${ch})`
       | S(str) -> `S(${str})`
       | L(vals) -> `list(${vals.reduce((s, v) -> `${s}, ${v.toString()}`, "")})`
+      | A(vals) -> `array(${vals.reduce((s, v) -> `${s}, ${v.toString()}`, "")})`
       | Null() -> `Null`
     }
   }
@@ -48,6 +50,7 @@ base class Val() uses Show, Equality {
       | B(b) -> `${b}`
       | C(ch) -> `'${ch}'`
       | L(vals) -> `[${vals.reduce((s, v) -> `${s}, ${v.toOut()}`, "")}]`
+      | A(vals) -> `Arr[${vals.reduce((s, v) -> `${s}, ${v.toOut()}`, "")}]`
       | S(str) -> `${str}`
       | Null() -> `NULL`
     }
@@ -114,6 +117,8 @@ base class Stmt {
   children =
 	| Store(reg: Int, Expr)
   | GStore(reg: Int, Expr)
+  | AStore(reg: Int, idx: Expr, Expr)
+  | GAStore(reg: Int, idx: Expr, Expr)
   | CondJump(cond: Int, tgt: Int) // if cond true continue from the next instruction, if false jump
   | Jump(Int) // jump to the instruction at this `offset`
 	| Return(Expr) //either a constant or a register (local) or Load, NEVER Invoke
@@ -122,6 +127,8 @@ base class Stmt {
     this match {
     | Store(r, e) -> `%${r} \u2190 ${e.toString()}`
     | GStore(r, e) -> `@${r} \u2190 ${e.toString()}`
+    | AStore(r, i, e) -> `%${r}[${i.toString()}] \u2190 ${e.toString()}`
+    | GAStore(r, i, e) -> `@${r}[${i.toString()}] \u2190 ${e.toString()}`
     | CondJump(r, tgt) -> `if %${r} jmp #${tgt}`
     | Jump(tgt) -> `jmp #${tgt}`
     | Return(e) -> `ret ${e.toString()}`
@@ -201,6 +208,14 @@ mutable class Linearize(mutable cntr: Int) {
 
   mutable fun statement(s: Reader.Stmt): Statements {
     is = s match {
+      | Reader.ArrSet(r, i, e) -> {
+        this.inc();
+        Statements[AStore( this.expToReg(r).r, this.expression(i), this.expression(e) )]
+      }
+      | Reader.GArrSet(r, i, e) -> {
+        this.inc();
+        Statements[GAStore( this.expToReg(r).r, this.expression(i), this.expression(e) )]
+      }
       | Reader.Set(r, e) -> { this.inc(); Statements[Store(this.expToReg(r).r, this.expression(e))] }
       | Reader.GSet(r, e) -> { this.inc(); Statements[GStore(this.expToReg(r).r, this.expression(e))] }
       | Reader.Loop(cnd, Reader.Code(body)) -> {
@@ -504,6 +519,8 @@ fun initFunctions(f: Fun): TransferFunctions {
 	  f.body[i] match {
     | Store(reg, _) -> { funs.push(Def(i, reg)); funs.push(Edge(i, i+1))	}
     | GStore(_, _) -> { funs.push(Identity(i)); funs.push(Edge(i, i+1))	}
+    | AStore(_, _, _) -> void // TODO 
+    | GAStore(_, _, _) -> void
     | CondJump(_, tgt) -> { funs.push(Identity(i)); funs.push(Edge(i, i+1)); funs.push(Edge(i, tgt)) }
     | Jump(tgt) -> { funs.push(Identity(i)); funs.push(Edge(i, tgt)) }
     | Return(_) -> funs.push(Identity(i))
@@ -780,6 +797,38 @@ mutable class .Interpreter(
       instr match {
         | Store(r, e) -> frame.setLocal(r, this.expression(e))
         | GStore(r, expr) -> frame.setGlobal(r, this.expression(expr))
+        | AStore(r, i, expr) -> {
+          idx = this.expression(i) match {
+            | I(idx) -> idx
+            | v -> return Failure( `'arr_set!' call with ${v} as an index` )
+          };
+          val = this.expression(expr);
+          frame.getLocal( r ) match {
+            | A(vals) if (idx < vals.size()) -> {
+                newArr = vals.clone();
+                newArr.set( idx, val );
+                frame.setLocal( r, A(newArr.chill()) )
+              }
+            | A(_) -> return Failure( "'arr_set!' incorrect index" )
+            | _ -> return Failure( "'arr_set!' called on a non-array")
+          }
+        }
+        | GAStore(r, i, expr) -> {
+          idx = this.expression(i) match {
+            | I(idx) -> idx
+            | v -> return Failure( `'garr_set!' call with ${v} as an index` )
+          };
+          val = this.expression(expr);
+          frame.getGlobal( r ) match {
+            | A(vals) if (idx < vals.size()) -> {
+                newArr = vals.clone();
+                newArr.set( idx, val );
+                frame.setGlobal( r, A(newArr.chill()) )
+              }
+            | A(_) -> return Failure( "'garr_set!' incorrect index" )
+            | _ -> return Failure( "'garr_set!' called on a non-array")
+          }
+        }
         | CondJump(r, tgt) -> {
             loc = frame.getLocal(r);
             this.toBool(loc) match {
@@ -847,6 +896,14 @@ mutable class .Interpreter(
             | (L(vals), I(i)) -> if (vals.size() >= i) Success(vals[i]) else Failure(`at: index out of bounds`)
             | (v, i) -> Failure(`at: '${v}' and '${i}' should be a list and a number`)
           }
+      | "arr_get" -> 
+        (a, b) match {
+          | (A(vals), I(i)) -> {
+            if (vals.size() >= i) Success(vals[i])
+            else Failure(`'arr_get' called with an incorrect index.`)
+          }
+          | (v, i) -> Failure(`'arr_get' called on '${v}' and '${i}', expecting an array and a number.`)
+        }
       | "write!" -> {
         (a, b) match {
         | (v, L(ls)) -> this.io.write(`${v.toOut()}${ls.reduce((s,e) -> `${s}${e.toOut()}`,"")}`)
@@ -871,6 +928,14 @@ mutable class .Interpreter(
             | v -> Failure(`tail: ${v} is not a list`)
           }
       | "size" -> a match { | L(vals) -> Success(I(vals.size())) | v -> Failure(`size: ${v} is not a list`) }
+      | "array" -> a match {
+          | L(vals) -> Success(A(vals))
+          | v -> Failure(`'array' called with '${v}', a non-variadric list of arguments.`)
+        }
+      | "arr_length" -> a match {
+          | A(vals) -> Success(I(vals.size()))
+          | v -> Failure(`'arr_length' was called on '${v}'\nwhich is NOT an array.`)
+        }
       | _ -> Failure(`Uknown binary-builtin '${name}'`)
     }
   }

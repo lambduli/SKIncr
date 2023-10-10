@@ -20,6 +20,8 @@ const schema: Array<AP.Param> = Array[
 	             help => "print the AST representation", negatable => false,},
   AP.BoolParam{name => "print_ir",
 	             help => "print the bytecode",					 negatable => false},
+  AP.BoolParam{name => "print_simple",
+               help => "print the simplfied AST",      negatable => false},
   AP.BoolParam{name => "test",
   						 help => "run the tests",   						 negatable => false},
   AP.BoolParam{name => "run",
@@ -32,6 +34,7 @@ const schema: Array<AP.Param> = Array[
 value class Context(verbose: Bool,
 			              printAST: Bool,
 										printIR: Bool,
+                    printSimple: Bool,
 										run: Bool,
 										analyze: Bool,
 										paths: Strings){}
@@ -46,6 +49,7 @@ fun main(): void {
        run(Context(r.getBool("verbose"),
 			                r.getBool("print_ast"),
 											r.getBool("print_ir"),
+                      r.getBool("print_simple"),
 											r.getBool("run"),
 											r.getBool("analyze"),
 											Vector::createFromItems(r.unknown)))
@@ -112,6 +116,9 @@ fun prepareFiles(ctxt: Context): Modules {
   };
   t = Translator();
   translated = flatFs.map(d -> t.file(d));
+  if (ctxt.printSimple){
+    translated.filter( m -> m.name != "StdLib").each(m -> print_string((mutable PrettyPrint2()).toModule(m)))
+  };
   l = Interpreter.Linearize::mcreate();
   modules = translated.map(m -> l.mod(m));
   if (ctxt.printIR)

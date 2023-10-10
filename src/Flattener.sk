@@ -13,6 +13,8 @@ base class Stmt {
   children =
   | Set(Register, Exp)
   | GSet(Register, Exp)
+  | ArrSet(Register, Exp, Exp) // Register with array, index and value
+  | GArrSet(Register, Exp, Exp)
   | Loop(Exp, Code)
   | Branch(Exp, Code, Code)
   | Return(Exp) // TODO: Return(Register)
@@ -25,6 +27,8 @@ base class Stmt {
 	  this match {
      | Set(r, e) -> `(set! ${r.toString()} ${e.toString()})`
      | GSet(r, e) -> `(gset! ${r.toString()} ${e.toString()})`
+     | ArrSet(r, i, e) -> `(arr_set! ${r.toString()} ${i.toString()} ${e.toString()})`
+     | GArrSet(r, i, e) -> `(garr_set! ${r.toString()} ${i.toString()} ${e.toString()})`
      | Loop(e, _c) -> `(while (${e.toString()}) ... )`
      | Branch(e, _, _) -> `(if (${e.toString()} (...) (...))`
      | Return(e) -> `(ret ${e.toString()} )`
@@ -90,9 +94,13 @@ class .Translator() {
   fun statement(e0: Expr): Statements {
     e0 match {
     | Call(_, n, es) -> {
-      s = if (n == "set!") Set(this.var(es[0]), this.expression(es[1]))
-      else if (n == "gset!") GSet(this.var(es[0]), this.expression(es[1]))
-            else Set(Register("ERROR"), VInt(0));
+      s = n match {
+        | "set!" -> Set(this.var(es[0]), this.expression(es[1]))
+        | "gset!" -> GSet(this.var(es[0]), this.expression(es[1]))
+        | "arr_set!" -> ArrSet(this.var(es[0]), this.expression(es[1]), this.expression(es[2]))
+        | "garr_set!" -> GArrSet(this.var(es[0]), this.expression(es[1]), this.expression(es[2]))
+        | _ -> Set(Register("ERROR"), VInt(0))
+      };
       Statements[s]
     }
     | Decl(_, n, e) -> Statements[Set(Register(n), this.expression(e))]
@@ -283,6 +291,19 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), mutabl
       v2.push(Call(t, n, args));
       (v2, undef)
     }
+    | Call(t, n@"arr_set!", es) -> {
+      (tok, origVName) = es[0] match {| Var(t2, nm) -> (t2, nm) | _ -> (t, "Error")};
+      if (this.glob.containsKey(origVName)) {
+        !n = "garr_set!"
+      };
+      vname = this.toRegister(origVName, locals);
+      (v2, e2) = this.expression(es[1], locals);
+      (v3, e3) = this.expression(es[2], locals);
+      args = Exprs[Var(tok, vname), e2, e3];
+      v2.extend(v3);
+      v2.push(Call(t, n, args));
+      (v2, undef)
+    }
     | Call(t, n, es) -> {
       es2 = mutable Exprs[];
       _argsCnt = es.size();
@@ -434,6 +455,8 @@ mutable class .PrettyPrint2(mutable indent: Int = 0) {
     st match {
     | Set(n, e) -> `${this.expression(n)} = ${this.expression(e)}`
     | GSet(n, e) -> `${this.expression(n)} ^= ${this.expression(e)}`
+    | ArrSet(n, i, e) -> `${this.expression(n)}[${this.expression(i)}] = ${this.expression(e)}`
+    | GArrSet(n, i, e) -> `${this.expression(n)}[${this.expression(i)}] ^= ${this.expression(e)}`
     | Loop(e, s) -> "while " + this.expression(e) + " " + this.code(s)
     | Branch(e, s1, s2) -> {
       s = "(if " + this.expression(e) + "\n";

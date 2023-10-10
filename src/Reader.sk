@@ -58,7 +58,7 @@ module Reader;
 // (begin  (if a (begin (set! x 1) x) (+ z 2))) is fine but
 // (if (if x y z) ...) is not because the guard of an if is not top-level.
 //
-// (R6) (let), (set!), (while), (if), (begin) must occur at the
+// (R6) (let), (set!), (arr_set!) (while), (if), (begin) must occur at the
 // top-level.
 //
 // Every function should return a value. Thus every top-level code
@@ -889,12 +889,16 @@ mutable class Checker(env: mutable Scope, r: mutable Reader) {
     this.env.popScope();
   }
 
+  readonly fun isTopLevelFunction( fName: String ): Bool {
+    Array<String>[ "set!", "arr_set!" ].contains( fName );
+  }
+
   // (R7) Check that the function produces a value
   mutable fun producesValue(fName: String, e: Expr): void {
     e match {
       | LitInt(_, _) | LitBool(_, _) | LitChar(_, _) | LitString(_, _) | LitList(_, _) -> void
       | Var(_, _) -> void;
-      | Call(t, n, _) -> if (n == "set!") this.r.fail(t, `function '${fName}' does not yield a value.`);
+      | Call(t, n, _) -> if ( this.isTopLevelFunction(n) ) this.r.fail(t, `function '${fName}' does not yield a value.`);
       | Block(_, exprs) -> this.producesValue(fName, exprs[exprs.size() - 1]);
       | Cond(_, _, positive, negative) -> {
         this.producesValue(fName, positive);
