@@ -111,7 +111,7 @@ mutable class TestHarness( tests: mutable Vector<TestCase> ){
 
 // A file-based test that creates a file (snapshot) that captures the expected output,
 // or if it already exists, validates that the current output matches the expected one
-class SnapshotTest( snapshotName: String, inputsFolder: String, outputsFolder: String, log: Bool ){
+class SnapshotTest( snapshotName: String, inputsFolder: String, outputsFolder: String){
   fun createOrValidate( testName: String, fileName: String, contents: String ): TestCase {
     testNameUnder = testName.replace( "/", "_" );
 
@@ -125,10 +125,7 @@ class SnapshotTest( snapshotName: String, inputsFolder: String, outputsFolder: S
     outputPath = Path.join( outputFolder, fileName );
 
     msg = if ( ! FileSystem.exists( inputPath ) ){
-      if (this.log) {
-        print_string( `Creating snapshot file ${inputPath}` )
-      };
-
+      print_string( `Creating snapshot file ${inputPath}` );
       FileSystem.writeTextFile( inputPath, contents );
 
       None()
@@ -161,8 +158,7 @@ mutable class .TestRunner(
       SnapshotTest(
         name,
         Path.join( inputSnapshotFolder, name ),
-        Path.join( outputSnapshotFolder, name ),
-        true
+        Path.join( outputSnapshotFolder, name )
       )
     };
 
