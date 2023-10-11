@@ -899,7 +899,7 @@ mutable class .Interpreter(
       | "arr_get" -> 
         (a, b) match {
           | (A(vals), I(i)) -> {
-            if (vals.size() >= i) Success(vals[i])
+            if (i < vals.size()) Success(vals[i])
             else Failure(`'arr_get' called with an incorrect index.`)
           }
           | (v, i) -> Failure(`'arr_get' called on '${v}' and '${i}', expecting an array and a number.`)
