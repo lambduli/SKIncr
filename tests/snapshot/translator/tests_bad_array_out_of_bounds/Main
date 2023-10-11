@@ -1,0 +1,19 @@
+(module Main imports ((functions (
+  (function main(0 | 9) 
+    %0 = 1
+    %1 = 2
+    %2 = 3
+    %3 = 4
+    %4 = [%0, %1, %2, %3]
+    %5 = (array %4)
+    %6 = %5
+    %7 = 4
+    %8 = (arr_get %6 %7)
+    return %8)
+
+  (function init(0 | 2) 
+    %0 = 0
+    %1 = %0
+    return %1)
+
+))

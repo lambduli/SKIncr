@@ -1,0 +1,21 @@
+(module Main imports ()
+(vars ())
+(functions (
+  (function main()      (begin 
+      (let %0 1)
+      (let %1 2)
+      (let %2 3)
+      (let %3 4)
+      (let %4 [%0, %1, %2, %3])
+      (let %5 (array %4))
+      (let %6 %5)
+      (let %7 4)
+      (let %8 (arr_get %6 %7))
+      %8)
+
+  (function init()      (begin 
+      (let %0 0)
+      (let %1 %0)
+      %1)
+
+))

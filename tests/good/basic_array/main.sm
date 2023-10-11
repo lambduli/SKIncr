@@ -1,0 +1,21 @@
+(module Main imports (StdLib))
+
+(vars ())
+
+(functions (
+  (function main ()
+    (begin 
+      (let arr (array 1 2))
+      (write! (arr_get arr 0))
+      (write! (arr_get arr 1))
+      (write! (arr_length arr))
+
+      (arr_set! arr 0 "a")
+      (arr_set! arr 1 "b")
+
+      (write! (arr_get arr 0))
+      (write! (arr_get arr 1))
+      (write! (arr_length arr))
+    )
+  )
+))

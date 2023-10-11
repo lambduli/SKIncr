@@ -1,0 +1,11 @@
+(module Main imports (StdLib))
+
+(vars ())
+
+(functions (
+  (function main ()
+  (begin 
+    (let arr (array 1 2 3 4))
+    (arr_get arr 4)
+  )
+))

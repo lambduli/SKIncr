@@ -66,6 +66,7 @@ fun test(): void {
   gl = g+"local_var/";
 	(i10, i42) = (Interpreter.I(10), Interpreter.I(42));
 	(nostrings, fourStrings) = (Strings[], Strings["10", "20", "30", "40"]);
+  arrayStrings = Strings[/* initial */ "1", "2", "2", /* changed */ "a", "b", "2"];
   report = TestRunner::mcreate( t+"stdlib.sm", t+"snapshot", "build/snapshots")
     .good_test(Strings[g+"hello_world/main.sm"], Interpreter.S("Hello world!"))
     .good_test(Strings[g+"let/main.sm"], i10)
@@ -78,6 +79,9 @@ fun test(): void {
     .reader_fail(Strings[b+"arity_check/main.sm"])
     .reader_fail(Strings[b+"function_as_value/main.sm"])
     .reader_fail(Strings[b+"redefine_fun/foo.sm", b+"redefine_fun/main.sm"])
+    .io_test(Strings[g+"basic_array/main.sm"], nostrings, arrayStrings)
+    .io_test(Strings[g+"global_array/main.sm"], nostrings, arrayStrings)
+    .execution_fail( Strings[b+"array_out_of_bounds/main.sm"] )
     .harness.report();
   print_string( report )
 }
