@@ -127,7 +127,6 @@ class SnapshotTest( snapshotName: String, inputsFolder: String, outputsFolder: S
     msg = if ( ! FileSystem.exists( inputPath ) ){
       print_string( `Creating snapshot file ${inputPath}` );
       FileSystem.writeTextFile( inputPath, contents );
-
       None()
     } else {
       FileSystem.writeTextFile( outputPath, contents );
@@ -188,6 +187,14 @@ mutable class .TestRunner(
 
     res = this.run_test( paths, mutable NoOpIO(), name );
     this.harness.pushTestCase( res.assert_val( name, expectedValue ) );
+    this
+  }
+
+  mutable fun execution_fail( files: Vector<String> ): mutable this {
+    (name, paths) = this.prepareFiles( files );
+
+    res = this.run_test( paths, mutable NoOpIO(), name );
+    this.harness.pushTestCase( res.assert_execution_fail( name ) );
     this
   }
 
