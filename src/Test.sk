@@ -238,9 +238,8 @@ mutable class .TestRunner(
 
       flat = mutable Flattener();
       flatFs = fs.map( f -> flat.file(f) );
-      pp = mutable PrettyPrint();
       flatFs.filter(f -> f.name.lowercase() != "stdlib").each( f -> {
-        prettyOut = pp.file(f);
+        prettyOut = ASTPrettyPrint::prettyPrint(f);
         case = this.flattenerSnapshot.createOrValidate( testName, f.name, prettyOut );
         this.harness.pushTestCase( case );
       });
@@ -248,7 +247,7 @@ mutable class .TestRunner(
       t = Translator();
       translated = flatFs.map(d -> t.file(d));
       translated.filter(m -> m.name.lowercase() != "stdlib").each(m -> {
-        prettyOut = (mutable PrettyPrint2()).toModule(m);
+        prettyOut = TranslatedPrettyPrint::prettyPrint(m);
         case = this.translatorSnapshot.createOrValidate( testName, m.name, prettyOut );
         this.harness.pushTestCase( case );
       });

@@ -115,13 +115,12 @@ fun prepareFiles(ctxt: Context): Modules {
   flat = mutable Flattener();
   flatFs = fs.map( f -> flat.file(f) );
   if (ctxt.printAST) {
-    p = mutable PrettyPrint();
-    flatFs.each(f -> if(f.name != "StdLib") { print_string(p.file(f)) })
+    flatFs.each(f -> if(f.name != "StdLib") { print_string( ASTPrettyPrint::prettyPrint( f )) })
   };
   t = Translator();
   translated = flatFs.map(d -> t.file(d));
   if (ctxt.printSimple){
-    translated.filter( m -> m.name != "StdLib").each(m -> print_string((mutable PrettyPrint2()).toModule(m)))
+    translated.filter( m -> m.name != "StdLib").each(m -> print_string( TranslatedPrettyPrint::prettyPrint(m)) )
   };
   l = Interpreter.Linearize::mcreate();
   modules = translated.map(m -> l.mod(m));

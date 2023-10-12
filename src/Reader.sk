@@ -118,7 +118,12 @@ base class Expr {
 }
 
 
-mutable class .PrettyPrint(mutable indent: Int = 0) {
+mutable class .ASTPrettyPrint(mutable indent: Int = 0) {
+
+  static fun prettyPrint(f: File): String {
+    pp = mutable ASTPrettyPrint();
+    pp.file( f )
+  }
 
   mutable fun file(f: File): String {
      s = `(module ${f.name} imports (`;

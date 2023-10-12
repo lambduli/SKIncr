@@ -395,7 +395,12 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), mutabl
 
 
 
-mutable class .PrettyPrint2(mutable indent: Int = 0) {
+mutable class .TranslatedPrettyPrint(mutable indent: Int = 0) {
+
+  static fun prettyPrint(m: Module): String {
+    pp = mutable TranslatedPrettyPrint();
+    pp.toModule( m )
+  }
 
   readonly fun pad(): String {
     s = "";  n = this.indent;
