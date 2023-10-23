@@ -112,6 +112,12 @@ fun prepareFiles(ctxt: Context): Modules {
   };
   (rs, fs) = Reader::process(ctxt.paths);
   if (rs.size() == 0) return Vector[];
+  for ( r in rs ){
+    if ( !r.ok ){
+        r.reportError();
+        return Vector[];
+    };
+  };
   flat = mutable Flattener();
   flatFs = fs.map( f -> flat.file(f) );
   if (ctxt.printAST) {
