@@ -35,8 +35,7 @@ ONATIVE_FILES= build/magic.o $(addprefix build/,$(NATIVE_FILES:.c=.o))
 
 default: build/skia
 
-docker:
-	docker run -it -v /Users/jan/Documents/SKIncr:/jan/SKIncr buildme bash
+.PHONY: default
 
 build/skc:
 	mkdir -p build
@@ -69,8 +68,31 @@ build/out64.ll: $(SKIP_FILES) build/skc
 	mkdir -p build/
 	build/skc --preamble prebuild/preamble64.ll --embedded64 $(SKIP_FILES) --export-function-as main=skip_main $(SKFLAGS) --output build/out64.ll
 
-clean:
-	rm -Rf build
+#-------------------------------------------------------
+# Run
 
 test: build/skia
 	./build/skia --test
+
+valgrind: build/skia
+	valgrind ./build/skia --run ./tests/stdlib.sm $(RUN)
+
+.PHONY: test valgrind
+
+#-------------------------------------------------------
+# Docker
+
+docker: docker_container
+	docker run -it -v `pwd`:/jan/SKIncr buildme bash
+
+docker_container:
+	$(MAKE) -C ./Docker $(ARCH)
+
+.PHONY: docker docker_container
+
+#-------------------------------------------------------
+
+clean:
+	rm -Rf build
+
+.PHONY: clean
