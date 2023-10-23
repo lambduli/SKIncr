@@ -82,6 +82,7 @@ fun test(): void {
     .io_test(Strings[g+"basic_array/main.sm"], nostrings, arrayStrings)
     .io_test(Strings[g+"global_array/main.sm"], nostrings, arrayStrings)
     .execution_fail( Strings[b+"array_out_of_bounds/main.sm"] )
+    .reader_fail(Strings[b+"while_as_return/main.sm"])
     .harness.report();
   print_string( report )
 }

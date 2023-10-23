@@ -1,0 +1,5 @@
+File tests/bad/while_as_return/main.sm at line 8
+  6|     (begin
+  7|       (let x 0)
+  8|       (while (< x 10)
+           ^--function 'main' does not yield a value.
