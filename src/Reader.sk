@@ -96,7 +96,7 @@ value class Function(
 			tok: Tok,
 			name: String,
 			params: Strings,
-			polyArg: Option<String>,
+ 			polyArg: Option<String>,
 			body: Expr,
 			locals: Int
 		) {}
@@ -108,7 +108,7 @@ base class Expr {
   | LitBool(Tok, Bool)
   | LitString(Tok, String)
   | LitChar(Tok, Char)
-  | LitList(Tok, Vector<Expr>)
+  | LitList(Tok, Vector<Expr>) // Only to satisfy Flattener -> TODO remove?
   | Var(Tok, name: String)
   | Decl(Tok, String, Expr)
   | Call(Tok, String, Expressions)

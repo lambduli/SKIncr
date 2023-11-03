@@ -43,7 +43,7 @@ base class Exp {
   | VString(String)
   | VChar(Char)
   | VList(content: Vector<Register>)
-  | Register(name: String)
+  | Register(name: String) // TODO integer
   | Load(String) // TODO: can all loads be statements? would make expr simpler, but we already have invoke
   | Invoke(String, Vector<Register>)
 
@@ -104,9 +104,9 @@ class .Translator() {
       Statements[s]
     }
     | Decl(_, n, e) -> Statements[Set(Register(n), this.expression(e))]
-        | Block(_t, es) -> es.map(e -> this.statement(e)).flatten()
-        | While(_, e, s) -> Statements[Loop(this.expression(e), Code(this.statement(s)))]
-        | Cond(_, e, s1, s2) -> Statements[Branch(this.expression(e),
+    | Block(_t, es) -> es.map(e -> this.statement(e)).flatten()
+    | While(_, e, s) -> Statements[Loop(this.expression(e), Code(this.statement(s)))]
+    | Cond(_, e, s1, s2) -> Statements[Branch(this.expression(e),
                                          Code(this.statement(s1)), Code(this.statement(s2)))]
     | e -> Statements[Return(this.expression(e))]
     }
@@ -121,28 +121,45 @@ class .Translator() {
 
 
 
-mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), mutable funs: Functions = Functions[]) {
+mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: mutable Functions = mutable Functions[]) {
+
+  mutable fun handleGlobals(f: File): Function {
+    // Body of the init function
+    v = mutable Exprs[];
+
+    // For each global variable -> add it to scope and add a initialization statement to the body
+    f.decls.each(d -> d match { | Decl(t, n, e) -> {
+      this.glob.add( n, this.nextVar() );
+      v.push( Call(t, "gset!", Exprs[ Var(t, n), e ]) )
+    }});
+
+    // Return 0
+    v.push(LitInt(f.tok, 0));
+
+    b = Block(f.tok, v.chill());
+
+    Function(f.tok,
+      "init", // name
+      Strings[], // params
+      None(), // polyArg
+      b, // body
+      0 // locals
+    )
+  }
 
   mutable fun file(f: File): File {
     this.glob.clear();
     this.!v = 0;
 
-    newFuns = mutable Functions[];
-    newFuns.extend(this.funs);
-    newFuns.extend(f.funs);
-    this.!funs = newFuns.chill();
+    this.funs.extend(f.funs);
 		// we need to preserve all the functions in all the modules.  even
     // thought, this approach seems to be susceptible to bugs.  the
     // order in which the modules are processed matters, but that
     // order is not really the order of dependencies
 
-    f.decls.each(d -> d match { | Decl(_, n, _) -> { this.glob.add(n, this.nextVar());}});
-    v = mutable Exprs[];
-    v.extend(f.decls.map(d -> d match { | Decl(t, n, e) -> Call(t, "gset!", Exprs[Var(t, n), e])}));
-    varname = "success";
-    v.extend(Exprs[Decl(f.tok, varname, LitInt(f.tok, 0)), Var(f.tok, varname)]); // return 0
-    b = Block(f.tok, v.chill());
-    init = Function(f.tok, "init", Strings[], None(), b, this.v);
+    // Handle globals, create the init function
+    init = this.handleGlobals(f);
+
     funs = Vector::mcreateFromItems(f.funs);
     funs.push(init);
     fs = funs.map(f -> this.function(f));
@@ -150,24 +167,38 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), mutabl
   }
 
   mutable fun function(f: Function): Function {
-    locals : VMap = Map::mcreate();
     this.!v = 0;
-    if (f.polyArg.isSome()) {
+
+    (locals, body, params) = if (f.polyArg.isSome()) {
       this.polyFunction(f)
     } else {
+      locals : VMap = Map::mcreate();
       f.params.each(p -> locals.add(p, this.nextVar()));
-      _ = f.polyArg.map(str -> locals.add(str, this.nextVar()));
-      (es, e) = this.expression(f.body, locals);
-      Function(f.tok, f.name, f.params, f.polyArg, this.toBlock(f.tok, es, e), this.v)
-    }
+
+      (locals, f.body, f.params)
+    };
+
+    (es, e) = this.expression(body, locals);
+    if ( this.isUndef(e) ){
+      invariant_violation( `Function ${f.name} is missing a return value` )
+    };
+    Function(f.tok, f.name, params, None(), this.toBlock(f.tok, es, e), this.v)
   }
 
-  mutable fun polyFunction(f: Function): Function {
-    locals : VMap = Map::mcreate();
-    this.!v = 0; // just to show that it's done
-
-    origParamCnt = f.params.size();
-    if (f.polyArg.isSome()) { !origParamCnt = origParamCnt + 1; };
+  // The parameters of poly function work like this
+  // (function foo(a b ...c) body)
+  // is rewritten to
+  // (function foo(param)
+  //  (begin
+  //    (let a (at param 0))
+  //    (let b (at param 1))
+  //    (let c (drop param 2))
+  //    body
+  //  )
+  // )
+  // returns (locals, body of the new function, new parameters)
+  mutable fun polyFunction(f: Function): (VMap, Expr, Strings) {
+    locals: VMap = Map::mcreate();
 
     aname = this.nextVar();
     argVar = Var(f.tok, aname);
@@ -176,24 +207,25 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), mutabl
     // rewrite all the parameters into something like
     // Decl(<original token>, <original name>, Call(<original token>, "at", Vector[<original name>, <position>]))
     // this needs to become a part of the body of the function, so I need to prepend it before transformation
-    unlistParams
-      = f.params.mapWithIndex((pos, name) -> Decl(f.tok, name, Call(f.tok, "at", Exprs[argVar, LitInt(f.tok, pos)])));
+    unlistParams = f.params.mapWithIndex((pos, name) ->
+      Decl(f.tok, name, Call(f.tok, "at", Exprs[argVar, LitInt(f.tok, pos)]))
+    );
+
     // all of this will go into a body
     // they "redefine" original parameters and we make up a new, singular parameter (inside `argVar`)
-
-    unlistRest = f.polyArg.map(str -> Exprs[Decl(f.tok,str,
-							 Call(f.tok, "drop", Exprs[LitInt(f.tok, f.params.size()), argVar]))]).default(Exprs[]);
+    unlistRest = f.polyArg.map(str ->
+      Exprs[Decl(f.tok,str, Call(f.tok, "drop", Exprs[LitInt(f.tok, f.params.size()), argVar]))]
+    ).default(Exprs[]);
 
     body = mutable Exprs[];
     body.extend(unlistParams);
     body.extend(unlistRest);
     body.push(f.body);
 
-    (es, e) = this.expression(Block(f.tok, body.chill()), locals);
-
+    bodyExpr = Block(f.tok, body.chill());
     params = Strings[aname]; // There's always just this one "arguments"
 
-    Function(f.tok, f.name, params, None(), this.toBlock(f.tok, es, e), this.v)
+    (locals, bodyExpr, params)
   }
 
   readonly fun arityOf(fname: String): Arity {
@@ -203,14 +235,20 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), mutabl
             | None() -> Exactly(f.params.size())
             | Some(_) -> AtLeast(f.params.size())
           }
-      | None() -> // WILL NEVER HAPPEN
-          Exactly(-1)
+      | None() -> NotAFunction()
     }
   }
 
-  readonly fun undef(): Expr { Var(Tok(), " Error") }
+  readonly fun undef(): Expr { Var(Tok(), " Error") } // TODO replace with throw
 
   readonly fun isUndef(e : Expr): Bool { e match { | Var(_,s) -> s == " Error" | _ -> false } }
+
+  readonly fun asVar(e: Expr): (Tok, String) {
+    e match {
+      | Var(t, s) -> (t, s)
+      | _ -> invariant_violation( "Not a Var" )
+    }
+  }
 
   mutable fun nextVarId(): Int {
      id = this.v;
@@ -222,7 +260,13 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), mutabl
 
   readonly fun toBlock(t: Tok, es: mutable Exprs, e: Expr): Expr {
     if (!this.isUndef(e)) { es.push(e);  };
-    if (es.size() > 1) { Block(t, es.chill()) } else if (es.size() == 1) { es[0]} else { this.undef() }
+    if (es.size() > 1) {
+      Block(t, es.chill())
+    } else if (es.size() == 1) {
+      es[0]
+    } else {
+      invariant_violation( "Empty expressions in 'toBlock'" )
+    }
    }
 
   readonly fun toRegister(varname: String, locals: VMap): String {
@@ -231,10 +275,11 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), mutabl
     } else if (this.glob.containsKey(varname)) {
       this.glob.get(varname)
     } else {
-      varname
+      invariant_violation( `Variable name ${varname} no found in any scope` )
     }
   }
 
+  // Returns pair of the code and the last variable where the return value is in
   mutable fun expression(e0: Expr, locals: VMap): (mutable Exprs, Expr) {
     ve = mutable Exprs[];
     undef = this.undef();
@@ -246,23 +291,24 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), mutabl
       varname = this.nextVar();
       (mutable Exprs[Decl(t, varname, e0)], Var(t, varname))
     }
-    | LitList(t, _) -> {
-      // THIS WILL NEVER HAPPEN
-      ve.push(Var(t, "ERROR"));
-      (ve, undef)
+    | LitList(_, _) -> {
+      invariant_violation( "Encountered a list in Flattener" )
     }
     | Var(t, n) -> {
       vname = this.toRegister(n, locals);
       if (locals.containsKey(n)) {
         (ve, Var(t, vname))
       } else if (this.glob.containsKey(n)) {
+        // if some variable x is global, it is transformed to
+        // (let x_ (load x))
+        // and then 'x_' is used from this point on
         x = Call(t, "load", Exprs[Var(t, vname)]);
         nvar = this.nextVar();
         assign = Decl(t, nvar, x);
         ve.push(assign);
         (ve, Var(t, nvar))
       } else {
-        (ve, undef)
+        invariant_violation( `Unknown variable '${n}' in AST` )
       }
     }
     | Decl(t, n, e) -> {
@@ -273,7 +319,7 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), mutabl
       (v2, undef)
     }
     | Call(t, n@"set!", es) -> {
-      (tok, origVName) = es[0] match {| Var(t2, nm) -> (t2, nm) | _ -> (t, "Error")};
+      (tok, origVName) = this.asVar( es[0] );
       if (this.glob.containsKey(origVName)) {
         !n = "gset!"
       };
@@ -284,7 +330,7 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), mutabl
       (v2, undef)
     }
     | Call(t, n@"gset!", es) -> {
-      (tok, origVName) = es[0] match {| Var(t2, nm) -> (t2, nm) | _ -> (t, "Error")};
+      (tok, origVName) = this.asVar( es[0] );
       vname = this.toRegister(origVName, locals);
       (v2, e2) = this.expression(es[1], locals);
       args = Exprs[Var(tok, vname), e2];
@@ -292,7 +338,7 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), mutabl
       (v2, undef)
     }
     | Call(t, n@"arr_set!", es) -> {
-      (tok, origVName) = es[0] match {| Var(t2, nm) -> (t2, nm) | _ -> (t, "Error")};
+      (tok, origVName) = this.asVar( es[0] );
       if (this.glob.containsKey(origVName)) {
         !n = "garr_set!"
       };
@@ -306,9 +352,7 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), mutabl
     }
     | Call(t, n, es) -> {
       es2 = mutable Exprs[];
-      _argsCnt = es.size();
-      arity = this.arityOf(n);
-      arity match {
+      this.arityOf(n) match {
         | NotAFunction() -> invariant_violation( "NotAFunction" ) // TODO
         | Exactly(_) -> {
           // that `n` must be equal to `argsCnt`, but at this point it will
