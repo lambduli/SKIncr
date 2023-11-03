@@ -179,9 +179,8 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: 
     };
 
     (es, e) = this.expression(body, locals);
-    if ( this.isUndef(e) ){
-      invariant_violation( `Function ${f.name} is missing a return value` )
-    };
+    _ = this.assertExpression(`return of ${f.name}`, e);
+
     Function(f.tok, f.name, params, None(), this.toBlock(f.tok, es, e), this.v)
   }
 
@@ -228,6 +227,14 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: 
     (locals, bodyExpr, params)
   }
 
+  /*****************************************/
+  // helpers
+
+  readonly fun fail<T>(tok: Tok, message: String): T {
+    errMsg = tok.error_message(message);
+    invariant_violation( errMsg );
+  }
+
   readonly fun arityOf(fname: String): Arity {
     this.funs.find(f -> f.name == fname) match {
       | Some(f) ->
@@ -239,14 +246,10 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: 
     }
   }
 
-  readonly fun undef(): Expr { Var(Tok(), " Error") } // TODO replace with throw
-
-  readonly fun isUndef(e : Expr): Bool { e match { | Var(_,s) -> s == " Error" | _ -> false } }
-
   readonly fun asVar(e: Expr): (Tok, String) {
     e match {
       | Var(t, s) -> (t, s)
-      | _ -> invariant_violation( "Not a Var" )
+      | _ -> this.fail(e.getToken(), "Not a variable" )
     }
   }
 
@@ -258,14 +261,15 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: 
 
   mutable fun nextVar(): String { `%${this.nextVarId()}` }
 
-  readonly fun toBlock(t: Tok, es: mutable Exprs, e: Expr): Expr {
-    if (!this.isUndef(e)) { es.push(e);  };
+  readonly fun toBlock(t: Tok, es: mutable Exprs, e: Option<Expr>): Expr {
+    e.each( e -> es.push(e) );
+
     if (es.size() > 1) {
       Block(t, es.chill())
     } else if (es.size() == 1) {
       es[0]
     } else {
-      invariant_violation( "Empty expressions in 'toBlock'" )
+      this.fail( t, "Empty expressions in 'toBlock'" )
     }
    }
 
@@ -275,29 +279,38 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: 
     } else if (this.glob.containsKey(varname)) {
       this.glob.get(varname)
     } else {
-      invariant_violation( `Variable name ${varname} no found in any scope` )
+      this.fail( Tok(), `Variable name ${varname} no found in any scope` ) //TODO
     }
   }
 
+  readonly fun assertExpression( name: String, expr: Option<Expr> ): Expr {
+    expr match {
+      | Some(e) -> e
+      | None() -> this.fail( Tok(), `Empty expression result in ${name}` ) // TODO
+    }
+  }
+
+  /*****************************************/
+  // Expression flattening
+
   // Returns pair of the code and the last variable where the return value is in
-  mutable fun expression(e0: Expr, locals: VMap): (mutable Exprs, Expr) {
+  mutable fun expression(e0: Expr, locals: VMap): (mutable Exprs, Option<Expr>) {
     ve = mutable Exprs[];
-    undef = this.undef();
     e0 match {
     | LitInt(t, _)
     | LitBool(t, _)
     | LitChar(t, _)
     | LitString(t, _) -> {
       varname = this.nextVar();
-      (mutable Exprs[Decl(t, varname, e0)], Var(t, varname))
+      (mutable Exprs[Decl(t, varname, e0)], Some(Var(t, varname)))
     }
-    | LitList(_, _) -> {
-      invariant_violation( "Encountered a list in Flattener" )
+    | LitList(t, _) -> {
+      this.fail( t, "Encountered a list in Flattener" )
     }
     | Var(t, n) -> {
       vname = this.toRegister(n, locals);
       if (locals.containsKey(n)) {
-        (ve, Var(t, vname))
+        (ve, Some(Var(t, vname)))
       } else if (this.glob.containsKey(n)) {
         // if some variable x is global, it is transformed to
         // (let x_ (load x))
@@ -306,17 +319,17 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: 
         nvar = this.nextVar();
         assign = Decl(t, nvar, x);
         ve.push(assign);
-        (ve, Var(t, nvar))
+        (ve, Some(Var(t, nvar)))
       } else {
-        invariant_violation( `Unknown variable '${n}' in AST` )
+        this.fail( t, "Unknown variable" )
       }
     }
     | Decl(t, n, e) -> {
       (v2, e2) = this.expression(e, locals);
       varname = this.nextVar();
       locals.add(n, varname);
-      v2.push(Decl(t, varname, e2));
-      (v2, undef)
+      v2.push(Decl(t, varname, this.assertExpression("let", e2)));
+      (v2, None())
     }
     | Call(t, n@"set!", es) -> {
       (tok, origVName) = this.asVar( es[0] );
@@ -325,17 +338,17 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: 
       };
       vname = this.toRegister(origVName, locals);
       (v2, e2) = this.expression(es[1], locals);
-      args = Exprs[Var(tok, vname), e2];
+      args = Exprs[Var(tok, vname), this.assertExpression("set! arg", e2)];
       v2.push(Call(t, n, args));
-      (v2, undef)
+      (v2, None())
     }
     | Call(t, n@"gset!", es) -> {
       (tok, origVName) = this.asVar( es[0] );
       vname = this.toRegister(origVName, locals);
       (v2, e2) = this.expression(es[1], locals);
-      args = Exprs[Var(tok, vname), e2];
+      args = Exprs[Var(tok, vname), this.assertExpression("gset! arg", e2)];
       v2.push(Call(t, n, args));
-      (v2, undef)
+      (v2, None())
     }
     | Call(t, n@"arr_set!", es) -> {
       (tok, origVName) = this.asVar( es[0] );
@@ -345,72 +358,31 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: 
       vname = this.toRegister(origVName, locals);
       (v2, e2) = this.expression(es[1], locals);
       (v3, e3) = this.expression(es[2], locals);
-      args = Exprs[Var(tok, vname), e2, e3];
+      args = Exprs[Var(tok, vname), this.assertExpression("arr_set! arg1", e2), this.assertExpression("arr_set arg2 1", e3)];
       v2.extend(v3);
       v2.push(Call(t, n, args));
-      (v2, undef)
+      (v2, None())
     }
     | Call(t, n, es) -> {
       es2 = mutable Exprs[];
       this.arityOf(n) match {
-        | NotAFunction() -> invariant_violation( "NotAFunction" ) // TODO
+        | NotAFunction() -> this.fail( t, "Calling not a function" )
         | Exactly(_) -> {
           // that `n` must be equal to `argsCnt`, but at this point it will
           es.each(e -> {
             (v2, e2) = this.expression(e, locals);
-            es2.push(e2);
+            es2.push( this.assertExpression("regular arguments", e2));
             ve.extend(v2.chill());
           });
           varname = this.nextVar();
           ve.push(Decl(t, varname, Call(t, n, es2.chill())));
-          (ve, Var(t,varname))
+          (ve, Some(Var(t,varname)))
         }
-        | AtLeast(_) -> {
-          // that `ordCnt` must be smaller than `argsCnt`, but at
-          // this point it will I will have to construct a new
-          // variable and store a list in it that list will contain
-          // all the additional arguments (rest of `es`) so I take
-          // first `n` arguments and deal with them the same way as
-          // above but then I create a new variable after I deal
-          // with the rest of the arguments in such a way that the
-          // new variable can host a List that contains all the
-          // second parts of each tuple I then construct the call,
-          // it will be almost exactly what is above, but I will
-          // push one more argument to it that will be the new
-          // variable with the list
-
-          // we know that every polyvariadic function is translated
-          // into a function with a single parameter we therefore
-          // need to put all the arguments into a list and only pass
-          // that list into the call
-
-          // TODO: there are no ordinary arguments, everything goes into a list together with the rest thing
-          // ordinary = es.slice(0, ordCnt); // only first `n` arguments
-          // ordinary.each(e -> {
-          //   (v2, e2) = this.expression(e, locals);
-          //   es2.push(e2);
-          //   ve.extend(v2.chill());
-          // });
-
-          // rest = es.slice(ordCnt); // until the end
-          listvars = mutable Exprs[];
-          // all original arguments will be flattened and put into a list-value
-          es.each(e -> {
-            (v2, e2) = this.expression(e, locals);
-            listvars.push(e2);
-            ve.extend(v2.chill());
-          });
-          listvarname = this.nextVar();
-          ve.push(Decl(t, listvarname, LitList(t, listvars.chill())));
-          es2.push(Var(t, listvarname));
-          varname = this.nextVar();
-          ve.push(Decl(t, varname, Call(t, n, es2.chill())));
-          (ve, Var(t,varname))
-        }
+        | AtLeast(_) -> this.vacall(t, n, es, locals)
       }
     }
     | Block(_, es) -> {
-      last = undef;
+      last: Option<Expr> = None();
       es.each(e -> {
         (v2, e2) =  this.expression(e, locals);
         ve.extend(v2.chill());
@@ -423,18 +395,62 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: 
       ve.extend(v2.chill());
       (v3, _) = this.expression(s, locals);
       v3.extend(v2.chill());
-      ve.push(While(t, e2, this.toBlock(t, v3,  undef)));
-      (ve, undef)
+      ve.push(While(t, this.assertExpression("while", e2), this.toBlock(t, v3, None())));
+      (ve, None())
     }
     | Cond(t, e, s1, s2) -> {
       (v2, e2) = this.expression(e, locals);
       ve.extend(v2.chill());
       (v3, _) = this.expression(s1, locals);
       (v4, _) = this.expression(s2, locals);
-      ve.push(Cond(t, e2, this.toBlock(t, v3, undef), this.toBlock(t, v4, undef)));
-      (ve, undef)
+      ve.push(Cond(t, this.assertExpression("if", e2), this.toBlock(t, v3, None()), this.toBlock(t, v4, None())));
+      (ve, None())
     }
     }
+  }
+
+  mutable fun vacall( t: Tok, n: String, es: Exprs, locals: VMap): (mutable Exprs, Option<Expr>) {
+    ve = mutable Exprs[];
+    es2 = mutable Exprs[];
+    // that `ordCnt` must be smaller than `argsCnt`, but at
+    // this point it will I will have to construct a new
+    // variable and store a list in it that list will contain
+    // all the additional arguments (rest of `es`) so I take
+    // first `n` arguments and deal with them the same way as
+    // above but then I create a new variable after I deal
+    // with the rest of the arguments in such a way that the
+    // new variable can host a List that contains all the
+    // second parts of each tuple I then construct the call,
+    // it will be almost exactly what is above, but I will
+    // push one more argument to it that will be the new
+    // variable with the list
+
+    // we know that every polyvariadic function is translated
+    // into a function with a single parameter we therefore
+    // need to put all the arguments into a list and only pass
+    // that list into the call
+
+    // TODO: there are no ordinary arguments, everything goes into a list together with the rest thing
+    // ordinary = es.slice(0, ordCnt); // only first `n` arguments
+    // ordinary.each(e -> {
+    //   (v2, e2) = this.expression(e, locals);
+    //   es2.push(e2);
+    //   ve.extend(v2.chill());
+    // });
+
+    listvars = mutable Exprs[];
+    // all original arguments will be flattened and put into a list-value
+    es.each(e -> {
+      (v2, e2) = this.expression(e, locals);
+      listvars.push(this.assertExpression("vararg arguments", e2));
+      ve.extend(v2.chill());
+    });
+    listvarname = this.nextVar();
+    ve.push(Decl(t, listvarname, LitList(t, listvars.chill())));
+    es2.push(Var(t, listvarname));
+    varname = this.nextVar();
+    ve.push(Decl(t, varname, Call(t, n, es2.chill())));
+    (ve, Some(Var(t,varname)))
   }
 }
 

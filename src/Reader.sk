@@ -115,6 +115,22 @@ base class Expr {
   | Block(Tok, Expressions)
   | While(Tok, Expr, Expr)
   | Cond(Tok, Expr, Expr, Expr)
+
+  fun getToken(): Tok {
+    this match {
+      | LitInt(t, _)
+      | LitBool(t, _)
+      | LitString(t, _)
+      | LitChar(t, _)
+      | LitList(t, _)
+      | Var(t, _)
+      | Decl(t, _, _)
+      | Call(t, _, _)
+      | Block(t, _)
+      | While(t, _, _)
+      | Cond(t, _, _, _) -> t
+    }
+  }
 }
 
 
