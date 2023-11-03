@@ -1,0 +1,5 @@
+File tests/bad/function_as_value/main.sm at line 9
+  7|   (function main ()
+  8|     (begin
+  9|       (write! foo)
+                   ^--foo is not a variable
