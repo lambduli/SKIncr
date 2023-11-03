@@ -309,6 +309,7 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), mutabl
       _argsCnt = es.size();
       arity = this.arityOf(n);
       arity match {
+        | NotAFunction() -> invariant_violation( "NotAFunction" ) // TODO
         | Exactly(_) -> {
           // that `n` must be equal to `argsCnt`, but at this point it will
           es.each(e -> {

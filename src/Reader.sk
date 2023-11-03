@@ -734,18 +734,29 @@ base class Arity() uses Show {
   children =
     | Exactly(a: Int) // for functions like   (function foo (a b c) 0)     or  (function blub () 0)
     | AtLeast(a: Int) // for functions like   (function bar (x y ...z) 0)  or  (function baz (...args) 0)
+    | NotAFunction()  // for variables
 
-  fun canBeCalledWith(argsCnt: Int): Bool { // TODO: check that the call is legal!
-    this match { | Exactly(a) -> argsCnt == a | AtLeast(a) -> argsCnt >= a }
+  fun canBeCalledWith(argsCnt: Int): Bool {
+    this match {
+      | Exactly(a) -> argsCnt == a
+      | AtLeast(a) -> argsCnt >= a
+      | NotAFunction() -> false
+    }
   }
   fun toString(): String {
-    this match { | Exactly(a) -> `${a}` | AtLeast(a) -> `${a}+` }
+    this match {
+      | Exactly(a) -> `${a}`
+      | AtLeast(a) -> `${a}+`
+      | NotAFunction() -> "<NotAFunction>"
+    }
   }
 }
 
 mutable class Scope(mutable top: Bool, env: mutable Vector<mutable Names>) {
 
-  static fun create(): mutable Scope { mutable Scope(true, mutable Vector<mutable Names>[]) }
+  static fun create(): mutable Scope {
+    mutable Scope(true, mutable Vector<mutable Names>[ mutable Names[] ])
+  }
 
   mutable fun setTop(isTop: Bool): void { this.!top = isTop; }
 
@@ -761,10 +772,18 @@ mutable class Scope(mutable top: Bool, env: mutable Vector<mutable Names>) {
 
   readonly fun isDefined(s: String): Bool { this.hasArity(s).isSome() }
 
-  // return -2 if not found, -1 if not a function
+  readonly fun isVariable(s: String): Bool {
+    this.hasArity(s) match {
+      | Some(NotAFunction()) -> true
+      | _ -> false
+    }
+  }
+
   readonly fun hasArity(s: String): Option<Arity> {
-    res: Option<Arity> = None();
-    this.env.each(v -> v.each(n -> if (s == n.name) { !res = Some(n.arity) })); res
+    this.env.map( v -> v.find( n -> n.name == s ) ) // Vector<Option<Name>>; search in each environment
+      .filterNone() // Vector<Name>; keep environments with the name defined
+      .maybeGet(0) // Option<Name>
+      .map( n -> n.arity ) // Option<Arity>
   }
 
   readonly fun dbg_print(): void {
@@ -786,27 +805,50 @@ mutable class Checker(env: mutable Scope, r: mutable Reader) {
   // because they update internal state as they walk over the AST.
   static fun create(r: mutable Reader): mutable Checker { mutable Checker(Scope::create(), r) }
 
+  mutable fun fail(tok: Tok, msg: String): void {
+    this.r.fail( tok, msg )
+  }
+
   // Add `name` to the environment, fail if already there
   mutable fun checked_add(name: String, t: Tok, arity: Arity): void {
-    if (this.env.isDefined(name)) { this.r.fail(t, `${name} already defined`); }
+    if (this.env.isDefined(name)) { this.fail(t, `${name} already defined`); }
 		else this.env.define(name, t, arity);
   }
 
-  // Ensure that `name` is defined or fail, return arity
-  mutable fun mustHave(name: String, t: Tok): Option<Arity> {
-    arity = this.env.hasArity(name);
-    if (arity.isNone()) this.r.fail(t, `name ${name} not defined`);
-    arity
- }
+  mutable fun addFunction(f: Function): void {
+      arity = f.polyArg match {
+        | None() -> Exactly(f.params.size())
+        | Some(_) -> AtLeast(f.params.size())
+      };
+      this.checked_add(f.name, f.tok, arity);
+  }
+
+  mutable fun addFileToScope( file: File ): void {
+    file.funs.each( f -> this.addFunction(f) );
+  }
+
+  // Create a new scope with set top, do the checking and then pop the scope
+  mutable fun withScope(top: Bool, f: () -> void ): void {
+    prevTop = this.env.isTop();
+    this.env.setTop(top);
+
+    this.env.pushScope();
+    f();
+    this.env.popScope();
+
+    this.env.setTop(prevTop);
+  }
+
+  /****************************************************************/
 
   // Check we are at the "top level", basically means we aren't in a nested expression.
   mutable fun check_top_level(n: String, t: Tok): void {
-    if (this.env.isTop() == false)  this.r.fail(t, `${n} can only be used at top-level`);
+    if (this.env.isTop() == false)  this.fail(t, `${n} can only be used at top-level`);
   }
 
   // (R8) Init is a reserved name that can't be defined by the user
   mutable fun initAbsent(funs: Vector<Function>): void {
-    funs.each(f -> if (f.name == "init") this.r.fail(f.tok, `Users should not define 'init'`))
+    funs.each(f -> if (f.name == "init") this.fail(f.tok, `Users should not define 'init'`))
   }
 
   // (R9) Check there is only one `main`
@@ -816,7 +858,7 @@ mutable class Checker(env: mutable Scope, r: mutable Reader) {
       | Some(main) -> {
           files.find(fl -> fl.name != thisFile.name && fl.funs.find(fn -> fn.name == "main").isSome()) match {
             | None() -> void;
-            | Some(_) -> this.r.fail(main.tok, `'main' function multiply defined`);
+            | Some(_) -> this.fail(main.tok, `'main' function multiply defined`);
           }
       }
     }
@@ -827,47 +869,32 @@ mutable class Checker(env: mutable Scope, r: mutable Reader) {
 	//
   mutable fun file(file: File, fs: Vector<File>): void {
     if (file.name == "StdLib") return void;
-    // Check the import list: it should include StdLib and all imported files should be in `fs`
-    found = false; file.imports.each(name -> if (name == "StdLib") {!found = true;} );
-    if (!found) return this.r.fail(file.tok, `Does not import StdLib`);
 
-    file.imports.each(name -> {
-      miss = false; fs.each(f -> if (name == f.name) { !miss = true; });
-      if (miss == false) return this.r.fail(file.tok, `Imports unknown module ${name}`);
-    });
+    // Check it imports StdLib, add it to scope
+    file.imports.find( name -> name == "StdLib" ) match {
+      | None() -> return this.fail(file.tok, `Does not import StdLib`);
+      | Some(_) -> fs.find( f -> f.name == "StdLib" ) match {
+        | Some( stdLib ) -> this.addFileToScope( stdLib )
+        | None() -> return this.fail( file.tok, "Path does not include StdLib" )
+      }
+    };
 
     // Checking global variables
-    env = this.env;
-    env.pushScope();
     // Should we enforce that expressions in global decls do not call
     // functions other than builtins?  It is simpler to initialize all
     // globals without worrying about circular import lists.  By
     // processing decls before functions we naturally do not have
     // those in the environment.  Perhaps we should just have access
     // to basic StdLib functions?
-    env.setTop(true);
-    fs.each(file -> if (file.name == "StdLib") {
-      file.funs.each(func -> {
-        arity = func.polyArg match {
-          | None() -> Exactly(func.params.size())
-          | Some(_) -> AtLeast(func.params.size())
-        };
-        this.checked_add(func.name, func.tok, arity);
-      })
-    });
     file.decls.each(d -> this.expression(d) );
 
-		// Here load the remaining imported function names
-    file.imports.each(name ->
-      fs.each(file -> if (name == file.name && name != "StdLib") {
-        file.funs.each(func -> {
-          arity = func.polyArg match {
-            | None() -> Exactly(func.params.size())
-            | Some(_) -> AtLeast(func.params.size())
-          };
-          this.checked_add(func.name, func.tok, arity)
-        })
-      }));
+    // Check all other imports exist, add them to scope
+    file.imports.filter(name -> name != "StdLib" ).each( name -> {
+      fs.find( f -> f.name == name ) match {
+        | Some( fileToImport ) -> this.addFileToScope( fileToImport )
+        | None() -> return this.fail( file.tok, `Path does not include ${name}`)
+      }
+    } );
 
     // Checking function definitions
     file.funs.each(f -> this.function(f) );
@@ -876,22 +903,25 @@ mutable class Checker(env: mutable Scope, r: mutable Reader) {
     this.initAbsent(file.funs);
 
     // confirm that if there is a `main` function, it is unique for (R9)
+    // TODO can be checked for all files at once
     this.uniqueMain(file.funs, file, fs);
-
-    env.popScope();
   }
 
   // Check a function declaration
   mutable fun function(f: Function): void {
 	  count = f.params.size();
     arity = f.polyArg match { | None() -> Exactly(count) | Some(_) -> AtLeast(count) };
+
     this.checked_add(f.name, f.tok, arity);
-    this.env.pushScope();
-    f.params.each(s -> this.checked_add(s, f.tok, Exactly(-1)));
-     _ = f.polyArg.map(n -> this.checked_add(n, f.tok, Exactly(-1)));
-    this.expression(f.body);
-    this.producesValue(f.name, f.body);
-    this.env.popScope();
+
+    this.withScope( true, () -> {
+      // add params
+      f.params.each(s -> this.checked_add(s, f.tok, NotAFunction()));
+      f.polyArg.each(n -> this.checked_add(n, f.tok, NotAFunction()));
+
+      this.expression(f.body);
+      this.producesValue(f.name, f.body);
+    });
   }
 
   readonly fun isTopLevelFunction( fName: String ): Bool {
@@ -903,66 +933,71 @@ mutable class Checker(env: mutable Scope, r: mutable Reader) {
     e match {
       | LitInt(_, _) | LitBool(_, _) | LitChar(_, _) | LitString(_, _) | LitList(_, _) -> void
       | Var(_, _) -> void;
-      | Call(t, n, _) -> if ( this.isTopLevelFunction(n) ) this.r.fail(t, `function '${fName}' does not yield a value.`);
+      | Call(t, n, _) -> if ( this.isTopLevelFunction(n) ) this.fail(t, `function '${fName}' does not yield a value.`);
       | Block(_, exprs) -> this.producesValue(fName, exprs[exprs.size() - 1]);
       | Cond(_, _, positive, negative) -> {
         this.producesValue(fName, positive);
         this.producesValue(fName, negative);
       }
-      | While(t, _, _) -> this.r.fail(t, `function '${fName}' does not yield a value.`);
-      | Decl(t, _, _) -> this.r.fail(t, `function '${fName}' does not yield a value.`);
+      | While(t, _, _) -> this.fail(t, `function '${fName}' does not yield a value.`);
+      | Decl(t, _, _) -> this.fail(t, `function '${fName}' does not yield a value.`);
     }
   }
 
   // Check an expression
   mutable fun expression(e0: Expr): void {
     if (!this.r.ok) return void;
-    env = this.env;
-    old = env.isTop();
+
     e0 match {
     | LitInt(_, _) | LitBool(_, _) | LitChar(_, _) | LitString(_, _) | LitList(_, _) -> void
-    | Var(t, s) ->  if (!env.isDefined(s)) this.r.fail(t, `${s} undefined`);
+    | Var(t, s) ->{
+      if (!this.env.isVariable(s))
+        this.fail(t, `${s} is not a variable`);
+    }
     | Decl(t, n, e) -> { // check `e` is good; add `n` to environment
       this.check_top_level("let", t);
-      env.setTop(false); // we are not at the top level in `e`
-      this.expression(e);
-      env.setTop(old); // reset top to what it was
-      this.checked_add(n, t, Exactly(-1));
+
+      // we are not at the top level in `e`
+      this.withScope(false, () -> this.expression(e) );
+
+      this.checked_add(n, t, NotAFunction());
     }
-    | Call(t, n, es) -> { // Check function `n`'s arity matches number of arguments; Ensure `set!` is
-      // called at top-level; check `es` is good.
-      this.mustHave(n,t) match {
+    | Call(t, n, es) -> {
+      // Check function `n`'s arity matches number of arguments
+      // Ensure top level functions are call at top-level
+      // Check `es` is good.
+      this.env.hasArity(n) match {
         | Some(arity) -> {
-            if (! arity.canBeCalledWith(es.size()))
-              this.r.fail(t, `function ${n} has ${arity} parameters but got ${es.size()} arguments`);
-            if(n == "set!") this.check_top_level(n, t);
-            env.setTop(false);
-            es.each(e -> this.expression(e));
-            env.setTop(old);
+            if ( !arity.canBeCalledWith(es.size())) {
+              this.fail(t, `function ${n} has ${arity} parameters but got ${es.size()} arguments`)
+            };
+
+            if( this.isTopLevelFunction(n) ){
+              this.check_top_level(n, t)
+            };
+
+            this.withScope( false , () -> es.each(e -> this.expression(e)) );
         };
-        | None() -> void;
+        | None() -> this.fail(t, `name ${n} not defined`);
       };
     }
     | Block(t, vs) -> { // check that (begin...) is at the top level, and the expressions are good
        this.check_top_level("begin", t);
-       env.pushScope();
-       vs.each(e -> this.expression(e) );
-       env.popScope();
+       this.withScope( true, () -> vs.each(e -> this.expression(e) ) );
     }
     | While(t, e, s) -> { //  check the expression as nested and the statement as top-level
       this.check_top_level("while", t);
-      env.setTop(false);
-      this.expression(e);
-      env.setTop(old);
-      this.expression(s);
+
+      this.withScope( false, () -> this.expression(e) );
+      this.withScope( true, () -> this.expression(s) );
     }
     | Cond(t, e, s1, s2) -> { // check the expression as nested and the statements as top-level
       this.check_top_level("if", t);
-      env.setTop(false);
-      this.expression(e);
-      env.setTop(old);
-      this.expression(s1);
-      this.expression(s2);
+
+      this.withScope( false, () -> this.expression(e) );
+
+      this.withScope( true, () -> this.expression(s1) );
+      this.withScope( true, () -> this.expression(s2) );
     }
     };
   }
