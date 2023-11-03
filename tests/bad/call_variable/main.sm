@@ -1,0 +1,14 @@
+(module Main imports (StdLib))
+
+(vars ())
+
+(functions (
+  (function main ()
+    (begin
+      (let x 0)
+      (x)
+    )
+  )
+))
+
+
