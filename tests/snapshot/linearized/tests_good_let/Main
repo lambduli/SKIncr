@@ -5,8 +5,7 @@ function main (0) [2]
 1: %1 ← %0
 2: ret %1
 
-function init (0) [2]
+function init (0) [1]
 0: %0 ← 0
-1: %1 ← %0
-2: ret %1
+1: ret %0
 

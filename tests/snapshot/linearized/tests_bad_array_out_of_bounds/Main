@@ -12,8 +12,7 @@ function main (0) [9]
 8: %8 ← arr_get(%6 %7)
 9: ret %8
 
-function init (0) [2]
+function init (0) [1]
 0: %0 ← 0
-1: %1 ← %0
-2: ret %1
+1: ret %0
 

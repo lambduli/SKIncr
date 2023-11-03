@@ -7,7 +7,6 @@
 
   (function init()      (begin 
       (let %0 0)
-      (let %1 %0)
-      %1)
+      %0)
 
 ))

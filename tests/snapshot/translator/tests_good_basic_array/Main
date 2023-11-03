@@ -35,9 +35,8 @@
     %30 = (write! %29)
     return %30)
 
-  (function init(0 | 2) 
+  (function init(0 | 1) 
     %0 = 0
-    %1 = %0
-    return %1)
+    return %0)
 
 ))

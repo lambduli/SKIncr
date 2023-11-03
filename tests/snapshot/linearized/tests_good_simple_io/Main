@@ -7,8 +7,7 @@ function main (0) [4]
 3: %3 ← write!(%2)
 4: ret %3
 
-function init (0) [2]
+function init (0) [1]
 0: %0 ← 0
-1: %1 ← %0
-2: ret %1
+1: ret %0
 

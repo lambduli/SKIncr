@@ -19,10 +19,9 @@ function main (0) [15]
 15: %14 ← write!(%13)
 16: ret %14
 
-function init (0) [3]
+function init (0) [2]
 0: %0 ← 20
 1: @0 ← %0
 2: %1 ← 0
-3: %2 ← %1
-4: ret %2
+3: ret %1
 
