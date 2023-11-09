@@ -123,6 +123,7 @@ class .Translator() {
 
 mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: mutable Functions = mutable Functions[]) {
 
+  // Adds all global variables to the scope and creates a init function with initialization values
   mutable fun handleGlobals(f: File): Function {
     // Body of the init function
     v = mutable Exprs[];
@@ -130,7 +131,8 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: 
     // For each global variable -> add it to scope and add a initialization statement to the body
     f.decls.each(d -> d match { | Decl(t, n, e) -> {
       this.glob.add( n, this.nextVar() );
-      v.push( Call(t, "gset!", Exprs[ Var(t, n), e ]) )
+      // Does not need to be gset, it is transformed automatically
+      v.push( Call(t, "set!", Exprs[ Var(t, n), e ]) )
     }});
 
     // Return 0
@@ -160,6 +162,7 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: 
     // Handle globals, create the init function
     init = this.handleGlobals(f);
 
+    // Flatten all functions
     funs = Vector::mcreateFromItems(f.funs);
     funs.push(init);
     fs = funs.map(f -> this.function(f));
@@ -169,6 +172,8 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: 
   mutable fun function(f: Function): Function {
     this.!v = 0;
 
+    // Handle locals, body and parameters
+    // is different for polyArg functions
     (locals, body, params) = if (f.polyArg.isSome()) {
       this.polyFunction(f)
     } else {
@@ -179,7 +184,7 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: 
     };
 
     (es, e) = this.expression(body, locals);
-    _ = this.assertExpression(`return of ${f.name}`, e);
+    _ = this.assertExpression(f.tok, `return of ${f.name}`, e);
 
     Function(f.tok, f.name, params, None(), this.toBlock(f.tok, es, e), this.v)
   }
@@ -273,20 +278,21 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: 
     }
    }
 
-  readonly fun toRegister(varname: String, locals: VMap): String {
+  readonly fun toRegister(t: Tok, varname: String, locals: VMap): String {
     if (locals.containsKey(varname)) {
       locals.get(varname)
     } else if (this.glob.containsKey(varname)) {
       this.glob.get(varname)
     } else {
-      this.fail( Tok(), `Variable name ${varname} no found in any scope` ) //TODO
+      this.fail( t, `Variable name ${varname} no found in any scope` ) //TODO
     }
   }
 
-  readonly fun assertExpression( name: String, expr: Option<Expr> ): Expr {
+  // Makes sure that expr is Some, otherwise fails
+  readonly fun assertExpression(t: Tok, name: String, expr: Option<Expr> ): Expr {
     expr match {
       | Some(e) -> e
-      | None() -> this.fail( Tok(), `Empty expression result in ${name}` ) // TODO
+      | None() -> this.fail( t, `Empty expression result in ${name}` ) // TODO
     }
   }
 
@@ -295,7 +301,7 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: 
 
   // Returns pair of the code and the last variable where the return value is in
   mutable fun expression(e0: Expr, locals: VMap): (mutable Exprs, Option<Expr>) {
-    ve = mutable Exprs[];
+    emptyExprs = mutable Exprs[];
     e0 match {
     | LitInt(t, _)
     | LitBool(t, _)
@@ -308,9 +314,9 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: 
       this.fail( t, "Encountered a list in Flattener" )
     }
     | Var(t, n) -> {
-      vname = this.toRegister(n, locals);
+      vname = this.toRegister(t, n, locals);
       if (locals.containsKey(n)) {
-        (ve, Some(Var(t, vname)))
+        (emptyExprs, Some(Var(t, vname)))
       } else if (this.glob.containsKey(n)) {
         // if some variable x is global, it is transformed to
         // (let x_ (load x))
@@ -318,8 +324,7 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: 
         x = Call(t, "load", Exprs[Var(t, vname)]);
         nvar = this.nextVar();
         assign = Decl(t, nvar, x);
-        ve.push(assign);
-        (ve, Some(Var(t, nvar)))
+        (mutable Exprs[assign], Some(Var(t, nvar)))
       } else {
         this.fail( t, "Unknown variable" )
       }
@@ -328,90 +333,101 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: 
       (v2, e2) = this.expression(e, locals);
       varname = this.nextVar();
       locals.add(n, varname);
-      v2.push(Decl(t, varname, this.assertExpression("let", e2)));
-      (v2, None())
+
+      decl = Decl(t, varname, this.assertExpression(t, "let", e2));
+      (v2.cat(decl), None())
     }
     | Call(t, n@"set!", es) -> {
       (tok, origVName) = this.asVar( es[0] );
       if (this.glob.containsKey(origVName)) {
         !n = "gset!"
       };
-      vname = this.toRegister(origVName, locals);
+      vname = this.toRegister(t, origVName, locals);
+
       (v2, e2) = this.expression(es[1], locals);
-      args = Exprs[Var(tok, vname), this.assertExpression("set! arg", e2)];
-      v2.push(Call(t, n, args));
-      (v2, None())
-    }
-    | Call(t, n@"gset!", es) -> {
-      (tok, origVName) = this.asVar( es[0] );
-      vname = this.toRegister(origVName, locals);
-      (v2, e2) = this.expression(es[1], locals);
-      args = Exprs[Var(tok, vname), this.assertExpression("gset! arg", e2)];
-      v2.push(Call(t, n, args));
-      (v2, None())
+      args = Exprs[Var(tok, vname), this.assertExpression(t, "set! arg", e2)];
+      call = Call(t, n, args);
+
+      (v2.cat(call), None())
     }
     | Call(t, n@"arr_set!", es) -> {
       (tok, origVName) = this.asVar( es[0] );
       if (this.glob.containsKey(origVName)) {
         !n = "garr_set!"
       };
-      vname = this.toRegister(origVName, locals);
+      vname = this.toRegister(t, origVName, locals);
+
       (v2, e2) = this.expression(es[1], locals);
       (v3, e3) = this.expression(es[2], locals);
-      args = Exprs[Var(tok, vname), this.assertExpression("arr_set! arg1", e2), this.assertExpression("arr_set arg2 1", e3)];
-      v2.extend(v3);
-      v2.push(Call(t, n, args));
-      (v2, None())
+      args = Exprs[
+        Var(tok, vname),
+        this.assertExpression(t, "arr_set! arg1", e2),
+        this.assertExpression(t, "arr_set! arg2", e3)
+      ];
+      call = Call(t, n, args);
+
+      (v2.cats(v3).cat( call ), None())
     }
     | Call(t, n, es) -> {
-      es2 = mutable Exprs[];
       this.arityOf(n) match {
         | NotAFunction() -> this.fail( t, "Calling not a function" )
         | Exactly(_) -> {
           // that `n` must be equal to `argsCnt`, but at this point it will
+          ve = mutable Exprs[];
+          es2 = mutable Exprs [];
+
           es.each(e -> {
             (v2, e2) = this.expression(e, locals);
-            es2.push( this.assertExpression("regular arguments", e2));
-            ve.extend(v2.chill());
+
+            es2.push( this.assertExpression(t, "regular arguments", e2));
+            ve.extend(v2);
           });
+
           varname = this.nextVar();
           ve.push(Decl(t, varname, Call(t, n, es2.chill())));
+
           (ve, Some(Var(t,varname)))
         }
         | AtLeast(_) -> this.vacall(t, n, es, locals)
       }
     }
     | Block(_, es) -> {
-      last: Option<Expr> = None();
-      es.each(e -> {
+      ve = mutable Exprs[];
+      z: Option<Expr> = None(); // Explicitly type the None
+
+      last = es.reduce((_, e) -> {
         (v2, e2) =  this.expression(e, locals);
         ve.extend(v2.chill());
-        !last = e2;
-      });
+        e2
+      }, z);
+
       (ve, last)
     }
     | While(t, e, s) -> {
       (v2, e2) = this.expression(e, locals);
-      ve.extend(v2.chill());
       (v3, _) = this.expression(s, locals);
-      v3.extend(v2.chill());
-      ve.push(While(t, this.assertExpression("while", e2), this.toBlock(t, v3, None())));
-      (ve, None())
+
+      block = this.toBlock(t, v3.cats(v2), None());
+      whileExp = While(t, this.assertExpression(t, "while", e2), block);
+
+      (v2.cat(whileExp), None())
     }
     | Cond(t, e, s1, s2) -> {
       (v2, e2) = this.expression(e, locals);
-      ve.extend(v2.chill());
       (v3, _) = this.expression(s1, locals);
       (v4, _) = this.expression(s2, locals);
-      ve.push(Cond(t, this.assertExpression("if", e2), this.toBlock(t, v3, None()), this.toBlock(t, v4, None())));
+
+      trueBlock = this.toBlock(t, v3, None());
+      falseBlock = this.toBlock(t, v4, None());
+      cond = Cond(t, this.assertExpression(t, "if", e2), trueBlock, falseBlock);
+      ve = v2.cat( cond );
+
       (ve, None())
     }
-    }
+    };
   }
 
   mutable fun vacall( t: Tok, n: String, es: Exprs, locals: VMap): (mutable Exprs, Option<Expr>) {
-    ve = mutable Exprs[];
-    es2 = mutable Exprs[];
     // that `ordCnt` must be smaller than `argsCnt`, but at
     // this point it will I will have to construct a new
     // variable and store a list in it that list will contain
@@ -438,18 +454,30 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: 
     //   ve.extend(v2.chill());
     // });
 
-    listvars = mutable Exprs[];
+    ve = mutable Exprs[]; // output exprs
+
     // all original arguments will be flattened and put into a list-value
+    // (foo a b c) will transform to
+    // %0 = a
+    // %1 = b
+    // %2 = c
+    // %3 = [a b c]
+    // where %3 is listvarname
+    listvars = mutable Exprs[];
     es.each(e -> {
       (v2, e2) = this.expression(e, locals);
-      listvars.push(this.assertExpression("vararg arguments", e2));
+      listvars.push(this.assertExpression(Tok(), "vararg arguments", e2));
       ve.extend(v2.chill());
     });
+
+    // Add the list variable as declaration
     listvarname = this.nextVar();
     ve.push(Decl(t, listvarname, LitList(t, listvars.chill())));
-    es2.push(Var(t, listvarname));
-    varname = this.nextVar();
-    ve.push(Decl(t, varname, Call(t, n, es2.chill())));
+
+    listvarAsVar = Exprs[ Var(t, listvarname) ];
+    varname = this.nextVar(); // Call result variable
+    ve.push(Decl(t, varname, Call(t, n, listvarAsVar)));
+
     (ve, Some(Var(t,varname)))
   }
 }
@@ -538,6 +566,18 @@ mutable class .TranslatedPrettyPrint(mutable indent: Int = 0) {
   mutable fun inc(): void { this.!indent = this.indent + 2; }
   mutable fun dec(): void { this.!indent = this.indent - 2; }
 
+}
+
+extension mutable class .Vector {
+  mutable fun cat( item: T ): mutable this {
+    this.push( item );
+    this
+  }
+
+  mutable fun cats( items: mutable Vector<T> ): mutable this {
+    this.extend( items.chill() );
+    this
+  }
 }
 
 module end;
