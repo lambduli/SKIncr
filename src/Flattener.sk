@@ -209,7 +209,7 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: 
     } else if (this.glob.containsKey(varname)) {
       this.glob.get(varname)
     } else {
-      this.fail( t, `Variable name ${varname} no found in any scope` ) //TODO
+      this.fail( t, `Variable name ${varname} no found in any scope` )
     }
   }
 
@@ -227,7 +227,7 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: 
     (v2, e2) = this.expression(e0, locals);
     e2 match {
       | Some(val) -> (v2, val)
-      | None() -> this.fail( Tok(), "?") //TODO
+      | None() -> this.fail( e0.getToken(), "Missing a expression result value")
     }
   }
 
@@ -303,28 +303,41 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: 
 
       (idxBody.concat(assignBody).cat(set) , None())
     }
-    | Call(t, n, es) -> {
+    | Call(_, n, es) -> {
+      body = mutable Statements[];
+      params = mutable Vector<Register>[];
+
+      es.each(e -> {
+        (paramBody, param) = this.expressionVal(e, locals);
+        body.extend(paramBody);
+        params.push(param);
+      });
+
+      // Arguments of vararg functions are all passed in a list
       this.arityOf(n) match {
-        | NotAFunction() -> this.fail( t, "Calling not a function" )
-        | Exactly(_) -> {
-          body = mutable Statements[];
-          params = mutable Vector<Register>[];
+      | AtLeast(_) -> {
+        // all original arguments will be flattened and put into a list-value
+        // (foo a b c) will transform to
+        // %0 = a
+        // %1 = b
+        // %2 = c
+        // %3 = [a b c]
+        // returnReg = foo %3
+        // where %3 is listreg
+        listreg = Register( this.nextVar() );
+        body.push( Set(listreg, VList( params.chill() )) );
 
-          es.each(e -> {
-            (paramBody, param) = this.expressionVal(e, locals);
-            body.extend(paramBody);
-            params.push(param);
-          });
-
-          returnRegister = Register( this.nextVar() );
-          call = Invoke( n, params.chill() );
-          set = Set( returnRegister, call );
-          body.push(set);
-
-          (body.chill(), Some(returnRegister))
-        }
-        | AtLeast(_) -> this.vacall(n, es, locals) // TODO
+        !params = mutable Vector<Register>[ listreg ];
       }
+      | _ -> void
+      };
+
+      returnRegister = Register( this.nextVar() );
+      call = Invoke( n, params.chill() );
+      set = Set( returnRegister, call );
+      body.push(set);
+
+      (body.chill(), Some(returnRegister))
     }
     | Block(_, es) -> {
       body = mutable Statements[];
@@ -378,63 +391,6 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: 
       (condExpr.cat(branch), res)
     }
     };
-  }
-
-  // TODO merge with normal fun call
-  mutable fun vacall( n: String, es: Exprs, locals: VMap): (Statements, Option<Register>) {
-    // that `ordCnt` must be smaller than `argsCnt`, but at
-    // this point it will I will have to construct a new
-    // variable and store a list in it that list will contain
-    // all the additional arguments (rest of `es`) so I take
-    // first `n` arguments and deal with them the same way as
-    // above but then I create a new variable after I deal
-    // with the rest of the arguments in such a way that the
-    // new variable can host a List that contains all the
-    // second parts of each tuple I then construct the call,
-    // it will be almost exactly what is above, but I will
-    // push one more argument to it that will be the new
-    // variable with the list
-
-    // we know that every polyvariadic function is translated
-    // into a function with a single parameter we therefore
-    // need to put all the arguments into a list and only pass
-    // that list into the call
-
-    // TODO: there are no ordinary arguments, everything goes into a list together with the rest thing
-    // ordinary = es.slice(0, ordCnt); // only first `n` arguments
-    // ordinary.each(e -> {
-    //   (v2, e2) = this.expression(e, locals);
-    //   es2.push(e2);
-    //   ve.extend(v2.chill());
-    // });
-
-    body = mutable Statements[];
-
-    // all original arguments will be flattened and put into a list-value
-    // (foo a b c) will transform to
-    // %0 = a
-    // %1 = b
-    // %2 = c
-    // %3 = [a b c]
-    // returnReg = foo %3
-    // where %3 is listvarname
-    listvars = mutable Vector<Register>[];
-    es.each(e -> {
-      (paramBody, param) = this.expressionVal(e, locals);
-      listvars.push(param);
-      body.extend(paramBody);
-    });
-
-    // Add the list variable as declaration
-    listreg = Register( this.nextVar() );
-    body.push( Set(listreg, VList( listvars.chill())) );
-
-    returnRegister = Register( this.nextVar() ); // Call result variable
-    call = Invoke( n, Vector<Register>[ listreg ] );
-    set = Set( returnRegister, call );
-    body.push(set);
-
-    (body.chill(), Some(returnRegister))
   }
 }
 
