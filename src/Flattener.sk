@@ -359,19 +359,29 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: 
 
       (condExpr.cat(loopStat), None())
     }
-    // TODO have all return to one register
     | Cond(_, e, s1, s2) -> {
       // (if expr trueBody falseBody)
       // is transformed to
       // condVar = expr
-      // if (condVar) {trueBody}
-      // else {falseBody}
+      // if (condVar) {res = evaluated trueBody}
+      // else {res = evaluated falseBody}
+      // and the value of this statement is `res`
       (condExpr, condVar) = this.expressionVal(e, locals);
-      (trueBlock, _) = this.expression(s1, locals);
-      (falseBlock, _) = this.expression(s2, locals);
+      (trueBlock, trueRes) = this.expression(s1, locals);
+      (falseBlock, falseRes) = this.expression(s2, locals);
+
+      res = (trueRes, falseRes) match {
+        | (Some(tVal), Some(fVal)) -> {
+          returnReg = Register( this.nextVar() );
+          !trueBlock  = trueBlock.cat(  Set(returnReg, tVal) );
+          !falseBlock = falseBlock.cat( Set(returnReg, fVal) );
+          Some(returnReg)
+        }
+        | _ -> None()
+      };
 
       branch = Branch( condVar, Code(trueBlock), Code(falseBlock) );
-      (condExpr.cat(branch), None())
+      (condExpr.cat(branch), res)
     }
     };
   }
