@@ -1,11 +1,14 @@
 module Main
 
-function main (0) [3]
+function main (0) [4]
 0: %0 ← true
-1: if %0 jmp #4
+1: if %0 jmp #5
 2: %1 ← 10
-3: jmp #5
-4: %2 ← 20
+3: %3 ← %1
+4: jmp #7
+5: %2 ← 20
+6: %3 ← %2
+7: ret %3
 
 function init (0) [1]
 0: %0 ← 0
