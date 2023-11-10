@@ -14,7 +14,7 @@ module Reader;
 // Decl ::= (let Ident Expr)
 // Function ::= (function Ident(Args) Expr)
 // Args ::= Ident+ [`...`Ident]
-// Expr ::=  LitInt | LitBool | LitString | LitChar | LitList
+// Expr ::=  LitInt | LitBool | LitString | LitChar
 //        |  Ident
 //        |  Cond
 //        |  While
@@ -108,7 +108,6 @@ base class Expr {
   | LitBool(Tok, Bool)
   | LitString(Tok, String)
   | LitChar(Tok, Char)
-  | LitList(Tok, Vector<Expr>) // Only to satisfy Flattener -> TODO remove?
   | Var(Tok, name: String)
   | Decl(Tok, String, Expr)
   | Call(Tok, String, Expressions)
@@ -122,7 +121,6 @@ base class Expr {
       | LitBool(t, _)
       | LitString(t, _)
       | LitChar(t, _)
-      | LitList(t, _)
       | Var(t, _)
       | Decl(t, _, _)
       | Call(t, _, _)
@@ -182,7 +180,6 @@ mutable class .ASTPrettyPrint(mutable indent: Int = 0) {
     | LitBool(_, b) -> `${b}`
     | LitChar(_, ch) -> `'${ch}'`
     | LitString(_, str) -> `"${str}"`
-    | LitList(_, exs) -> `[${exs.map(e -> this.expression(e)).join( ", " )}]`
     | Var(_, s) -> { s }
     | Decl(_, n, e) -> `(let ${n} ${this.expression(e)})`
     | Call(_, n, es) -> `(${n} ${es.map(e -> this.expression(e)).join( " " )})`
@@ -947,7 +944,7 @@ mutable class Checker(env: mutable Scope, r: mutable Reader) {
   // (R7) Check that the function produces a value
   mutable fun producesValue(fName: String, e: Expr): void {
     e match {
-      | LitInt(_, _) | LitBool(_, _) | LitChar(_, _) | LitString(_, _) | LitList(_, _) -> void
+      | LitInt(_, _) | LitBool(_, _) | LitChar(_, _) | LitString(_, _) -> void
       | Var(_, _) -> void;
       | Call(t, n, _) -> if ( this.isTopLevelFunction(n) ) this.fail(t, `function '${fName}' does not yield a value.`);
       | Block(_, exprs) -> this.producesValue(fName, exprs[exprs.size() - 1]);
@@ -965,7 +962,7 @@ mutable class Checker(env: mutable Scope, r: mutable Reader) {
     if (!this.r.ok) return void;
 
     e0 match {
-    | LitInt(_, _) | LitBool(_, _) | LitChar(_, _) | LitString(_, _) | LitList(_, _) -> void
+    | LitInt(_, _) | LitBool(_, _) | LitChar(_, _) | LitString(_, _) -> void
     | Var(t, s) ->{
       if (!this.env.isVariable(s))
         this.fail(t, `${s} is not a variable`);

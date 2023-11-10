@@ -238,9 +238,6 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: 
     | LitBool(_, b) ->   this.literal( VBool(b) )
     | LitChar(_, c) ->   this.literal( VChar(c) )
     | LitString(_, s) -> this.literal( VString(s) )
-    | LitList(t, _) -> {
-      this.fail( t, "Encountered a list in Flattener" )
-    }
     | Var(t, n) -> {
       vname = this.toRegister(t, n, locals);
       if (locals.containsKey(n)) {
