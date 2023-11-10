@@ -77,6 +77,12 @@ test: build/skia
 valgrind: build/skia
 	valgrind ./build/skia --run ./tests/stdlib.sm $(RUN)
 
+analyze: build/skia
+	./build/skia --print_simple --print_ir ./tests/stdlib.sm $(RUN)
+
+run: build/skia
+	./build/skia --run ./tests/stdlib.sm $(RUN)
+
 .PHONY: test valgrind
 
 #-------------------------------------------------------
