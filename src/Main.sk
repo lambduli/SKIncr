@@ -80,6 +80,7 @@ fun test(): void {
     .execution_fail( Strings[b+"array_out_of_bounds/main.sm"] )
     .reader_fail(Strings[b+"while_as_return/main.sm"])
     .reader_fail(Strings[b+"call_variable/main.sm"])
+    .io_test( Strings[g+"vararg_function/main.sm"], nostrings, Strings["1", "2", "3", "4", "5", "6"] )
     .harness.report();
   print_string( report )
 }

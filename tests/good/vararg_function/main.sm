@@ -1,0 +1,28 @@
+(module Main imports (StdLib))
+
+(vars ())
+
+(functions (
+  (function foo (...x)
+    (begin
+      (let i 0)
+      (let l (size x))
+      (while (< i l)
+        (begin 
+          (write! (at x i))
+          (set! i (+ i 1))
+        )
+      )
+      0
+    )
+  )
+
+  (function main ()
+    (begin
+      (foo 1)
+      (foo 2 3 )
+      (foo 4 5 6)
+      (foo)
+    )
+  )
+))
