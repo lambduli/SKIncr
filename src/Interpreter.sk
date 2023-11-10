@@ -12,53 +12,6 @@ type Frames = Vector<mutable Frame>;
 type Modules = Vector<Module>;
 type GlobMap = Map<String, mutable Vals>;  // From module name to module global registers
 
-// ==================================================================
-// Val represents runtime value, the current types are intergers (I),
-// booleans (B), characters (C), strings (S), polymorphic lists (L),
-// and null (Null).
-
-// Val.toString() returns a string representation of the constructor.
-
-// Val.toOut() returns a string representation that can be printed.
-// ------------------------------------------------------------------
-base class Val() uses Show, Equality {
-  children =
-  | I(Int)
-  | B(Bool)
-  | C(Char)
-  | S(String)
-  | L(Vals)
-  | A(Vals) // Array
-  | Null()
-
-  fun toString(): String {
-    this match {
-      | I(i) -> `I(${i})`
-      | B(b) -> `B(${b})`
-      | C(ch) -> `C(${ch})`
-      | S(str) -> `S(${str})`
-      | L(vals) -> `list(${vals.reduce((s, v) -> `${s}, ${v.toString()}`, "")})`
-      | A(vals) -> `array(${vals.reduce((s, v) -> `${s}, ${v.toString()}`, "")})`
-      | Null() -> `Null`
-    }
-  }
-
-  fun toOut(): String {
-    this match {
-      | I(i) -> `${i}`
-      | B(b) -> `${b}`
-      | C(ch) -> `'${ch}'`
-      | L(vals) -> `[${vals.reduce((s, v) -> `${s}, ${v.toOut()}`, "")}]`
-      | A(vals) -> `Arr[${vals.reduce((s, v) -> `${s}, ${v.toOut()}`, "")}]`
-      | S(str) -> `${str}`
-      | Null() -> `NULL`
-    }
-  }
-}
-
-fun zero(): Val { I(0) }
-
-
 // ========================= Small bytecode format ==========================================
 
 // A `Module` is a program unit uniquely named by a string, that
@@ -249,6 +202,52 @@ mutable class Linearize(mutable cntr: Int) {
     is.chill()
   }
 }
+
+// ==================================================================
+// Val represents runtime value, the current types are intergers (I),
+// booleans (B), characters (C), strings (S), polymorphic lists (L),
+// and null (Null).
+
+// Val.toString() returns a string representation of the constructor.
+
+// Val.toOut() returns a string representation that can be printed.
+// ------------------------------------------------------------------
+base class Val() uses Show, Equality {
+  children =
+  | I(Int)
+  | B(Bool)
+  | C(Char)
+  | S(String)
+  | L(Vals)
+  | A(Vals) // Array
+  | Null()
+
+  fun toString(): String {
+    this match {
+      | I(i) -> `I(${i})`
+      | B(b) -> `B(${b})`
+      | C(ch) -> `C(${ch})`
+      | S(str) -> `S(${str})`
+      | L(vals) -> `list(${vals.reduce((s, v) -> `${s}, ${v.toString()}`, "")})`
+      | A(vals) -> `array(${vals.reduce((s, v) -> `${s}, ${v.toString()}`, "")})`
+      | Null() -> `Null`
+    }
+  }
+
+  fun toOut(): String {
+    this match {
+      | I(i) -> `${i}`
+      | B(b) -> `${b}`
+      | C(ch) -> `'${ch}'`
+      | L(vals) -> `[${vals.reduce((s, v) -> `${s}, ${v.toOut()}`, "")}]`
+      | A(vals) -> `Arr[${vals.reduce((s, v) -> `${s}, ${v.toOut()}`, "")}]`
+      | S(str) -> `${str}`
+      | Null() -> `NULL`
+    }
+  }
+}
+
+fun zero(): Val { I(0) }
 
 // =======================================================================================
 // Frame represents one function's execution state, it has:
