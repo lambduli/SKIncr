@@ -163,7 +163,7 @@ mutable class .TestRunner(
     mutable TestRunner(
       stdLib,
       TestHarness::mcreate(),
-      mkSnapshot("translator"), // TODO make as flattener
+      mkSnapshot("flattener"),
       mkSnapshot("linearized"),
       mkSnapshot("readerError")
     );
