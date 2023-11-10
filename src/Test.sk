@@ -148,7 +148,6 @@ mutable class .TestRunner(
   stdLib: String,
   harness: mutable TestHarness,
   flattenerSnapshot: SnapshotTest,
-  translatorSnapshot: SnapshotTest,
   linearizedSnapshot: SnapshotTest,
   readerErrorSnapshot: SnapshotTest
 ){
@@ -164,8 +163,7 @@ mutable class .TestRunner(
     mutable TestRunner(
       stdLib,
       TestHarness::mcreate(),
-      mkSnapshot("flattener"),
-      mkSnapshot("translator"),
+      mkSnapshot("translator"), // TODO make as flattener
       mkSnapshot("linearized"),
       mkSnapshot("readerError")
     );
@@ -238,22 +236,14 @@ mutable class .TestRunner(
 
       flat = mutable Flattener();
       flatFs = fs.map( f -> flat.file(f) );
-      flatFs.filter(f -> f.name.lowercase() != "stdlib").each( f -> {
-        prettyOut = ASTPrettyPrint::prettyPrint(f);
-        case = this.flattenerSnapshot.createOrValidate( testName, f.name, prettyOut );
-        this.harness.pushTestCase( case );
-      });
-
-      t = Translator();
-      translated = flatFs.map(d -> t.file(d));
-      translated.filter(m -> m.name.lowercase() != "stdlib").each(m -> {
+      flatFs.filter(m -> m.name.lowercase() != "stdlib").each(m -> {
         prettyOut = TranslatedPrettyPrint::prettyPrint(m);
-        case = this.translatorSnapshot.createOrValidate( testName, m.name, prettyOut );
+        case = this.flattenerSnapshot.createOrValidate( testName, m.name, prettyOut );
         this.harness.pushTestCase( case );
       });
 
       l = Interpreter.Linearize::mcreate();
-      linearized: Vector<Interpreter.Module> = translated.map(m -> l.mod(m));
+      linearized: Vector<Interpreter.Module> = flatFs.map(m -> l.mod(m));
       linearized.filter(m -> m.name.lowercase() != "stdlib").each(m -> {
         prettyOut = m.toStringUnformatted();
         case = this.linearizedSnapshot.createOrValidate( testName, m.name, prettyOut );

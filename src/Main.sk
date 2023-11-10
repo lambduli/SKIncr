@@ -16,8 +16,6 @@ const schema: Array<AP.Param> = Array[
   AP.BoolParam{name => "help",                         negatable => false},
   AP.BoolParam{name => "verbose",
 	             help => "print more details",  				 negatable => false,},
-  AP.BoolParam{name => "print_ast",
-	             help => "print the AST representation", negatable => false,},
   AP.BoolParam{name => "print_ir",
 	             help => "print the bytecode",					 negatable => false},
   AP.BoolParam{name => "print_simple",
@@ -32,7 +30,6 @@ const schema: Array<AP.Param> = Array[
 
 // === class Context =========================================================
 value class Context(verbose: Bool,
-			              printAST: Bool,
 										printIR: Bool,
                     printSimple: Bool,
 										run: Bool,
@@ -47,7 +44,6 @@ fun main(): void {
  		 else if (r.getBool("test")) test()
 		 else
        run(Context(r.getBool("verbose"),
-			                r.getBool("print_ast"),
 											r.getBool("print_ir"),
                       r.getBool("print_simple"),
 											r.getBool("run"),
@@ -122,16 +118,12 @@ fun prepareFiles(ctxt: Context): Modules {
   };
   flat = mutable Flattener();
   flatFs = fs.map( f -> flat.file(f) );
-  if (ctxt.printAST) {
-    flatFs.each(f -> if(f.name != "StdLib") { print_string( ASTPrettyPrint::prettyPrint( f )) })
+  if ( ctxt.printSimple ){
+    flatFs.filter( m -> m.name != "StdLib" ).each( m -> print_string( TranslatedPrettyPrint::prettyPrint(m) ) )
   };
-  t = Translator();
-  translated = flatFs.map(d -> t.file(d));
-  if (ctxt.printSimple){
-    translated.filter( m -> m.name != "StdLib").each(m -> print_string( TranslatedPrettyPrint::prettyPrint(m)) )
-  };
+
   l = Interpreter.Linearize::mcreate();
-  modules = translated.map(m -> l.mod(m));
+  modules = flatFs.map(m -> l.mod(m));
   if (ctxt.printIR)
     modules.each(m -> {if (m.name != "StdLib") print_string(m.toString()) });
   modules

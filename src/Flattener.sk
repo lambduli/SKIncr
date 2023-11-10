@@ -61,66 +61,6 @@ base class Exp {
   }
 }
 
-
-class .Translator() {
-
-  fun file(f: File): Module {
-    globals = f.decls.size();
-    funs = f.funs.map(f -> this.function(f));
-    Module(f.name, f.imports, globals, funs)
-  }
-
-  fun expression(e0: Expr): Exp {
-    e0 match {
-     | LitInt(_, i) -> VInt(i)
-     | LitBool(_, b) -> VBool(b)
-     | LitChar(_, c) -> VChar(c)
-     | LitString(_, s) -> VString(s)
-     | LitList(_, exs) -> VList(exs.map(e -> this.var(e)))
-     | Var(_, s) -> Register(s)
-     | Call(_, n, es) -> {
-        if (n == "load") {
-          regName = es[0] match { Var(_, name) -> name | _ -> "ERROR" };
-          Load(regName)
-        } else {
-          args = es.map(e -> e match { | Var(_, n1) -> Register(n1) | _ -> Register("ERROR") });
-          Invoke(n, args)
-        }
-     }
-     | _ -> VInt(0)
-    }
-  }
-
-  fun statement(e0: Expr): Statements {
-    e0 match {
-    | Call(_, n, es) -> {
-      s = n match {
-        | "set!" -> Set(this.var(es[0]), this.expression(es[1]))
-        | "gset!" -> GSet(this.var(es[0]), this.expression(es[1]))
-        | "arr_set!" -> ArrSet(this.var(es[0]), this.expression(es[1]), this.expression(es[2]))
-        | "garr_set!" -> GArrSet(this.var(es[0]), this.expression(es[1]), this.expression(es[2]))
-        | _ -> Set(Register("ERROR"), VInt(0))
-      };
-      Statements[s]
-    }
-    | Decl(_, n, e) -> Statements[Set(Register(n), this.expression(e))]
-    | Block(_t, es) -> es.map(e -> this.statement(e)).flatten()
-    | While(_, e, s) -> Statements[Loop(this.expression(e), Code(this.statement(s)))]
-    | Cond(_, e, s1, s2) -> Statements[Branch(this.expression(e),
-                                         Code(this.statement(s1)), Code(this.statement(s2)))]
-    | e -> Statements[Return(this.expression(e))]
-    }
-  }
-
-  fun var(e: Expr): Register {
-    e match { | Var(_, str) -> Register(str) | _ -> Register("ERROR") }
-  }
-
-  fun function(f: Function): Fun { Fun(f.name, f.params.size(), Code(this.statement(f.body)), f.locals)  }
-}
-
-
-
 mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: mutable Functions = mutable Functions[]) {
 
   // Adds all global variables to the scope and creates a init function with initialization values
@@ -149,7 +89,7 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: 
     )
   }
 
-  mutable fun file(f: File): File {
+  mutable fun file(f: File): Module {
     this.glob.clear();
     this.!v = 0;
 
@@ -166,10 +106,10 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: 
     funs = Vector::mcreateFromItems(f.funs);
     funs.push(init);
     fs = funs.map(f -> this.function(f));
-    File(f.tok, f.name, f.imports, f.decls, fs)
+    Module( f.name, f.imports, f.decls.size(), fs )
   }
 
-  mutable fun function(f: Function): Function {
+  mutable fun function(f: Function): Fun {
     this.!v = 0;
 
     // Handle locals, body and parameters
@@ -184,9 +124,12 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: 
     };
 
     (es, e) = this.expression(body, locals);
-    _ = this.assertExpression(f.tok, `return of ${f.name}`, e);
+    e match {
+      | None() -> this.fail( f.tok, `Missing return in ${f.name}` )
+      | Some(val) -> !es = es.cat( Return(val) )
+    };
 
-    Function(f.tok, f.name, params, None(), this.toBlock(f.tok, es, e), this.v)
+    Fun( f.name, params.size(), Code( es ), this.v )
   }
 
   // The parameters of poly function work like this
@@ -266,18 +209,6 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: 
 
   mutable fun nextVar(): String { `%${this.nextVarId()}` }
 
-  readonly fun toBlock(t: Tok, es: mutable Exprs, e: Option<Expr>): Expr {
-    e.each( e -> es.push(e) );
-
-    if (es.size() > 1) {
-      Block(t, es.chill())
-    } else if (es.size() == 1) {
-      es[0]
-    } else {
-      this.fail( t, "Empty expressions in 'toBlock'" )
-    }
-   }
-
   readonly fun toRegister(t: Tok, varname: String, locals: VMap): String {
     if (locals.containsKey(varname)) {
       locals.get(varname)
@@ -288,146 +219,165 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: 
     }
   }
 
-  // Makes sure that expr is Some, otherwise fails
-  readonly fun assertExpression(t: Tok, name: String, expr: Option<Expr> ): Expr {
-    expr match {
-      | Some(e) -> e
-      | None() -> this.fail( t, `Empty expression result in ${name}` ) // TODO
-    }
-  }
-
   /*****************************************/
   // Expression flattening
 
-  // Returns pair of the code and the last variable where the return value is in
-  mutable fun expression(e0: Expr, locals: VMap): (mutable Exprs, Option<Expr>) {
-    emptyExprs = mutable Exprs[];
-    e0 match {
-    | LitInt(t, _)
-    | LitBool(t, _)
-    | LitChar(t, _)
-    | LitString(t, _) -> {
-      varname = this.nextVar();
-      (mutable Exprs[Decl(t, varname, e0)], Some(Var(t, varname)))
+  mutable fun literal(exp: Exp): (Statements, Option<Register>) {
+    reg = Register( this.nextVar() );
+    set = Statements[ Set( reg, exp ) ];
+    (set, Some(reg))
+  }
+
+  // An expression where we enforce that the return register is present
+  mutable fun expressionVal(e0: Expr, locals: VMap): (Statements, Register) {
+    (v2, e2) = this.expression(e0, locals);
+    e2 match {
+      | Some(val) -> (v2, val)
+      | None() -> this.fail( Tok(), "?") //TODO
     }
+  }
+
+  // Returns pair of the code and the last register where the return value is in
+  mutable fun expression(e0: Expr, locals: VMap): (Statements, Option<Register>) {
+    e0 match {
+    | LitInt(_, i) ->    this.literal( VInt(i) )
+    | LitBool(_, b) ->   this.literal( VBool(b) )
+    | LitChar(_, c) ->   this.literal( VChar(c) )
+    | LitString(_, s) -> this.literal( VString(s) )
     | LitList(t, _) -> {
       this.fail( t, "Encountered a list in Flattener" )
     }
     | Var(t, n) -> {
       vname = this.toRegister(t, n, locals);
       if (locals.containsKey(n)) {
-        (emptyExprs, Some(Var(t, vname)))
+        (Statements[], Some(Register(vname)))
       } else if (this.glob.containsKey(n)) {
         // if some variable x is global, it is transformed to
-        // (let x_ (load x))
+        // x_ = load x
         // and then 'x_' is used from this point on
-        x = Call(t, "load", Exprs[Var(t, vname)]);
-        nvar = this.nextVar();
-        assign = Decl(t, nvar, x);
-        (mutable Exprs[assign], Some(Var(t, nvar)))
+        register = Register( this.nextVar() );
+        assign = Set(register, Load( vname ));
+        (Statements[ assign ], Some(register))
       } else {
         this.fail( t, "Unknown variable" )
       }
     }
-    | Decl(t, n, e) -> {
-      (v2, e2) = this.expression(e, locals);
+    | Decl(_, n, e) -> {
+      (exprBody, exprResult) = this.expressionVal(e, locals);
       varname = this.nextVar();
       locals.add(n, varname);
 
-      decl = Decl(t, varname, this.assertExpression(t, "let", e2));
-      (v2.cat(decl), None())
+      set = Set( Register(varname), exprResult );
+      (exprBody.cat(set), None())
     }
-    | Call(t, n@"set!", es) -> {
-      (tok, origVName) = this.asVar( es[0] );
-      if (this.glob.containsKey(origVName)) {
-        !n = "gset!"
+    | Call(t, "set!", es) -> {
+      // (set! var assign)
+      // is transformed to
+      // assignResult = evaluated assign
+      // var = assignResult
+      (_, origVName) = this.asVar( es[0] );
+
+      destRegister = Register( this.toRegister(t, origVName, locals));
+      (assignBody, assignResult) = this.expressionVal(es[1], locals);
+
+      set = if(this.glob.containsKey(origVName)){
+        GSet( destRegister, assignResult );
+      } else {
+        Set( destRegister, assignResult );
       };
-      vname = this.toRegister(t, origVName, locals);
 
-      (v2, e2) = this.expression(es[1], locals);
-      args = Exprs[Var(tok, vname), this.assertExpression(t, "set! arg", e2)];
-      call = Call(t, n, args);
-
-      (v2.cat(call), None())
+      (assignBody.cat(set), None())
     }
-    | Call(t, n@"arr_set!", es) -> {
-      (tok, origVName) = this.asVar( es[0] );
-      if (this.glob.containsKey(origVName)) {
-        !n = "garr_set!"
+    | Call(t, "arr_set!", es) -> {
+      // (arr_set! var idx assign)
+      // is transformed to
+      // idxResult = evaluated idx
+      // assignResult = evaluated assign
+      // var[idxResult] = assignResult
+      (_, origVName) = this.asVar( es[0] );
+
+      destRegister = Register( this.toRegister(t, origVName, locals));
+
+      (idxBody, idxResult) = this.expressionVal(es[1], locals);
+      (assignBody, assignResult) = this.expressionVal(es[2], locals);
+
+      set = if(this.glob.containsKey(origVName)){
+        GArrSet( destRegister, idxResult, assignResult )
+      } else {
+        ArrSet( destRegister, idxResult, assignResult )
       };
-      vname = this.toRegister(t, origVName, locals);
 
-      (v2, e2) = this.expression(es[1], locals);
-      (v3, e3) = this.expression(es[2], locals);
-      args = Exprs[
-        Var(tok, vname),
-        this.assertExpression(t, "arr_set! arg1", e2),
-        this.assertExpression(t, "arr_set! arg2", e3)
-      ];
-      call = Call(t, n, args);
-
-      (v2.cats(v3).cat( call ), None())
+      (idxBody.concat(assignBody).cat(set) , None())
     }
     | Call(t, n, es) -> {
       this.arityOf(n) match {
         | NotAFunction() -> this.fail( t, "Calling not a function" )
         | Exactly(_) -> {
-          // that `n` must be equal to `argsCnt`, but at this point it will
-          ve = mutable Exprs[];
-          es2 = mutable Exprs [];
+          body = mutable Statements[];
+          params = mutable Vector<Register>[];
 
           es.each(e -> {
-            (v2, e2) = this.expression(e, locals);
-
-            es2.push( this.assertExpression(t, "regular arguments", e2));
-            ve.extend(v2);
+            (paramBody, param) = this.expressionVal(e, locals);
+            body.extend(paramBody);
+            params.push(param);
           });
 
-          varname = this.nextVar();
-          ve.push(Decl(t, varname, Call(t, n, es2.chill())));
+          returnRegister = Register( this.nextVar() );
+          call = Invoke( n, params.chill() );
+          set = Set( returnRegister, call );
+          body.push(set);
 
-          (ve, Some(Var(t,varname)))
+          (body.chill(), Some(returnRegister))
         }
-        | AtLeast(_) -> this.vacall(t, n, es, locals)
+        | AtLeast(_) -> this.vacall(n, es, locals) // TODO
       }
     }
     | Block(_, es) -> {
-      ve = mutable Exprs[];
-      z: Option<Expr> = None(); // Explicitly type the None
+      body = mutable Statements[];
+      last: Option<Register> = None();
 
-      last = es.reduce((_, e) -> {
-        (v2, e2) =  this.expression(e, locals);
-        ve.extend(v2.chill());
-        e2
-      }, z);
+      es.each(e -> {
+        (nestedBody, res) = this.expression(e, locals);
+        body.extend(nestedBody);
+        !last = res
+      });
 
-      (ve, last)
+      (body.chill(), last)
     }
-    | While(t, e, s) -> {
-      (v2, e2) = this.expression(e, locals);
-      (v3, _) = this.expression(s, locals);
+    | While(_, e, s) -> {
+      // (while expr body)
+      // is transformed to
+      // condVar = expr
+      // loop condVar (
+      //  body
+      //  condVar = expr
+      // )
+      (condExpr, condVar) = this.expressionVal(e, locals);
+      (whileBody, _) = this.expression(s, locals);
 
-      block = this.toBlock(t, v3.cats(v2), None());
-      whileExp = While(t, this.assertExpression(t, "while", e2), block);
+      loopStat = Loop(condVar, Code( whileBody.concat(condExpr) ));
 
-      (v2.cat(whileExp), None())
+      (condExpr.cat(loopStat), None())
     }
-    | Cond(t, e, s1, s2) -> {
-      (v2, e2) = this.expression(e, locals);
-      (v3, _) = this.expression(s1, locals);
-      (v4, _) = this.expression(s2, locals);
+    // TODO have all return to one register
+    | Cond(_, e, s1, s2) -> {
+      // (if expr trueBody falseBody)
+      // is transformed to
+      // condVar = expr
+      // if (condVar) {trueBody}
+      // else {falseBody}
+      (condExpr, condVar) = this.expressionVal(e, locals);
+      (trueBlock, _) = this.expression(s1, locals);
+      (falseBlock, _) = this.expression(s2, locals);
 
-      trueBlock = this.toBlock(t, v3, None());
-      falseBlock = this.toBlock(t, v4, None());
-      cond = Cond(t, this.assertExpression(t, "if", e2), trueBlock, falseBlock);
-      ve = v2.cat( cond );
-
-      (ve, None())
+      branch = Branch( condVar, Code(trueBlock), Code(falseBlock) );
+      (condExpr.cat(branch), None())
     }
     };
   }
 
-  mutable fun vacall( t: Tok, n: String, es: Exprs, locals: VMap): (mutable Exprs, Option<Expr>) {
+  // TODO merge with normal fun call
+  mutable fun vacall( n: String, es: Exprs, locals: VMap): (Statements, Option<Register>) {
     // that `ordCnt` must be smaller than `argsCnt`, but at
     // this point it will I will have to construct a new
     // variable and store a list in it that list will contain
@@ -454,7 +404,7 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: 
     //   ve.extend(v2.chill());
     // });
 
-    ve = mutable Exprs[]; // output exprs
+    body = mutable Statements[];
 
     // all original arguments will be flattened and put into a list-value
     // (foo a b c) will transform to
@@ -462,27 +412,27 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: 
     // %1 = b
     // %2 = c
     // %3 = [a b c]
+    // returnReg = foo %3
     // where %3 is listvarname
-    listvars = mutable Exprs[];
+    listvars = mutable Vector<Register>[];
     es.each(e -> {
-      (v2, e2) = this.expression(e, locals);
-      listvars.push(this.assertExpression(Tok(), "vararg arguments", e2));
-      ve.extend(v2.chill());
+      (paramBody, param) = this.expressionVal(e, locals);
+      listvars.push(param);
+      body.extend(paramBody);
     });
 
     // Add the list variable as declaration
-    listvarname = this.nextVar();
-    ve.push(Decl(t, listvarname, LitList(t, listvars.chill())));
+    listreg = Register( this.nextVar() );
+    body.push( Set(listreg, VList( listvars.chill())) );
 
-    listvarAsVar = Exprs[ Var(t, listvarname) ];
-    varname = this.nextVar(); // Call result variable
-    ve.push(Decl(t, varname, Call(t, n, listvarAsVar)));
+    returnRegister = Register( this.nextVar() ); // Call result variable
+    call = Invoke( n, Vector<Register>[ listreg ] );
+    set = Set( returnRegister, call );
+    body.push(set);
 
-    (ve, Some(Var(t,varname)))
+    (body.chill(), Some(returnRegister))
   }
 }
-
-
 
 mutable class .TranslatedPrettyPrint(mutable indent: Int = 0) {
 
@@ -568,15 +518,9 @@ mutable class .TranslatedPrettyPrint(mutable indent: Int = 0) {
 
 }
 
-extension mutable class .Vector {
-  mutable fun cat( item: T ): mutable this {
-    this.push( item );
-    this
-  }
-
-  mutable fun cats( items: mutable Vector<T> ): mutable this {
-    this.extend( items.chill() );
-    this
+extension class .Vector {
+  fun cat<S : T>( item: S ): this {
+    this.concat( Vector<T>[ item ] )
   }
 }
 
