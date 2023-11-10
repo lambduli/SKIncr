@@ -1,0 +1,5 @@
+File tests/bad/leaky_var_if_false/main.sm at line 11
+  9|         (let x 0)
+ 10|       )
+ 11|       (set! x 0) # Invalid
+                 ^--x is not a variable

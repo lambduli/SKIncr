@@ -1,0 +1,16 @@
+(module Main imports (StdLib))
+
+(vars ())
+
+(functions (
+  (function main ()
+    (begin
+      (if tt
+        0
+        (let x 0)
+      )
+      (set! x 0) # Invalid
+      0
+    )
+  )
+))

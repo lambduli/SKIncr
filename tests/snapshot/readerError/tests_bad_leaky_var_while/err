@@ -1,4 +1,4 @@
-File tests/bad/leaky_var/main.sm at line 10
+File tests/bad/leaky_var_while/main.sm at line 10
   8|         (let x 0)
   9|       )
  10|       (set! x 0) # Invalid
