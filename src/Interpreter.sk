@@ -163,11 +163,6 @@ base class Expr uses Show {
   }
 }
 
-// =========================================================================================
-
-// Return a register/load built by stripping off the string's prefix
-fun strToReg(r: String) : Register { Register(r.stripPrefix("%").toInt()) }
-fun strToLoad(r: String) : Load { Load(r.stripPrefix("%").toInt()) }
 
 // ===================== Linearize ===================================================
 
@@ -179,7 +174,7 @@ mutable class Linearize(mutable cntr: Int) {
 
   mutable fun inc(): void { this.!cntr = this.cntr + 1 }
 
- mutable fun mod(m: Reader.Module): Module {
+  mutable fun mod(m: Reader.Module): Module {
     Module(m.name, m.globs, m.funs.map(f -> this.function(f)))
   }
 
@@ -194,61 +189,63 @@ mutable class Linearize(mutable cntr: Int) {
       | Reader.VBool(b)      -> LitB(b)
       | Reader.VString(s)    -> LitS(s)
       | Reader.VChar(ch)     -> LitC(ch)
-      | Reader.VList(regs)   -> LitL(regs.map(this.expToReg))
-      | Reader.Register(str) -> strToReg(str)
-      | Reader.Load(str)     -> strToLoad(str)
-      | Reader.Invoke(name, args) -> Invoke(name, args.map(r -> strToReg(r.name).r))
+      | Reader.VList(regs)   -> LitL(regs.map( r -> Register(r.id) ))
+      | Reader.Register(r)   -> Register(r)
+      | Reader.Load(r)       -> Load(r)
+      | Reader.Invoke(name, args) -> Invoke(name, args.map(r -> r.id))
     }
-  }
-
-  // Reader.Exp for the condition in a  WHILE is a Register or return -1
-  mutable fun expToReg(e: Reader.Exp): Register {
-    e match { | Reader.Register(s) -> strToReg(s) | _ -> Register(-1) }
   }
 
   mutable fun statement(s: Reader.Stmt): Statements {
     is = s match {
       | Reader.ArrSet(r, i, e) -> {
         this.inc();
-        Statements[AStore( this.expToReg(r).r, this.expression(i), this.expression(e) )]
+        Statements[AStore(r.id, this.expression(i), this.expression(e))]
       }
       | Reader.GArrSet(r, i, e) -> {
         this.inc();
-        Statements[GAStore( this.expToReg(r).r, this.expression(i), this.expression(e) )]
+        Statements[GAStore(r.id, this.expression(i), this.expression(e))]
       }
-      | Reader.Set(r, e) -> { this.inc(); Statements[Store(this.expToReg(r).r, this.expression(e))] }
-      | Reader.GSet(r, e) -> { this.inc(); Statements[GStore(this.expToReg(r).r, this.expression(e))] }
+      | Reader.Set(r, e) -> {
+        this.inc();
+        Statements[Store(r.id, this.expression(e))]
+      }
+      | Reader.GSet(r, e) -> {
+        this.inc();
+        Statements[GStore(r.id, this.expression(e))]
+      }
       | Reader.Loop(cnd, Reader.Code(body)) -> {
-        cexpr = this.expToReg(cnd);
         topOfLoop = this.cntr;
         this.inc(); // the CondJump instruction is BEFORE all those
         stmts = body.map(s -> this.statement(s)).flatten(); // body of the loop
         this.inc(); // for jump to loop's top
         instrs = mutable Statements[];
-        instrs.push(CondJump(cexpr.r, this.cntr));
+        instrs.push(CondJump(cnd.id, this.cntr));
         instrs.extend(stmts);
         instrs.push(Jump(topOfLoop));
         instrs
       }
       | Reader.Branch(cnd, Reader.Code(ifThen), Reader.Code(ifElse)) -> {
-        cExpr = this.expToReg(cnd); // cndExpr has to be a Register
         this.inc(); // the CondJump instr is BEFORE both branches
         positive = ifThen.map(s -> this.statement(s)).flatten(); // body of the positive branch
         // at the end of positive branch we need to skip to the end of the negative one
         // so there's gonna be a Jump
         this.inc();
         beforeNegative = this.cntr;
-        cond = CondJump(cExpr.r, beforeNegative); // skip the positive if the condition is false/zero
+        cond = CondJump(cnd.id, beforeNegative); // skip the positive if the condition is false/zero
         negative = ifElse.map(s -> this.statement(s)).flatten(); // body of the negative branch
         afterNegative = this.cntr;
         skipNegative = Jump(afterNegative);
-        instrs = (mutable Vector<Stmt>[cond]);
+        instrs = mutable Statements[cond];
         instrs.extend(positive);
         instrs.push(skipNegative);
         instrs.extend(negative);
         instrs
       }
-      | Reader.Return(e) -> { this.inc(); Vector<Stmt>[Return(this.expression(e))] }
+      | Reader.Return(e) -> {
+        this.inc();
+        Statements[Return(this.expression(e))]
+      }
     };
     is.chill()
   }
