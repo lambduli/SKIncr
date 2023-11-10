@@ -237,7 +237,7 @@ mutable class .TestRunner(
       flat = mutable Flattener();
       flatFs = fs.map( f -> flat.file(f) );
       flatFs.filter(m -> m.name.lowercase() != "stdlib").each(m -> {
-        prettyOut = TranslatedPrettyPrint::prettyPrint(m);
+        prettyOut = FlattenedPrettyPrint::prettyPrint(m);
         case = this.flattenerSnapshot.createOrValidate( testName, m.name, prettyOut );
         this.harness.pushTestCase( case );
       });

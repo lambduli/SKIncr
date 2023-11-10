@@ -394,10 +394,10 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: 
   }
 }
 
-mutable class .TranslatedPrettyPrint(mutable indent: Int = 0) {
+mutable class .FlattenedPrettyPrint(mutable indent: Int = 0) {
 
   static fun prettyPrint(m: Module): String {
-    pp = mutable TranslatedPrettyPrint();
+    pp = mutable FlattenedPrettyPrint();
     pp.toModule( m )
   }
 

@@ -122,7 +122,7 @@ fun prepareFiles(ctxt: Context): Modules {
   flat = mutable Flattener();
   flatFs = fs.map( f -> flat.file(f) );
   if ( ctxt.printSimple ){
-    flatFs.filter( m -> m.name != "StdLib" ).each( m -> print_string( TranslatedPrettyPrint::prettyPrint(m) ) )
+    flatFs.filter( m -> m.name != "StdLib" ).each( m -> print_string( FlattenedPrettyPrint::prettyPrint(m) ) )
   };
 
   l = Interpreter.Linearize::mcreate();
