@@ -43,12 +43,14 @@ fun main(): void {
 	   if (r.getBool("help")) print_string(AP.help(schema))
  		 else if (r.getBool("test")) test()
 		 else
-       run(Context(r.getBool("verbose"),
-											r.getBool("print_ir"),
-                      r.getBool("print_simple"),
-											r.getBool("run"),
-											r.getBool("analyze"),
-											Vector::createFromItems(r.unknown)))
+      run(Context(
+        r.getBool("verbose"),
+				r.getBool("print_ir"),
+        r.getBool("print_simple"),
+				r.getBool("run"),
+				r.getBool("analyze"),
+				Vector::createFromItems(r.unknown)
+      ))
    }
 	 | Failure(err) -> print_string(err.getMessage())
 	};
@@ -70,18 +72,18 @@ fun test(): void {
     .good_test(Strings[g+"if_value/main.sm"], i10)
     .io_test(Strings[g+"simple_io/main.sm"], Strings["42"], Strings["42"])
     .io_test(Strings[gl+"foo.sm", gl+"main.sm"], nostrings, fourStrings)
-    .reader_fail(Strings[b+"leaky_var_while/main.sm"])
-    .reader_fail(Strings[b+"leaky_var_if_true/main.sm"])
-    .reader_fail(Strings[b+"leaky_var_if_false/main.sm"])
-    .reader_fail(Strings[b+"overwrite_fun/main.sm"])
-    .reader_fail(Strings[b+"arity_check/main.sm"])
-    .reader_fail(Strings[b+"function_as_value/main.sm"])
-    .reader_fail(Strings[b+"redefine_fun/foo.sm", b+"redefine_fun/main.sm"])
+    .checker_fail(Strings[b+"leaky_var_while/main.sm"])
+    .checker_fail(Strings[b+"leaky_var_if_true/main.sm"])
+    .checker_fail(Strings[b+"leaky_var_if_false/main.sm"])
+    .checker_fail(Strings[b+"overwrite_fun/main.sm"])
+    .checker_fail(Strings[b+"arity_check/main.sm"])
+    .checker_fail(Strings[b+"function_as_value/main.sm"])
+    .checker_fail(Strings[b+"redefine_fun/foo.sm", b+"redefine_fun/main.sm"])
     .io_test(Strings[g+"basic_array/main.sm"], nostrings, arrayStrings)
     .io_test(Strings[g+"global_array/main.sm"], nostrings, arrayStrings)
     .execution_fail( Strings[b+"array_out_of_bounds/main.sm"] )
-    .reader_fail(Strings[b+"while_as_return/main.sm"])
-    .reader_fail(Strings[b+"call_variable/main.sm"])
+    .checker_fail(Strings[b+"while_as_return/main.sm"])
+    .checker_fail(Strings[b+"call_variable/main.sm"])
     .io_test( Strings[g+"vararg_function/main.sm"], nostrings, Strings["1", "2", "3", "4", "5", "6"] )
     .harness.report();
   print_string( report )
@@ -93,14 +95,23 @@ fun test(): void {
 // include `StdLib` as it contains all the primitives.
 // ============================================================================
 fun run(ctxt: Context): void {
-   modules = prepareFiles(ctxt);
-   if (modules.size() == 0) return void;
-   if (ctxt.analyze)
-	   Interpreter.analyzeAll(modules);
-   if (ctxt.run)
-     print_string(Interpreter.runProgram(modules) match {
-      | Failure(msg) -> `ERR: ${msg}` | Success(v) -> `> ${v.toOut()}`
-      })
+  Result::guard( () -> {
+    modules = prepareFiles(ctxt);
+    if (modules.size() == 0) return void;
+    if (ctxt.analyze) {
+      Interpreter.analyzeAll(modules)
+    };
+    if (ctxt.run) {
+      res = Interpreter.runProgram(modules) match {
+        | Failure(msg) -> msg
+        | Success(v) -> `> ${v.toOut()}`
+      };
+      print_string( res )
+    }
+  }) match {
+    | Failure( e ) -> print_string( e.getMessage() )
+    | _ -> void
+  }
 }
 
 // ============================================================================
@@ -111,14 +122,9 @@ fun prepareFiles(ctxt: Context): Modules {
      for (f in ctxt.paths) { !s = s + f + "," };
      print_string(s + "]");
   };
-  (rs, fs) = Reader::process(ctxt.paths);
-  if (rs.size() == 0) return Vector[];
-  for ( r in rs ){
-    if ( !r.ok ){
-        r.reportError();
-        return Vector[];
-    };
-  };
+
+  fs = Reader::process(ctxt.paths);
+
   flat = mutable Flattener();
   flatFs = fs.map( f -> flat.file(f) );
   if ( ctxt.printSimple ){

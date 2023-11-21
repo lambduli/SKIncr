@@ -8,8 +8,21 @@ base class TestResult(){
   children =
   | Successful( Interpreter.Val )
   | ReaderError( String )
-  | ExecutionError( String )
+  | CheckerError( String )
+  | FlattenerError( String )
+  | InterpreterError( String )
   | ExceptionError ( String )
+
+  fun defaultMessage(): String {
+    this match {
+      | Successful(val) ->       `Expected failure, got ${val}`
+      | ReaderError(msg) ->      `Reader failed with message: ${msg}`
+      | CheckerError(msg) ->     `Checker failed with message: ${msg}`
+      | FlattenerError(msg) ->   `Flattener failed with message: ${msg}`
+      | InterpreterError(msg) -> `Execution failed with message: ${msg}`
+      | ExceptionError(msg) ->   `Exception was raised: ${msg}`
+    }
+  }
 
   // Assert that result equals to a expected value
   fun assert_val( name: String, expectedValue: Interpreter.Val ): TestCase {
@@ -20,14 +33,8 @@ base class TestResult(){
       | Successful(val) -> {
         Some( `Expected result ${expectedValue}, got ${val}` )
       }
-      | ReaderError(msg) -> {
-        Some( `Reader failed with message: ${msg}` )
-      }
-      | ExecutionError(msg) -> {
-        Some( `Execution failed with message: ${msg}` )
-      }
-      | ExceptionError(msg) -> {
-        Some ( `Exception was raised: ${msg}`)
+      | _ -> {
+        Some( this.defaultMessage() )
       }
     };
     TestCase(name, msg)
@@ -38,14 +45,8 @@ base class TestResult(){
       | Successful(_) -> {
         None()
       }
-      | ReaderError(msg) -> {
-        Some( `Reader failed with message: ${msg}` )
-      }
-      | ExecutionError(msg) -> {
-        Some( `Execution failed with message: ${msg}` )
-      }
-      | ExceptionError(msg) -> {
-        Some ( `Exception was raised: ${msg}`)
+      | _ -> {
+        Some( this.defaultMessage() )
       }
     };
     TestCase(name, msg)
@@ -54,17 +55,23 @@ base class TestResult(){
   // Assert that execution failed in runtime
   fun assert_execution_fail( name: String ): TestCase {
     msg = this match {
-      | Successful(val) -> {
-        Some( `Expected execution failure, got ${val}` )
-      }
-      | ReaderError(msg) -> {
-        Some( `Reader failed with message: ${msg}` )
-      }
-      | ExecutionError(_) -> {
+      | InterpreterError(_) -> {
         None()
       }
-      | ExceptionError(msg) -> {
-        Some ( `Exception was raised: ${msg}`)
+      | _ -> {
+        Some( this.defaultMessage() )
+      }
+    };
+    TestCase(name, msg)
+  }
+
+  fun assert_checker_fail( name: String ): TestCase {
+    msg = this match {
+      | CheckerError(_) -> {
+        None()
+      }
+      | _ -> {
+        Some( this.defaultMessage() )
       }
     };
     TestCase(name, msg)
@@ -149,7 +156,7 @@ mutable class .TestRunner(
   harness: mutable TestHarness,
   flattenerSnapshot: SnapshotTest,
   linearizedSnapshot: SnapshotTest,
-  readerErrorSnapshot: SnapshotTest
+  checkerErrorSnapshot: SnapshotTest
 ){
   static fun mcreate( stdLib: String, inputSnapshotFolder: String, outputSnapshotFolder: String ): mutable this {
     mkSnapshot = name ~> {
@@ -165,7 +172,7 @@ mutable class .TestRunner(
       TestHarness::mcreate(),
       mkSnapshot("flattener"),
       mkSnapshot("linearized"),
-      mkSnapshot("readerError")
+      mkSnapshot("checkerError")
     );
   }
 
@@ -196,19 +203,21 @@ mutable class .TestRunner(
     this
   }
 
-  mutable fun reader_fail (files: Vector<String> ): mutable this {
+  mutable fun checker_fail( files: Vector<String> ): mutable this {
     (name, paths) = this.prepareFiles( files );
 
-    (rs, _) = Reader::process(paths);
-    for ( r in rs ){
-      if ( !r.ok ){
-        case = this.readerErrorSnapshot.createOrValidate( name, "err", r.error );
-        this.harness.pushTestCase( case );
-        return this;
+    res = this.run_test( paths, mutable NoOpIO(), name );
+    case = res.assert_checker_fail( name );
+    this.harness.pushTestCase( case );
+
+    res match {
+      | CheckerError(err) -> {
+        snapCase = this.checkerErrorSnapshot.createOrValidate( name, "err", err );
+        this.harness.pushTestCase( snapCase )
       }
+      | _ -> void
     };
 
-    this.harness.pushTestCase( TestCase( name, Some("Reader should have failed, it did not")) );
     this
   }
 
@@ -226,13 +235,7 @@ mutable class .TestRunner(
 
   mutable fun run_test(files: Vector<String>, io: mutable InterpreterIO, testName: String): TestResult {
     Result::guard( () -> {
-      (rs, fs) = Reader::process(files);
-      for ( r in rs ){
-        if (!r.ok){
-          err: TestResult = ReaderError( r.error );
-          return err;
-        };
-      };
+      fs = Reader::process(files);
 
       flat = mutable Flattener();
       flatFs = fs.map( f -> flat.file(f) );
@@ -252,10 +255,13 @@ mutable class .TestRunner(
 
       Interpreter.runProgram( linearized, io ) match {
         | Success(val) -> Successful(val)
-        | Failure(msg) -> ExecutionError(msg)
+        | Failure(msg) -> InterpreterError(msg)
       };
     }) match {
       | Success(res) -> res
+      | Failure( ReaderException(msg) ) -> ReaderError( msg )
+      | Failure( CheckerException(msg) ) -> CheckerError( msg )
+      | Failure( FlattenerException(msg) ) -> FlattenerError( msg )
       | Failure(e) -> ExceptionError( e.getMessage() )
     }
   }
@@ -302,7 +308,7 @@ mutable class MockIO( reads: Vector<String>, mutable readIdx: Int, writes: mutab
         if ( val != expected ) {
           Some(`Expected write ${expected}, actually ${val}`)
         } else {
-            None()
+          None()
         }
       }).filterNone()
       .maybeGet( 0 )

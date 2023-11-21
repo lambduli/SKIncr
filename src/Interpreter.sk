@@ -295,11 +295,28 @@ mutable class Frame(
   readonly fun prevInstruction(): Stmt { this.code[this.pc - 1] }
 }
 
+// Interpretation exception class
+class .InterpreterException(message: String) extends Exception {
+  fun getMessage(): String {
+    "Interpreter error: " + this.message
+  }
+
+  static fun guard<T>( f: () -> T ): Result<T, String> {
+    Result::guard( f ) match {
+      | Success(val) -> Success(val)
+      | Failure(e@InterpreterException(_)) -> Failure(e.getMessage())
+      | Failure(e) -> throw e
+    }
+  }
+}
+
 // Example runner
 fun runProgram(modules: Modules, io: mutable InterpreterIO = mutable TerminalIO()): Result<Val, String> {
-  eval = Interpreter::mcreate(modules, io);
-	eval.call("main", mutable Vals[]);
-	eval.run();
+  InterpreterException::guard( () -> {
+    eval = Interpreter::mcreate(modules, io);
+    eval.call("main", mutable Vals[]);
+    eval.run();
+  })
 }
 
 // ========================= INTERPRETER ================================================
@@ -313,17 +330,16 @@ mutable class .Interpreter(
 				modules: Modules,
 				io: mutable InterpreterIO,
 				globals: mutable GlobMap,
-				stack: mutable Frames,
-				mutable failure: (Bool, String)) {
+				stack: mutable Frames) {
 
-  mutable fun fail(msg: String): void { this.!failure = (false, `Error: ${msg}`) }
-  readonly fun ok(): Bool { this.failure.i0 }
-  readonly fun why(): String { this.failure.i1 }
+  readonly fun fail<T>(msg: String): T {
+    throw InterpreterException(msg + this.toStackTrace() )
+  }
 
   // Creates a fresh interpreter given a set of modules, one of which contains main().
   static fun mcreate(mods: Modules, io: mutable InterpreterIO): mutable this {
     globals = Map::mcreateFromItems(mods.map(m -> (m.name, Vector::mfill(m.globs, zero()))));
-    vm = mutable Interpreter(mods, io, globals, mutable Frames[], (true, "default: no error"));
+    vm = mutable Interpreter(mods, io, globals, mutable Frames[]);
     vm.initialize();
     vm
   }
@@ -336,7 +352,7 @@ mutable class .Interpreter(
     // We can't use it as `init` is not unique function in the whole program.
     this.modules.each(mod -> {
       mod.funs.find(f -> f.name == "init") match {
-        | None() -> void; // this should never happen
+        | None() -> this.fail( `No 'init' function in module ${mod.name}` ); // this should never happen
         | Some(init) -> {
             globs = this.globals.get(mod.name);
             locals = Vals::mfill(init.locals, Null());
@@ -370,8 +386,8 @@ mutable class .Interpreter(
         | Failure(msg) -> this.fail(msg)
       }
     } else {
-      func = this.functionFor(fname);
-      globs = this.globalsFor(fname);
+      (func, mod) = this.funAndModFor(fname);
+      globs = this.globals.get(mod.name);
       locals = mutable Vals[];
       locals.extend(args);
       rest = Vector::fill(func.locals - func.params, Null());
@@ -385,22 +401,13 @@ mutable class .Interpreter(
     this.stack.push(fr);
   }
 
-	// Relies on the uniqueness of function names.
-  mutable fun globalsFor(fname: String): mutable Vals { this.globals.get(this.moduleFor(fname).name) }
-
-  // Relies on the uniqueness of function names.
-  readonly fun functionFor(fname: String): Fun { this.funAndModFor(fname).i0 }
-
-  // Relies on the uniqueness of function names.
-  readonly fun moduleFor(fname: String): Module { this.funAndModFor(fname).i1	}
-
   // Relies on the uniqueness of function names and that previous
   // passes checked that all called functions are defined.
   readonly fun funAndModFor(fname: String): (Fun, Module) {
     for (m in this.modules) {
 		  for (f in m.funs) { if (f.name == fname) return (f, m);	}
 		};
-		invariant_violation(`No function named '${fname}'.`)
+		this.fail(`No function named '${fname}'`)
   }
 
   // Returns the top of call stack.  Relies that stack is never empty
@@ -428,12 +435,6 @@ mutable class .Interpreter(
     }
  }
 
-  // [###] This might fail at runtime
-  // this would be a type error, I think
-  mutable fun toBool(v: Val): Result<Bool, String> {
-	 v match { | B(b) -> Success(b) | _ -> Failure(`Value '${v}' is not a boolean!`) }
-	}
-
   // run() -----------------------------------------------------------
   // The interpreter's run loop terminates when we return from a stack
   // of size 1 (i.e. from main) The loop has the top of stack and the
@@ -441,18 +442,17 @@ mutable class .Interpreter(
   // executes it. Then advances the program counter on that frame.
   // Function calls push a new frame so the next time the loop comes
   // around it picks up the new top frame.
-  mutable fun run(): Result<Val, String> {
+  mutable fun run(): Val {
     loop {
       frame = this.top();
       instr = frame.instruction();
-      if (!this.ok()) return Failure(this.why());
       instr match {
         | Store(r, e) -> frame.setLocal(r, this.expression(e))
         | GStore(r, expr) -> frame.setGlobal(r, this.expression(expr))
         | AStore(r, i, expr) -> {
           idx = this.expression(i) match {
             | I(idx) -> idx
-            | v -> return Failure( `'arr_set!' call with ${v} as an index` )
+            | v -> this.fail( `'arr_set!' call with ${v} as an index` )
           };
           val = this.expression(expr);
           frame.getLocal( r ) match {
@@ -461,14 +461,14 @@ mutable class .Interpreter(
                 newArr.set( idx, val );
                 frame.setLocal( r, A(newArr.chill()) )
               }
-            | A(_) -> return Failure( "'arr_set!' incorrect index" )
-            | _ -> return Failure( "'arr_set!' called on a non-array")
+            | A(_) -> this.fail( "'arr_set!' incorrect index" )
+            | _ -> this.fail( "'arr_set!' called on a non-array")
           }
         }
         | GAStore(r, i, expr) -> {
           idx = this.expression(i) match {
             | I(idx) -> idx
-            | v -> return Failure( `'garr_set!' call with ${v} as an index` )
+            | v -> this.fail( `'garr_set!' call with ${v} as an index` )
           };
           val = this.expression(expr);
           frame.getGlobal( r ) match {
@@ -477,22 +477,22 @@ mutable class .Interpreter(
                 newArr.set( idx, val );
                 frame.setGlobal( r, A(newArr.chill()) )
               }
-            | A(_) -> return Failure( "'garr_set!' incorrect index" )
-            | _ -> return Failure( "'garr_set!' called on a non-array")
+            | A(_) -> this.fail( "'garr_set!' incorrect index" )
+            | _ -> this.fail( "'garr_set!' called on a non-array")
           }
         }
         | CondJump(r, tgt) -> {
             loc = frame.getLocal(r);
-            this.toBool(loc) match {
-              | Success(true) -> void
-              | Success(false) -> { frame.setPC(tgt); continue; }
-              | Failure(m) -> return Failure(m)
+            loc match {
+              | B(true) -> void
+              | B(false) -> { frame.setPC(tgt); continue; }
+              | _ -> this.fail(`Value '${loc}' is not a boolean!`)
             }
         }
         | Jump(tgt) -> { frame.setPC(tgt); continue; }
         | Return(expr) -> {
 				  if (this.stack.size() == 1)
-            return Success(this.expression(expr)) // main finished, we're done
+            return this.expression(expr) // main finished, we're done
 					else {
 					  prevFrame = this.prev();
 						callInstr = prevFrame.prevInstruction();
@@ -500,7 +500,7 @@ mutable class .Interpreter(
 						callInstr match {
 						 | Store(r, _) ->  prevFrame.setLocal(r, retVal)
 						 | GStore(r, _) -> prevFrame.setGlobal(r, retVal)
-						 | bad -> return Failure(`A call was missing a Store or GStore! | ${bad}`)
+						 | bad -> this.fail(`A call was missing a Store or GStore! | ${bad}`)
    				  };
 						_ = this.stack.pop();
 					}

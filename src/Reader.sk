@@ -207,13 +207,17 @@ mutable class .ASTPrettyPrint(mutable indent: Int = 0) {
 
 }
 
+// Reader fail exception
+class .ReaderException(message: String) extends Exception {
+  fun getMessage(): String {
+    "Reader error: " + this.message
+  }
+}
 
 // ----------------------------------------------------------------------------------
 // Reader
 //
 // Interface to keep track of a file, its source text, parsed output, and any error.
-//
-// Does not throw exceptions.
 //
 // Some issues/questions:
 // ?? The dot in front of the name is a trick to make the class visible at the top ??
@@ -226,33 +230,27 @@ mutable class .Reader{
   text: Chars = Chars[],        // contents of the file
   mutable tokens: mutable Tokens = mutable Tokens[], // stream of lexed tokens
   mutable tokPos: Int = 0,      // position in the token stream
-  mutable ok: Bool = true,      // was there any error processing
-  mutable error: String = "",   // message to report to the user
   mutable pos: Int = 0,         // current offset in the text
   mutable lineBreak: Int = 0,   // last line break offset seen
   mutable lines: Int = 0} {     // number of lines so far
 
   // create: returns a new reader for the provided file.
   static fun create(p: String): mutable Reader {
-    if (!FileSystem.exists(p)) return mutable Reader{path=>p, ok=>false, error=>`File ${p} not found`};
+    if (!FileSystem.exists(p)){
+      throw ReaderException( `File ${p} not found` )
+    };
     r = mutable Reader{path=>p, text=>FileSystem.readTextFile(p).chars(), tokens=>mutable Tokens[]};
     r.!tokens = r.lex();
     r
   }
 
   // process: given a list of files, parses and check them
-  static fun process(paths: Strings): (Vector<mutable Reader>, Files) {
-    rs = paths.map(p -> Reader::create(p)); // Readers
-    fs = rs.map(r -> r.file()); // Parsed files
-    fail = false;
-    rs.each(r -> if (!r.ok) { r.reportError(); !fail = true; });
-    if (fail) return (Vector[], Vector[]);
-    i = 0;
-    while (i < rs.size()) {
-			Checker::create(rs[i]).file(fs[i], fs);
-      !i = i + 1;
+  static fun process(paths: Strings): Files {
+    fs = paths.map(p -> Reader::create(p).file()); // Parsed files
+    for ( f in fs ) {
+      Checker::create().file(f, fs);
     };
-    (rs, fs)
+    fs
   }
 
   // ------------- PARSING -----------------------------------------------------
@@ -270,7 +268,6 @@ mutable class .Reader{
   // Parse an expression.
   mutable fun expression(): Expr {
     tok = this.curToken();
-    if (!this.ok) return Var(tok, "ERR");
     stok = tok.asString();
     if (stok == "(")
       this.nextToken().asString() match {
@@ -342,39 +339,39 @@ mutable class .Reader{
 
   mutable fun identifiers(): Strings {
     vec = mutable Strings[];
-    while (this.ok && !(this.isNext(")") || this.isNext("..."))) vec.push(this.identifier());
+    while (!(this.isNext(")") || this.isNext("..."))) vec.push(this.identifier());
     vec.chill()
   }
 
   mutable fun expressions(): Expressions {
     vec = mutable Expressions[];
-    while (this.ok && !this.isNext(")")) vec.push(this.expression());
+    while (!this.isNext(")")) vec.push(this.expression());
     vec.chill()
   }
 
   // Parse declarations
   mutable fun declarations(): Declarations {
     vec = mutable Declarations[];
-    while (this.ok && !this.isNext(")")) vec.push(this.declaration());
+    while (!this.isNext(")")) vec.push(this.declaration());
     vec.chill()
   }
 
   // Parse functions
   mutable fun functions(): Functions {
     vec = mutable Functions[];
-    while (this.ok && !this.isNext(")")) vec.push(this.function());
+    while (!this.isNext(")")) vec.push(this.function());
     vec.chill()
   }
 
  // Is the given string the next token?
-  mutable fun isNext(s: String): Bool { this.ok && this.hasMoreTokens() && this.curToken().asString() == s }
+  mutable fun isNext(s: String): Bool { this.hasMoreTokens() && this.curToken().asString() == s }
 
   // Do we have more tokens?
-  readonly fun hasMoreTokens(): Bool { this.ok && this.tokPos < this.tokens.size(); }
+  readonly fun hasMoreTokens(): Bool { this.tokPos < this.tokens.size(); }
 
   // Consume the requested token, or fail
   mutable fun eat(s: String): mutable Reader {
-    if (this.ok && this.hasMoreTokens()) {
+    if (this.hasMoreTokens()) {
        tok = this.curToken();
       if (tok.asString() != s) this.fail(tok, `expected ${s}`);
       this.advanceTok();
@@ -384,14 +381,9 @@ mutable class .Reader{
 
   // ------------------------------------------------------------------------
 	// `fail(tok, msg)` takes a token, the position of the error, and a
-	// string, the message describing the error. Given our lazy exit
-	// strategy, we may `fail` multiple times for the same file; only
-	// the first error is recorded.
+	// string, the message describing the error and throws an exception
   mutable fun fail(tok: Tok, msg: String): void {
-	  if (this.ok) {
-      this.!ok = false;
-      this.!error = tok.error_message(msg);
-  	}
+    throw ReaderException( tok.error_message(msg) )
   }
 
   // Return the previous token or the current one (approximate at the edge)
@@ -401,7 +393,7 @@ mutable class .Reader{
 
   // Return the current token, or a bad token if we are not in a good place
   readonly fun curToken(): Tok {
-    if (this.ok && this.hasMoreTokens()) this.tokens[this.tokPos] else Tok()
+    if (this.hasMoreTokens()) this.tokens[this.tokPos] else Tok()
   }
 
   // Returns the next token if available, otherwise fail and return garbage
@@ -419,25 +411,19 @@ mutable class .Reader{
 
   // Return an identifier and fail if this is not well-formed
   mutable fun identifier(): String {
-	  if (!this.ok) { return "ERR"; };
     if (!this.hasMoreTokens()) this.fail(this.prevToken(), "premature end of file");
     tok = this.curToken();
     if (!this.isIdentifier(tok)) this.fail(tok, "expected an identifier");
-	  if (!this.ok) { return "ERR"; };
     this.advanceTok();
     tok.asString()
   }
-
-  // If an error occured report it.
-  readonly fun reportError(): void { if (!this.ok) print_string(this.error); }
 
   // -------------- LEXING -----------------------------------------------------
 
   // Return the current char and advance cursor.
   mutable fun charNext(): Char {
 		 if (this.pos >= this.text.size()) {
-         this.fail(Tok(), "premature end of file");
-				 return '\n'; // TODO perhaps retun EOF, it should not matter because we have failed()
+         this.fail(Tok(), "premature end of file")
 		 };
      c = this.text[this.pos];
      this.!pos = this.pos + 1;
@@ -454,7 +440,7 @@ mutable class .Reader{
   }
 
   // Reader is ok and there is at least one more char.
-  readonly fun hasMore(): Bool { this.ok && this.pos < this.text.size()  }
+  readonly fun hasMore(): Bool { this.pos < this.text.size()  }
 
   // Process a file breaking it into tokens
   mutable fun lex(): mutable Tokens {
@@ -708,7 +694,7 @@ value class .Tok(start: Int = 0,
 
   // Assuming that our programs are no more than 999 long, this should
   // align each printed line
-  fun pad(n: Int): String {  s = if (n < 10) "  " else { if (n < 99) " " else ""}; `${s}${n}`  }
+  fun pad(n: Int): String { `${n}`.padLeft(3, ' ')  }
 
   fun isLineBreak(c: Char): Bool { c == '\n' }
 
@@ -806,20 +792,26 @@ mutable class Scope(mutable top: Bool, env: mutable Vector<mutable Names>) {
   }
 }
 
+class .CheckerException(message: String) extends Exception {
+  fun getMessage(): String {
+    "Checker error: " + this.message
+  }
+}
+
 // ===============================================================================================
 
 // -------------- Class Checker ----------------------------------------------------------
 // Enforces well-formdness rules. Require all imported files as we
 // need their function definitions.
 // ----------------------------------------------------------------------------------------
-mutable class Checker(env: mutable Scope, r: mutable Reader) {
+mutable class Checker(env: mutable Scope) {
 
   // `create` builds a new checker from a reader. Checker are mutable
   // because they update internal state as they walk over the AST.
-  static fun create(r: mutable Reader): mutable Checker { mutable Checker(Scope::create(), r) }
+  static fun create(): mutable Checker { mutable Checker(Scope::create()) }
 
   mutable fun fail(tok: Tok, msg: String): void {
-    this.r.fail( tok, msg )
+    throw CheckerException(tok.error_message(msg))
   }
 
   // Add `name` to the environment, fail if already there
@@ -959,8 +951,6 @@ mutable class Checker(env: mutable Scope, r: mutable Reader) {
 
   // Check an expression
   mutable fun expression(e0: Expr): void {
-    if (!this.r.ok) return void;
-
     e0 match {
     | LitInt(_, _) | LitBool(_, _) | LitChar(_, _) | LitString(_, _) -> void
     | Var(t, s) ->{

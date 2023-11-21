@@ -57,6 +57,13 @@ base class Exp {
   }
 }
 
+// Flatenner exception class
+class .FlattenerException(message: String) extends Exception{
+  fun getMessage(): String {
+    "Flattener error: " + this.message
+  }
+}
+
 mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: mutable Functions = mutable Functions[]) {
 
   // Adds all global variables to the scope and creates a init function with initialization values
@@ -176,7 +183,7 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: 
 
   readonly fun fail<T>(tok: Tok, message: String): T {
     errMsg = tok.error_message(message);
-    invariant_violation( errMsg );
+    throw FlattenerException( errMsg )
   }
 
   readonly fun arityOf(fname: String): Arity {
