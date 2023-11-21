@@ -1,5 +1,6 @@
-(module Main imports ((functions (
-  (function main(0 | 4) 
+(module Main imports (StdLib)
+(functions (
+  (function main(0 | 4)
     %0 = true
     (if %0
 
@@ -10,8 +11,8 @@
       %3 = %2)
     return %3)
 
-  (function init(0 | 1) 
+  (function init(0 | 1)
     %0 = 0
     return %0)
 
-))
+)))

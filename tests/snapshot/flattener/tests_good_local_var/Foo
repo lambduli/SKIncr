@@ -1,17 +1,18 @@
-(module Foo imports ((functions (
-  (function setX(1 | 2) 
+(module Foo imports (StdLib)
+(functions (
+  (function setX(1 | 2)
     %0 ^= %0
     %1 = 0
     return %1)
 
-  (function getX(0 | 1) 
+  (function getX(0 | 1)
     %0 = load %0
     return %0)
 
-  (function init(0 | 2) 
+  (function init(0 | 2)
     %0 = 10
     %0 ^= %0
     %1 = 0
     return %1)
 
-))
+)))

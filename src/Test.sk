@@ -248,7 +248,7 @@ mutable class .TestRunner(
       l = Interpreter.Linearize::mcreate();
       linearized: Vector<Interpreter.Module> = flatFs.map(m -> l.mod(m));
       linearized.filter(m -> m.name.lowercase() != "stdlib").each(m -> {
-        prettyOut = m.toStringUnformatted();
+        prettyOut = m.toString();
         case = this.linearizedSnapshot.createOrValidate( testName, m.name, prettyOut );
         this.harness.pushTestCase( case );
       });

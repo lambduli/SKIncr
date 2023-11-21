@@ -21,16 +21,16 @@ type GlobMap = Map<String, mutable Vals>;  // From module name to module global 
 // functions from other modules (as these may not have been
 // initalized).
 value class Module(name: String, globs: Int, funs: Funs) {
-  fun toString(): String {
-       s =  `\e[4;31mmodule\e[0m ${this.name}\n`;
-     if (this.funs.size() != 0) this.funs.each(f -> !s =`${s}\n`+ f.toString());
-     s + "\n"
-  }
+  fun toString(color: Bool = false): String {
+    moduleStr = if (color) {
+      "\e[4;31mmodule\e[0m"
+    } else {
+      "module"
+    };
 
-  fun toStringUnformatted(): String {
-     s = `module ${this.name}\n`;
-     if (this.funs.size() != 0) this.funs.each(f -> !s =`${s}\n`+ f.toStringUnformatted());
-     s + "\n"
+    `${moduleStr} ${this.name}\n\n` +
+    this.funs.map( f -> f.toString(color) ).join( "\n" ) +
+    "\n"
   }
 }
 
@@ -41,12 +41,16 @@ value class Module(name: String, globs: Int, funs: Funs) {
 // undefined, and can hold a `Val`. Undefined values should not be
 // read by construction.
 value class Fun(name: String, params: Int, body: Statements, locals: Int) {
-  fun toString(): String {
-    `\e[4;31mfunction\e[0m ${this.name} (${this.params}) [${this.locals}]` + Code(this.body).toString() + "\n"
-  }
+  fun toString(color: Bool = false): String {
+    funStr = if (color) {
+      "\e[4;31mfunction\e[0m "
+    } else {
+        "function"
+    };
 
-  fun toStringUnformatted(): String {
-    `function ${this.name} (${this.params}) [${this.locals}]` + Code(this.body).toString() + "\n"
+    `${funStr} ${this.name} (${this.params}) [${this.locals}]\n` +
+    Code(this.body).toString() +
+    "\n"
   }
 }
 
@@ -54,13 +58,13 @@ value class Fun(name: String, params: Int, body: Statements, locals: Int) {
 // must return, so a code block should have at least one statement, ie. `Return`.
 value class Code(stmts: Statements) {
  fun toString(): String {
-    (res, ln, maxlen) = ("", 0, this.stmts.size().toString().length());
-    this.stmts.each(s -> {
-			lnstr = ln.toString();
-      !res = `${res}\n` + lnstr.padLeft(maxlen -lnstr.length(), ' ')	+ `: ` + s.toString();
-			!ln = ln + 1
-    });
-    res
+    ln = 0;
+    maxlen = (this.stmts.size() - 1).toString().length();
+    this.stmts.map( stmt -> {
+      line = ln.toString().padLeft(maxlen, ' ');
+      !ln = ln + 1;
+      line + ": " + stmt.toString()
+    }).join( "\n" )
   }
 }
 

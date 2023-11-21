@@ -1,5 +1,6 @@
-(module Main imports ((functions (
-  (function main(0 | 9) 
+(module Main imports (StdLib)
+(functions (
+  (function main(0 | 9)
     %0 = 1
     %1 = 2
     %2 = 3
@@ -11,8 +12,8 @@
     %8 = (arr_get %6 %7)
     return %8)
 
-  (function init(0 | 1) 
+  (function init(0 | 1)
     %0 = 0
     return %0)
 
-))
+)))

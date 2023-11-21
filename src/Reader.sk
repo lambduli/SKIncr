@@ -140,38 +140,43 @@ mutable class .ASTPrettyPrint(mutable indent: Int = 0) {
   }
 
   mutable fun file(f: File): String {
-     s = `(module ${f.name} imports (`;
-     f.imports.each(s -> !s = s + s + " ");
-     !s = `${s})\n(vars (`;
-     if (f.decls.size() == 0) {
-       !s = s + "))\n";
-     } else {
-       this.inc();
-       f.decls.each(d -> !s = s + "\n" + this.pad() + this.expression(d));
-       this.dec();
-       !s = s + "\n))\n";
-     };
-     !s = s + `(functions (`;
-     if (f.funs.size() == 0) {
-       !s = s + "))\n";
-     } else {
-       this.inc();
-       f.funs.each(f -> !s = s + "\n" + this.pad() + this.function(f));
-        !s = s + "\n))\n";
-       this.dec();
-     };
-     s
+    // Globals
+    this.inc();
+    decls = f.decls
+      .map(d -> this.pad() + this.expression(d))
+      .join("\n");
+    this.dec();
+    if ( !decls.isEmpty() ){
+      !decls = "\n" + decls + "\n";
+    };
+
+    // Functions
+    this.inc();
+    funs = f.funs
+      .map(f -> this.pad() + this.function(f))
+      .join("\n");
+    this.dec();
+    if ( !funs.isEmpty() ){
+      !funs = "\n" + funs + "\n"
+    };
+
+    `(module ${f.name} ` +
+      "imports (" + f.imports.join( " " ) + ")\n" +
+      `(vars (${decls}))\n` +
+      `(functions (${funs}))\n`
   }
 
   mutable fun function(f: Function): String {
-    s = `(function ${f.name}(`;
-    f.params.each(p -> !s = `${s} ${p}`);
-    _ = f.polyArg.map(str -> { !s = `${s} ...${str}`});
-    !s = `${s}) `;
     this.inc();
-    !s = `${s} ${this.expression(f.body)}\n`;
+    body = this.expression(f.body);
     this.dec();
-    s
+
+    `(function ${f.name}` +
+      "(" +
+        f.params.join( " " ) +
+        f.polyArg.map( str -> " ..." + str ).default("") +
+      ")" +
+      body + "\n";
   }
 
   mutable fun expression(e0: Expr): String {
@@ -183,27 +188,33 @@ mutable class .ASTPrettyPrint(mutable indent: Int = 0) {
     | Var(_, s) -> { s }
     | Decl(_, n, e) -> `(let ${n} ${this.expression(e)})`
     | Call(_, n, es) -> `(${n} ${es.map(e -> this.expression(e)).join( " " )})`
-    | Block(_t, es) -> {
-      s = `${this.pad()}(begin `;
+    | Block(_, es) -> {
       this.inc();
-      es.each(e -> !s = `${s}\n${this.pad()}${this.expression(e)}`);
+      str = es.map(e -> this.pad() + this.expression(e)).join("\n");
       this.dec();
-      `${s})`
+      if ( !str.isEmpty() ){
+        !str = "\n" + str + "\n"
+      };
+
+      this.pad() + "(begin " + str + ")"
     }
     | While(_, e, s) -> `(while ${this.expression(e)} ${this.expression(s)})`
 		| Cond(_, e, s1, s2) -> {
-      s = `(if ${this.expression(e)}\n`;
       this.inc();
-      !s = `${s}${this.expression(s1)}\n${this.expression(s2)})`;
+      str1 = this.expression(s1);
+      str2 = this.expression(s2);
       this.dec();
-      s
+
+      `(if ${this.expression(e)}\n` +
+        str1 + "\n" +
+        str2 + ")"
     }
     }
   }
 
   mutable fun inc(): void { this.!indent = this.indent + 2; }
   mutable fun dec(): void { this.!indent = this.indent - 2; }
-  readonly fun pad(): String { s = ""; n = this.indent; while (n > 0) { !s = s+" "; !n = n-1; }; s }
+  readonly fun pad(): String { " ".repeat( this.indent ) } 
 
 }
 

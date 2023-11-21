@@ -406,44 +406,36 @@ mutable class .FlattenedPrettyPrint(mutable indent: Int = 0) {
   }
 
   readonly fun pad(): String {
-    s = "";  n = this.indent;
-    while (n > 0) { !s = s + " "; !n = n - 1; };
-    s
+    " ".repeat(this.indent)
   }
 
   mutable fun toModule(f: Module): String {
-    s = `(module ${f.name} imports (`;
-    f.imports.each(s -> !s = s + s + " ");
-    // !s = `${s})\n(vars (`;
-    !s = s + `(functions (`;
-    if (f.funs.size() == 0) {
-      !s = s + "))\n";
-    } else {
-      this.inc();
-      f.funs.each(f -> !s = s + "\n" + this.pad() + this.function(f));
-       !s = s + "\n))\n";
-      this.dec();
-    };
-    s
+    this.inc();
+    functions = f.funs.map(f -> this.pad() + this.function(f))
+      .join( "\n" );
+    this.dec();
+
+    `(module ${f.name} imports (${f.imports.join( " " )})\n` +
+      "(functions (\n" +
+      functions + 
+      "\n)))"
   }
 
   mutable fun function(f: Fun): String {
-    params = `${f.params}`;
-    s = `(function ${f.name}(${params} | ${f.locals}`;
-    !s = s + ") ";
     this.inc();
-    !s = s + this.code(f.body);
+    body = this.code(f.body);
     this.dec();
-    !s = s + ")\n";
-    s
+
+    `(function ${f.name}(${f.params} | ${f.locals})` +
+      body +
+      ")\n"
   }
 
   mutable fun code(c: Code): String {
-    res = "";
-    c.stmts.each(s -> {
-      !res = res + "\n" + this.pad() + this.statement(s);
-    });
-    res
+    "\n" +
+      c.stmts.map( s -> {
+        this.pad() + this.statement(s)
+      }).join("\n")
   }
 
   mutable fun expression(e0: Exp): String {
@@ -465,13 +457,22 @@ mutable class .FlattenedPrettyPrint(mutable indent: Int = 0) {
     | GSet(n, e) -> `${this.expression(n)} ^= ${this.expression(e)}`
     | ArrSet(n, i, e) -> `${this.expression(n)}[${this.expression(i)}] = ${this.expression(e)}`
     | GArrSet(n, i, e) -> `${this.expression(n)}[${this.expression(i)}] ^= ${this.expression(e)}`
-    | Loop(e, s) -> "while " + this.expression(e) + " " + this.code(s)
-    | Branch(e, s1, s2) -> {
-      s = "(if " + this.expression(e) + "\n";
+    | Loop(e, s) -> {
       this.inc();
-      !s = s + this.code(s1) + "\n" + this.code(s2) + ")";
+      str = this.code(s);
       this.dec();
-      s
+
+      "while " + this.expression(e) + str
+    }
+    | Branch(e, s1, s2) -> {
+      this.inc();
+      str1 = this.code(s1);
+      str2 = this.code(s2);
+      this.dec();
+
+      `(if ${this.expression(e)}\n` +
+        str1 + "\n" +
+        str2 + ")"
     }
     | Return(e) -> `return ${this.expression(e)}`
     }

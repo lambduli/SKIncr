@@ -1,10 +1,11 @@
-(module Main imports ((functions (
-  (function main(0 | 1) 
+(module Main imports (StdLib)
+(functions (
+  (function main(0 | 1)
     %0 = "Hello world!"
     return %0)
 
-  (function init(0 | 1) 
+  (function init(0 | 1)
     %0 = 0
     return %0)
 
-))
+)))

@@ -1,5 +1,6 @@
-(module Main imports ((functions (
-  (function foo(1 | 15) 
+(module Main imports (StdLib)
+(functions (
+  (function foo(1 | 15)
     %1 = 0
     %2 = (drop %1 %0)
     %3 = %2
@@ -8,18 +9,18 @@
     %6 = (size %3)
     %7 = %6
     %8 = (< %5 %7)
-    while %8 
-    %9 = (at %3 %5)
-    %10 = [%9]
-    %11 = (write! %10)
-    %12 = 1
-    %13 = (+ %5 %12)
-    %5 = %13
-    %8 = (< %5 %7)
+    while %8
+      %9 = (at %3 %5)
+      %10 = [%9]
+      %11 = (write! %10)
+      %12 = 1
+      %13 = (+ %5 %12)
+      %5 = %13
+      %8 = (< %5 %7)
     %14 = 0
     return %14)
 
-  (function main(0 | 14) 
+  (function main(0 | 14)
     %0 = 1
     %1 = [%0]
     %2 = (foo %1)
@@ -36,8 +37,8 @@
     %13 = (foo %12)
     return %13)
 
-  (function init(0 | 1) 
+  (function init(0 | 1)
     %0 = 0
     return %0)
 
-))
+)))

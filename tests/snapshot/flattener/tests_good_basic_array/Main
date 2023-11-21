@@ -1,5 +1,6 @@
-(module Main imports ((functions (
-  (function main(0 | 31) 
+(module Main imports (StdLib)
+(functions (
+  (function main(0 | 31)
     %0 = 1
     %1 = 2
     %2 = [%0, %1]
@@ -35,8 +36,8 @@
     %30 = (write! %29)
     return %30)
 
-  (function init(0 | 1) 
+  (function init(0 | 1)
     %0 = 0
     return %0)
 
-))
+)))

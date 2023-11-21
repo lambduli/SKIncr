@@ -134,6 +134,6 @@ fun prepareFiles(ctxt: Context): Modules {
   l = Interpreter.Linearize::mcreate();
   modules = flatFs.map(m -> l.mod(m));
   if (ctxt.printIR)
-    modules.each(m -> {if (m.name != "StdLib") print_string(m.toString()) });
+    modules.each(m -> {if (m.name != "StdLib") print_string(m.toString(true)) });
   modules
 }
