@@ -110,9 +110,7 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: 
     init = this.handleGlobals(f);
 
     // Flatten all functions
-    funs = Vector::mcreateFromItems(f.funs);
-    funs.push(init);
-    fs = funs.map(f -> this.function(f));
+    fs = f.funs.cat(init).map(f -> this.function(f));
     Module( f.name, f.imports, f.decls.size(), fs )
   }
 
@@ -272,14 +270,14 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: 
       set = Set( Register(varname), exprResult );
       (exprBody.cat(set), None())
     }
-    | Call(t, "set!", es) -> {
+    | Call(_, "set!", es) -> {
       // (set! var assign)
       // is transformed to
       // assignResult = evaluated assign
       // var = assignResult
-      (_, origVName) = this.asVar( es[0] );
+      (varTok, origVName) = this.asVar( es[0] );
 
-      destRegister = Register( this.toRegister(t, origVName, locals));
+      destRegister = Register( this.toRegister(varTok, origVName, locals));
       (assignBody, assignResult) = this.expressionVal(es[1], locals);
 
       set = if(this.glob.containsKey(origVName)){
@@ -290,15 +288,15 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: 
 
       (assignBody.cat(set), None())
     }
-    | Call(t, "arr_set!", es) -> {
+    | Call(_, "arr_set!", es) -> {
       // (arr_set! var idx assign)
       // is transformed to
       // idxResult = evaluated idx
       // assignResult = evaluated assign
       // var[idxResult] = assignResult
-      (_, origVName) = this.asVar( es[0] );
+      (varTok, origVName) = this.asVar( es[0] );
 
-      destRegister = Register( this.toRegister(t, origVName, locals));
+      destRegister = Register( this.toRegister(varTok, origVName, locals));
 
       (idxBody, idxResult) = this.expressionVal(es[1], locals);
       (assignBody, assignResult) = this.expressionVal(es[2], locals);
