@@ -2,7 +2,7 @@ module Reader;
 
 type Funs = Vector<Fun>;
 type Statements = Vector<Stmt>;
-type VMap = mutable Map<String, Int>;
+type VMap = mutable Map<String, ScopedVariable>;
 type Exprs = Vector<Expr>;
 
 value class Module(name: String, imports: Strings, globs: Int, funs: Funs) {}
@@ -64,20 +64,30 @@ class .FlattenerException(message: String) extends Exception{
   }
 }
 
-mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: mutable Functions = mutable Functions[]) {
+base class ScopedVariable() {
+  children =
+  | GlobalRegister( reg: Register )
+  | LocalRegister( reg: Register )
+  | ScopedFunction( fname: String, argCount: Int, hasPolyArg: Bool )
+}
+
+
+mutable class .Flattener(mutable v: Int = 0, funs: mutable Vector<ScopedFunction> = Vector::mcreate()) {
   static fun process( fs: Vector<File> ): Vector<Module> {
     flat = mutable Flattener();
     fs.map( f -> flat.file(f) )
   }
 
   // Adds all global variables to the scope and creates a init function with initialization values
-  mutable fun handleGlobals(f: File): Function {
+  mutable fun handleGlobals(f: File): (Function, VMap) {
     // Body of the init function
     v = mutable Exprs[];
+    globs: VMap = Map::mcreate();
 
     // For each global variable -> add it to scope and add a initialization statement to the body
-    f.decls.each(d -> d match { | Decl(t, n, e) -> {
-      this.glob.add( n, this.nextVar() );
+    f.decls.items().each(tup -> tup match { | (idx, Decl(t, n, e)) -> {
+      globs.add( n, GlobalRegister(Register(idx)) );
+
       // Does not need to be global set, it is transformed automatically
       v.push( Call(t, "set!", Exprs[ Var(t, n), e ]) )
     }});
@@ -87,54 +97,57 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: 
 
     b = Block(f.tok, v.chill());
 
-    Function(f.tok,
+    newFun = Function(f.tok,
       "init", // name
       Strings[], // params
       None(), // polyArg
       b, // body
       0 // locals
-    )
+    );
+
+    (newFun, globs)
   }
 
   mutable fun file(f: File): Module {
-    this.glob.clear();
-    this.!v = 0;
-
-    this.funs.extend(f.funs);
-		// we need to preserve all the functions in all the modules.  even
+    // we need to preserve all the functions in all the modules.  even
     // thought, this approach seems to be susceptible to bugs.  the
     // order in which the modules are processed matters, but that
     // order is not really the order of dependencies
+    f.funs
+      .map( func -> ScopedFunction( func.name, func.params.size(), func.polyArg.isSome() ) )
+      .each( func -> this.funs.push( func ) );
 
     // Handle globals, create the init function
-    init = this.handleGlobals(f);
+    (init, moduleScope) = this.handleGlobals(f);
+
+    // Add all functions to module scope
+    // do not override global variables with funciton names
+    this.funs.each( func -> _ = moduleScope.maybeSet( func.fname, func ) );
 
     // Flatten all functions
-    fs = f.funs.cat(init).map(f -> this.function(f));
+    fs = f.funs.cat(init).map(f -> this.function(f, moduleScope.clone()));
     Module( f.name, f.imports, f.decls.size(), fs )
   }
 
-  mutable fun function(f: Function): Fun {
+  mutable fun function(f: Function, scope: VMap): Fun {
     this.!v = 0;
 
     // Handle locals, body and parameters
     // is different for polyArg functions
-    (locals, body, params) = if (f.polyArg.isSome()) {
-      this.polyFunction(f)
+    (body, pCount) = if (f.polyArg.isSome()) {
+      this.polyFunction(f, scope)
     } else {
-      locals : VMap = Map::mcreate();
-      f.params.each(p -> locals.add(p, this.nextVar()));
-
-      (locals, f.body, f.params)
+      f.params.each(p -> scope.add(p, LocalRegister( this.nextReg() )));
+      (f.body, f.params.size())
     };
 
-    (es, e) = this.expression(body, locals);
+    (es, e) = this.expression(body, scope);
     e match {
       | None() -> this.fail( f.tok, `Missing return in ${f.name}` )
       | Some(val) -> !es = es.cat( Return(val) )
     };
 
-    Fun( f.name, params.size(), Code( es ), this.v )
+    Fun( f.name, pCount, Code( es ), this.v )
   }
 
   // The parameters of poly function work like this
@@ -149,12 +162,10 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: 
   //  )
   // )
   // returns (locals, body of the new function, new parameters)
-  mutable fun polyFunction(f: Function): (VMap, Expr, Strings) {
-    locals: VMap = Map::mcreate();
-
-    aname = this.nextVar();
-    argVar = Var(f.tok, aname.toString());
-    locals.add(aname.toString(), aname);
+  mutable fun polyFunction(f: Function, scope: VMap): (Expr, Int) {
+    aname = "#argVar";
+    argVar = Var(f.tok, aname);
+    scope.add(aname, LocalRegister( this.nextReg() ));
 
     // rewrite all the parameters into something like
     // Decl(<original token>, <original name>, Call(<original token>, "at", Vector[<original name>, <position>]))
@@ -175,9 +186,8 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: 
     body.push(f.body);
 
     bodyExpr = Block(f.tok, body.chill());
-    params = Strings[aname.toString()]; // There's always just this one "arguments"
 
-    (locals, bodyExpr, params)
+    (bodyExpr, 1)
   }
 
   /*****************************************/
@@ -188,17 +198,6 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: 
     throw FlattenerException( errMsg )
   }
 
-  readonly fun arityOf(fname: String): Arity {
-    this.funs.find(f -> f.name == fname) match {
-      | Some(f) ->
-          f.polyArg match {
-            | None() -> Exactly(f.params.size())
-            | Some(_) -> AtLeast(f.params.size())
-          }
-      | None() -> NotAFunction()
-    }
-  }
-
   readonly fun asVar(e: Expr): (Tok, String) {
     e match {
       | Var(t, s) -> (t, s)
@@ -206,19 +205,16 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: 
     }
   }
 
-  mutable fun nextVar(): Int {
-    id = this.v;
+  mutable fun nextReg(): Register {
+    reg = Register( this.v );
     this.!v = this.v + 1;
-    id
+    reg
   }
 
-  readonly fun toRegister(t: Tok, varname: String, locals: VMap): Int {
-    if (locals.containsKey(varname)) {
-      locals.get(varname)
-    } else if (this.glob.containsKey(varname)) {
-      this.glob.get(varname)
-    } else {
-      this.fail( t, `Variable name ${varname} no found in any scope` )
+  readonly fun findInScope( t: Tok, name: String, scope: VMap ): ScopedVariable {
+    scope.maybeGet( name ) match {
+      | Some(val) -> val
+      | None() -> this.fail( t, `Name ${name} not found in any scope` )
     }
   }
 
@@ -226,14 +222,14 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: 
   // Expression flattening
 
   mutable fun literal(exp: Exp): (Statements, Option<Register>) {
-    reg = Register( this.nextVar() );
+    reg = this.nextReg();
     set = Statements[ Set( reg, exp ) ];
     (set, Some(reg))
   }
 
   // An expression where we enforce that the return register is present
-  mutable fun expressionVal(e0: Expr, locals: VMap): (Statements, Register) {
-    (v2, e2) = this.expression(e0, locals);
+  mutable fun expressionVal(e0: Expr, scope: VMap): (Statements, Register) {
+    (v2, e2) = this.expression(e0, scope);
     e2 match {
       | Some(val) -> (v2, val)
       | None() -> this.fail( e0.getToken(), "Missing a expression result value")
@@ -241,104 +237,96 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: 
   }
 
   // Returns pair of the code and the last register where the return value is in
-  mutable fun expression(e0: Expr, locals: VMap): (Statements, Option<Register>) {
+  mutable fun expression(e0: Expr, scope: VMap): (Statements, Option<Register>) {
     e0 match {
     | LitInt(_, i) ->    this.literal( VInt(i) )
     | LitBool(_, b) ->   this.literal( VBool(b) )
     | LitChar(_, c) ->   this.literal( VChar(c) )
     | LitString(_, s) -> this.literal( VString(s) )
     | Var(t, n) -> {
-      vname = this.toRegister(t, n, locals);
-      if (locals.containsKey(n)) {
-        (Statements[], Some(Register(vname)))
-      } else if (this.glob.containsKey(n)) {
-        // if some variable x is global, it is transformed to
-        // x_ = load x
-        // and then 'x_' is used from this point on
-        register = Register( this.nextVar() );
-        assign = Set(register, Load( vname ));
-        (Statements[ assign ], Some(register))
-      } else {
-        this.fail( t, "Unknown variable" )
+      this.findInScope(t, n, scope) match {
+        | LocalRegister(reg) -> (Statements[], Some(reg))
+        | GlobalRegister(reg) -> {
+          localReg = this.nextReg();
+          assign = Set(localReg, Load( reg.id ));
+          (Statements[ assign ], Some(localReg))
+        }
+        | _ -> this.fail( t, `${n} is not a variable` )
       }
     }
     | Decl(_, n, e) -> {
-      (exprBody, exprResult) = this.expressionVal(e, locals);
-      varname = this.nextVar();
-      locals.add(n, varname);
+      (exprBody, exprResult) = this.expressionVal(e, scope);
+      reg = this.nextReg();
+      scope.add(n, LocalRegister(reg));
 
-      set = Set( Register(varname), exprResult );
+      set = Set( reg, exprResult );
       (exprBody.cat(set), None())
     }
-    | Call(_, "set!", es) -> {
+    | Call(t, "set!", es) -> {
       // (set! var assign)
       // is transformed to
       // assignResult = evaluated assign
       // var = assignResult
       (varTok, origVName) = this.asVar( es[0] );
+      (assignBody, assignResult) = this.expressionVal(es[1], scope);
 
-      destRegister = Register( this.toRegister(varTok, origVName, locals));
-      (assignBody, assignResult) = this.expressionVal(es[1], locals);
-
-      set = if(this.glob.containsKey(origVName)){
-        GSet( destRegister, assignResult );
-      } else {
-        Set( destRegister, assignResult );
+      set = this.findInScope( varTok, origVName, scope ) match {
+        | GlobalRegister( reg ) -> GSet( reg, assignResult )
+        | LocalRegister( reg ) -> Set( reg, assignResult )
+        | ScopedFunction _ -> this.fail(t, "Trying to assign to a function")
       };
 
       (assignBody.cat(set), None())
     }
-    | Call(_, "arr_set!", es) -> {
+    | Call(t, "arr_set!", es) -> {
       // (arr_set! var idx assign)
       // is transformed to
       // idxResult = evaluated idx
       // assignResult = evaluated assign
       // var[idxResult] = assignResult
       (varTok, origVName) = this.asVar( es[0] );
+      (idxBody, idxResult) = this.expressionVal(es[1], scope);
+      (assignBody, assignResult) = this.expressionVal(es[2], scope);
 
-      destRegister = Register( this.toRegister(varTok, origVName, locals));
-
-      (idxBody, idxResult) = this.expressionVal(es[1], locals);
-      (assignBody, assignResult) = this.expressionVal(es[2], locals);
-
-      set = if(this.glob.containsKey(origVName)){
-        GArrSet( destRegister, idxResult, assignResult )
-      } else {
-        ArrSet( destRegister, idxResult, assignResult )
+      set = this.findInScope( varTok, origVName, scope ) match {
+        | GlobalRegister( reg ) -> GArrSet( reg, idxResult, assignResult )
+        | LocalRegister( reg ) -> ArrSet( reg, idxResult, assignResult )
+        | ScopedFunction _ -> this.fail(t, "Trying to array set to a function")
       };
 
       (idxBody.concat(assignBody).cat(set) , None())
     }
-    | Call(_, n, es) -> {
+    | Call(t, n, es) -> {
       body = mutable Statements[];
       params = mutable Vector<Register>[];
 
       es.each(e -> {
-        (paramBody, param) = this.expressionVal(e, locals);
+        (paramBody, param) = this.expressionVal(e, scope);
         body.extend(paramBody);
         params.push(param);
       });
 
       // Arguments of vararg functions are all passed in a list
-      this.arityOf(n) match {
-      | AtLeast(_) -> {
-        // all original arguments will be flattened and put into a list-value
-        // (foo a b c) will transform to
-        // %0 = a
-        // %1 = b
-        // %2 = c
-        // %3 = [a b c]
-        // returnReg = foo %3
-        // where %3 is listreg
-        listreg = Register( this.nextVar() );
-        body.push( Set(listreg, VList( params.chill() )) );
+      this.findInScope( t, n, scope ) match {
+        | ScopedFunction( _, _, isVarArg ) -> if (isVarArg) {
+          // all original arguments will be flattened and put into a list-value
+          // (foo a b c) will transform to
+          // %0 = a
+          // %1 = b
+          // %2 = c
+          // %3 = [a b c]
+          // returnReg = foo %3
+          // where %3 is listreg
+          listreg = this.nextReg();
+          body.push( Set(listreg, VList( params.chill() )) );
 
-        !params = mutable Vector<Register>[ listreg ];
-      }
-      | _ -> void
+          !params = mutable Vector<Register>[ listreg ];
+        }
+        | GlobalRegister(_)
+        | LocalRegister(_) -> this.fail( t, "Trying to invoke a variable" )
       };
 
-      returnRegister = Register( this.nextVar() );
+      returnRegister = this.nextReg();
       call = Invoke( n, params.chill() );
       set = Set( returnRegister, call );
       body.push(set);
@@ -350,7 +338,7 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: 
       last: Option<Register> = None();
 
       es.each(e -> {
-        (nestedBody, res) = this.expression(e, locals);
+        (nestedBody, res) = this.expression(e, scope);
         body.extend(nestedBody);
         !last = res
       });
@@ -365,8 +353,8 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: 
       //  body
       //  condVar = expr
       // )
-      (condExpr, condVar) = this.expressionVal(e, locals);
-      (whileBody, _) = this.expression(s, locals);
+      (condExpr, condVar) = this.expressionVal(e, scope);
+      (whileBody, _) = this.expression(s, scope);
 
       loopStat = Loop(condVar, Code( whileBody.concat(condExpr) ));
 
@@ -379,13 +367,13 @@ mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: 
       // if (condVar) {res = evaluated trueBody}
       // else {res = evaluated falseBody}
       // and the value of this statement is `res`
-      (condExpr, condVar) = this.expressionVal(e, locals);
-      (trueBlock, trueRes) = this.expression(s1, locals);
-      (falseBlock, falseRes) = this.expression(s2, locals);
+      (condExpr, condVar) = this.expressionVal(e, scope);
+      (trueBlock, trueRes) = this.expression(s1, scope);
+      (falseBlock, falseRes) = this.expression(s2, scope);
 
       res = (trueRes, falseRes) match {
         | (Some(tVal), Some(fVal)) -> {
-          returnReg = Register( this.nextVar() );
+          returnReg = this.nextReg();
           !trueBlock  = trueBlock.cat(  Set(returnReg, tVal) );
           !falseBlock = falseBlock.cat( Set(returnReg, fVal) );
           Some(returnReg)
