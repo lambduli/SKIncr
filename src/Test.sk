@@ -237,16 +237,14 @@ mutable class .TestRunner(
     Result::guard( () -> {
       fs = Reader::process(files);
 
-      flat = mutable Flattener();
-      flatFs = fs.map( f -> flat.file(f) );
+      flatFs = Flattener::process( fs );
       flatFs.filter(m -> m.name.lowercase() != "stdlib").each(m -> {
         prettyOut = FlattenedPrettyPrint::prettyPrint(m);
         case = this.flattenerSnapshot.createOrValidate( testName, m.name, prettyOut );
         this.harness.pushTestCase( case );
       });
 
-      l = Interpreter.Linearize::mcreate();
-      linearized: Vector<Interpreter.Module> = flatFs.map(m -> l.mod(m));
+      linearized = Interpreter.Linearize::process( flatFs );
       linearized.filter(m -> m.name.lowercase() != "stdlib").each(m -> {
         prettyOut = m.toString();
         case = this.linearizedSnapshot.createOrValidate( testName, m.name, prettyOut );

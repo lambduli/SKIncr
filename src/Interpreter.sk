@@ -126,6 +126,11 @@ base class Expr uses Show {
 
 mutable class Linearize(mutable cntr: Int) {
 
+  static fun process( ms: Vector<Reader.Module> ): Vector<Module> {
+    lin = Linearize::mcreate();
+    ms.map( m -> lin.mod( m ) )
+  }
+
   static fun mcreate(): mutable this {  mutable Linearize(0) }
 
   mutable fun inc(): void { this.!cntr = this.cntr + 1 }

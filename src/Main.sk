@@ -125,14 +125,12 @@ fun prepareFiles(ctxt: Context): Modules {
 
   fs = Reader::process(ctxt.paths);
 
-  flat = mutable Flattener();
-  flatFs = fs.map( f -> flat.file(f) );
+  flatFs = Flattener::process( fs );
   if ( ctxt.printSimple ){
     flatFs.filter( m -> m.name != "StdLib" ).each( m -> print_string( FlattenedPrettyPrint::prettyPrint(m) ) )
   };
 
-  l = Interpreter.Linearize::mcreate();
-  modules = flatFs.map(m -> l.mod(m));
+  modules = Interpreter.Linearize::process(flatFs);
   if (ctxt.printIR)
     modules.each(m -> {if (m.name != "StdLib") print_string(m.toString(true)) });
   modules

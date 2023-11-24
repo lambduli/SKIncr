@@ -65,6 +65,10 @@ class .FlattenerException(message: String) extends Exception{
 }
 
 mutable class .Flattener(mutable v: Int = 0, glob: VMap = Map::mcreate(), funs: mutable Functions = mutable Functions[]) {
+  static fun process( fs: Vector<File> ): Vector<Module> {
+    flat = mutable Flattener();
+    fs.map( f -> flat.file(f) )
+  }
 
   // Adds all global variables to the scope and creates a init function with initialization values
   mutable fun handleGlobals(f: File): Function {
