@@ -557,7 +557,7 @@ mutable class .Interpreter(
             | (L(vals), I(i)) -> if (vals.size() >= i) Success(vals[i]) else Failure(`at: index out of bounds`)
             | (v, i) -> Failure(`at: '${v}' and '${i}' should be a list and a number`)
           }
-      | "arr_get" -> 
+      | "arr_get" ->
         (a, b) match {
           | (A(vals), I(i)) -> {
             if (i < vals.size()) Success(vals[i])

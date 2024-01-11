@@ -266,7 +266,7 @@ fun initFunctions(f: Fun): TransferFunctions {
 	  f.body[i] match {
     | Store(reg, _) -> { funs.push(Def(i, reg)); funs.push(Edge(i, i+1))	}
     | GStore(_, _) -> { funs.push(Identity(i)); funs.push(Edge(i, i+1))	}
-    | AStore(_, _, _) -> void // TODO 
+    | AStore(_, _, _) -> void // TODO
     | GAStore(_, _, _) -> void
     | CondJump(_, tgt) -> { funs.push(Identity(i)); funs.push(Edge(i, i+1)); funs.push(Edge(i, tgt)) }
     | Jump(tgt) -> { funs.push(Identity(i)); funs.push(Edge(i, tgt)) }

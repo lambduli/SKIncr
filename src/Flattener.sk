@@ -407,7 +407,7 @@ mutable class .FlattenedPrettyPrint(mutable indent: Int = 0) {
 
     `(module ${f.name} imports (${f.imports.join( " " )})\n` +
       "(functions (\n" +
-      functions + 
+      functions +
       "\n)))"
   }
 

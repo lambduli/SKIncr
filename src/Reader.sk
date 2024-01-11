@@ -214,7 +214,7 @@ mutable class .ASTPrettyPrint(mutable indent: Int = 0) {
 
   mutable fun inc(): void { this.!indent = this.indent + 2; }
   mutable fun dec(): void { this.!indent = this.indent - 2; }
-  readonly fun pad(): String { " ".repeat( this.indent ) } 
+  readonly fun pad(): String { " ".repeat( this.indent ) }
 
 }
 
