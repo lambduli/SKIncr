@@ -62,4 +62,7 @@
   # IO
   (function write! (msg ...x) ( builtin_bin "write!" msg x ))
   (function read! () ( builtin_nul "read!" ))
+
+  # assert
+  (function assert! (value msg) ( builtin_bin "assert!" value msg ) )
 ))

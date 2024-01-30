@@ -6,17 +6,20 @@
 
 (functions (
   (function main ()
-    (begin 
-      (write! (arr_get arr 0))
-      (write! (arr_get arr 1))
-      (write! (arr_length arr))
+    (begin
+      (assert! (== (arr_get arr 0) 1) "array idx 1 before")
+      (assert! (== (arr_get arr 1) 2) "array idx 2 before")
+      (assert! (== (arr_length arr) 2) "array lenght before")
+      (assert! (== arr (array 1 2)) "array before")
 
       (arr_set! arr 0 "a")
       (arr_set! arr 1 "b")
 
-      (write! (arr_get arr 0))
-      (write! (arr_get arr 1))
-      (write! (arr_length arr))
+      (assert! (== (arr_get arr 0) "a") "array idx 1 after")
+      (assert! (== (arr_get arr 1) "b") "array idx 2 after")
+      (assert! (== (arr_length arr) 2) "array lenght after")
+      (assert! (== arr (array "a" "b")) "array after")
+      0
     )
   )
 ))

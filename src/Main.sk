@@ -63,23 +63,23 @@ fun test(): void {
   (g, b) = (t+"good/", t+"bad/");
   gl = g+"local_var/";
 	(i10, i42) = (Interpreter.I(10), Interpreter.I(42));
-	(nostrings, fourStrings) = (Strings[], Strings["10", "20", "30", "40"]);
-  arrayStrings = Strings[/* initial */ "1", "2", "2", /* changed */ "a", "b", "2"];
+	nostrings = Strings[];
+  zero = Interpreter.I(0);
   report = TestRunner::mcreate( t+"stdlib.sm", t+"snapshot", "build/snapshots")
     .good_test(Strings[g+"hello_world/main.sm"], Interpreter.S("Hello world!"))
     .good_test(Strings[g+"let/main.sm"], i10)
     .good_test(Strings[g+"modules/foo.sm", g+"modules/main.sm"], i42)
     .good_test(Strings[g+"if_value/main.sm"], i10)
     .io_test(Strings[g+"simple_io/main.sm"], Strings["42"], Strings["42"])
-    .io_test(Strings[gl+"foo.sm", gl+"main.sm"], nostrings, fourStrings)
+    .good_test(Strings[gl+"foo.sm", gl+"main.sm"], zero)
     .checker_fail(Strings[b+"leaky_var_while/main.sm"])
     .checker_fail(Strings[b+"leaky_var_if_true/main.sm"])
     .checker_fail(Strings[b+"leaky_var_if_false/main.sm"])
     .checker_fail(Strings[b+"overwrite_fun/main.sm"])
     .checker_fail(Strings[b+"arity_check/main.sm"])
     .checker_fail(Strings[b+"redefine_fun/foo.sm", b+"redefine_fun/main.sm"])
-    .io_test(Strings[g+"basic_array/main.sm"], nostrings, arrayStrings)
-    .io_test(Strings[g+"global_array/main.sm"], nostrings, arrayStrings)
+    .good_test(Strings[g+"basic_array/main.sm"], zero)
+    .good_test(Strings[g+"global_array/main.sm"], zero)
     .execution_fail( Strings[b+"array_out_of_bounds/main.sm"] )
     .checker_fail(Strings[b+"while_as_return/main.sm"])
     .io_test( Strings[g+"vararg_function/main.sm"], nostrings, Strings["1", "2", "3", "4", "5", "6"] )

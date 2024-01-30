@@ -313,6 +313,16 @@ mutable class Frame(
   readonly fun prevInstruction(): Stmt { this.code[this.pc - 1] }
 }
 
+class .AssertException(message: String) extends Exception {
+  fun getMessage(): String {
+    "Assert error: " + this.message
+  }
+
+  static fun fail<T>(message: String): T {
+    throw AssertException(message)
+  }
+}
+
 // Interpretation exception class
 class .InterpreterException(message: String) extends Exception {
   fun getMessage(): String {
@@ -583,6 +593,7 @@ mutable class .Interpreter(
           | (C(x), C(y)) -> Success(B(x == y))
           | (S(x), S(y)) -> Success(B(x == y))
           | (B(x), B(y)) -> Success(B(x == y))
+          | (A(x), A(y)) -> Success(B(x == y))
           | _ -> Failure(`(== ${a.toOut()} ${b.toOut()})`)
         }
       | "at" ->
@@ -604,6 +615,13 @@ mutable class .Interpreter(
         | (v, _) -> this.io.write(`${v.toOut()}`)
         };
         Success(Null())
+      }
+      | "assert!" -> {
+        (a, b) match {
+        | (B(true), _) -> Success( Null() )
+        | (B(false), msg) -> AssertException::fail(msg.toOut())
+        | _ -> Failure( "Assert called with incorrect arguments" )
+        };
       }
       | _ -> Failure(`Uknown builtin '${name}'`)
     }

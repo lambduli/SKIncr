@@ -11,6 +11,7 @@ base class TestResult(){
   | CheckerError( String )
   | FlattenerError( String )
   | InterpreterError( String )
+  | AssertError( String )
   | ExceptionError ( String )
 
   fun defaultMessage(): String {
@@ -20,6 +21,7 @@ base class TestResult(){
       | CheckerError(msg) ->     `Checker failed with message: ${msg}`
       | FlattenerError(msg) ->   `Flattener failed with message: ${msg}`
       | InterpreterError(msg) -> `Execution failed with message: ${msg}`
+      | AssertError(msg) ->      `Assert has failed: ${msg}`
       | ExceptionError(msg) ->   `Exception was raised: ${msg}`
     }
   }
@@ -260,6 +262,7 @@ mutable class .TestRunner(
       | Failure( ReaderException(msg) ) -> ReaderError( msg )
       | Failure( CheckerException(msg) ) -> CheckerError( msg )
       | Failure( FlattenerException(msg) ) -> FlattenerError( msg )
+      | Failure( AssertException(msg) ) -> AssertError( msg )
       | Failure(e) -> ExceptionError( e.getMessage() )
     }
   }
