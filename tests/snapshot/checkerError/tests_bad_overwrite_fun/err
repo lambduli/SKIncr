@@ -2,4 +2,4 @@ File tests/bad/overwrite_fun/main.sm at line 9
   7|   (function main ()
   8|     (begin
   9|       (set! foo 10)
-                 ^--foo is not a variable
+                 ^--Trying to assign to a function name

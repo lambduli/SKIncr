@@ -77,13 +77,11 @@ fun test(): void {
     .checker_fail(Strings[b+"leaky_var_if_false/main.sm"])
     .checker_fail(Strings[b+"overwrite_fun/main.sm"])
     .checker_fail(Strings[b+"arity_check/main.sm"])
-    .checker_fail(Strings[b+"function_as_value/main.sm"])
     .checker_fail(Strings[b+"redefine_fun/foo.sm", b+"redefine_fun/main.sm"])
     .io_test(Strings[g+"basic_array/main.sm"], nostrings, arrayStrings)
     .io_test(Strings[g+"global_array/main.sm"], nostrings, arrayStrings)
     .execution_fail( Strings[b+"array_out_of_bounds/main.sm"] )
     .checker_fail(Strings[b+"while_as_return/main.sm"])
-    .checker_fail(Strings[b+"call_variable/main.sm"])
     .io_test( Strings[g+"vararg_function/main.sm"], nostrings, Strings["1", "2", "3", "4", "5", "6"] )
     .harness.report();
   print_string( report )

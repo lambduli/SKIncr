@@ -744,20 +744,20 @@ base class Arity() uses Show {
   children =
     | Exactly(a: Int) // for functions like   (function foo (a b c) 0)     or  (function blub () 0)
     | AtLeast(a: Int) // for functions like   (function bar (x y ...z) 0)  or  (function baz (...args) 0)
-    | NotAFunction()  // for variables
+    | Variable()  // for variables
 
   fun canBeCalledWith(argsCnt: Int): Bool {
     this match {
       | Exactly(a) -> argsCnt == a
       | AtLeast(a) -> argsCnt >= a
-      | NotAFunction() -> false
+      | Variable() -> true // We cannot statically distinguish if variable is a closure
     }
   }
   fun toString(): String {
     this match {
       | Exactly(a) -> `${a}`
       | AtLeast(a) -> `${a}+`
-      | NotAFunction() -> "<NotAFunction>"
+      | Variable() -> "<variable>"
     }
   }
 }
@@ -781,13 +781,6 @@ mutable class Scope(mutable top: Bool, env: mutable Vector<mutable Names>) {
   }
 
   readonly fun isDefined(s: String): Bool { this.hasArity(s).isSome() }
-
-  readonly fun isVariable(s: String): Bool {
-    this.hasArity(s) match {
-      | Some(NotAFunction()) -> true
-      | _ -> false
-    }
-  }
 
   readonly fun hasArity(s: String): Option<Arity> {
     this.env.map( v -> v.find( n -> n.name == s ) ) // Vector<Option<Name>>; search in each environment
@@ -932,8 +925,8 @@ mutable class Checker(env: mutable Scope) {
 
     this.withScope( true, () -> {
       // add params
-      f.params.each(s -> this.checked_add(s, f.tok, NotAFunction()));
-      f.polyArg.each(n -> this.checked_add(n, f.tok, NotAFunction()));
+      f.params.each(s -> this.checked_add(s, f.tok, Variable()));
+      f.polyArg.each(n -> this.checked_add(n, f.tok, Variable()));
 
       this.expression(f.body);
       this.producesValue(f.name, f.body);
@@ -965,7 +958,7 @@ mutable class Checker(env: mutable Scope) {
     e0 match {
     | LitInt(_, _) | LitBool(_, _) | LitChar(_, _) | LitString(_, _) -> void
     | Var(t, s) ->{
-      if (!this.env.isVariable(s))
+      if (!this.env.isDefined(s))
         this.fail(t, `${s} is not a variable`);
     }
     | Decl(t, n, e) -> { // check `e` is good; add `n` to environment
@@ -974,7 +967,7 @@ mutable class Checker(env: mutable Scope) {
       // we are not at the top level in `e`
       this.withScope(false, () -> this.expression(e) );
 
-      this.checked_add(n, t, NotAFunction());
+      this.checked_add(n, t, Variable());
     }
     | Call(t, n, es) -> {
       // Check function `n`'s arity matches number of arguments
@@ -984,6 +977,19 @@ mutable class Checker(env: mutable Scope) {
         | Some(arity) -> {
             if ( !arity.canBeCalledWith(es.size())) {
               this.fail(t, `function ${n} has ${arity} parameters but got ${es.size()} arguments`)
+            };
+
+            // If this is an (array) set,
+            // check if the variable is not a function name
+            if (n == "set!" || n == "arr_set!"){
+              es[0] match {
+                | Var(t1, varName) -> this.env.hasArity(varName) match{
+                  | Some(Exactly(_))
+                  | Some(AtLeast(_)) -> this.fail( t1, "Trying to assign to a function name" )
+                  | _ -> void
+                }
+                | _ -> void
+              }
             };
 
             if( this.isTopLevelFunction(n) ){

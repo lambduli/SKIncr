@@ -39,9 +39,11 @@ base class Exp {
   | VString(String)
   | VChar(Char)
   | VList(content: Vector<Register>)
+  | VClosure(funName: String, arity: Int, isVarArg: Bool)
   | Register(id: Int)
   | Load(Int) // TODO: can all loads be statements? would make expr simpler, but we already have invoke
   | Invoke(String, Vector<Register>)
+  | IndirectInvoke(Register, Vector<Register>)
 
   fun toString(): String {
 	  this match {
@@ -50,9 +52,11 @@ base class Exp {
      | VString(v) -> `${v}`
      | VChar(v) -> `${v}`
      | VList(_v) -> `[...]`
+     | VClosure(fname, _, _) -> `<closure:${fname}>`
      | Register(name) -> `%${name}`
      | Load(v)  -> `g${v}`
      | Invoke(f, _vs) -> `(${f} ...)`
+     | IndirectInvoke(reg, _vs) -> `(${reg} ...)`
 		}
   }
 }
@@ -251,7 +255,11 @@ mutable class .Flattener(mutable v: Int = 0, funs: mutable Vector<ScopedFunction
           assign = Set(localReg, Load( reg.id ));
           (Statements[ assign ], Some(localReg))
         }
-        | _ -> this.fail( t, `${n} is not a variable` )
+        | ScopedFunction( fname, args, isVarArg ) -> {
+          localReg = this.nextReg();
+          assign = Set(localReg, VClosure( fname, args, isVarArg ));
+          (Statements[assign], Some(localReg) )
+        }
       }
     }
     | Decl(_, n, e) -> {
@@ -306,9 +314,10 @@ mutable class .Flattener(mutable v: Int = 0, funs: mutable Vector<ScopedFunction
         params.push(param);
       });
 
-      // Arguments of vararg functions are all passed in a list
-      this.findInScope( t, n, scope ) match {
-        | ScopedFunction( _, _, isVarArg ) -> if (isVarArg) {
+      // The invoke statement
+      call = this.findInScope( t, n, scope ) match {
+        // Arguments of vararg functions are all passed in a list
+        | ScopedFunction( _, _, isVarArg ) if (isVarArg) -> {
           // all original arguments will be flattened and put into a list-value
           // (foo a b c) will transform to
           // %0 = a
@@ -320,14 +329,20 @@ mutable class .Flattener(mutable v: Int = 0, funs: mutable Vector<ScopedFunction
           listreg = this.nextReg();
           body.push( Set(listreg, VList( params.chill() )) );
 
-          !params = mutable Vector<Register>[ listreg ];
+          Invoke( n, Vector<Register>[ listreg ] )
         }
-        | GlobalRegister(_)
-        | LocalRegister(_) -> this.fail( t, "Trying to invoke a variable" )
+        | ScopedFunction _ -> {
+          Invoke( n, params.chill() )
+        }
+        | GlobalRegister(reg) -> {
+          loadReg = this.nextReg();
+          body.push( Set( loadReg, Load( reg.id )) );
+          IndirectInvoke( loadReg, params.chill() )
+        }
+        | LocalRegister(reg) -> IndirectInvoke( reg, params.chill() )
       };
 
       returnRegister = this.nextReg();
-      call = Invoke( n, params.chill() );
       set = Set( returnRegister, call );
       body.push(set);
 
@@ -435,9 +450,11 @@ mutable class .FlattenedPrettyPrint(mutable indent: Int = 0) {
     | VString(s) -> `"${s}"`
     | VChar(ch) -> `'${ch}'`
     | VList(regs) -> `[${regs.map( r -> this.expression(r) ).join( ", " )}]`
+    | VClosure(fname, arity, isVarArg) -> `<closure:${fname}, argc=${arity}${if(isVarArg)"+" else ""}>`
     | Register(s) -> `%${s}`
     | Load(s) -> `load %${s}`
     | Invoke(n, es) -> `(${n} ${es.map( e -> this.expression(e)).join( " " )})`
+    | IndirectInvoke(n, es) -> `(<indirect:${n}> ${es.map( e -> this.expression(e)).join( " " )})`
     }
   }
 

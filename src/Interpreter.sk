@@ -101,8 +101,10 @@ base class Expr uses Show {
 	| LitS(String)
 	| LitC(Char)
   | LitL(Vector<Register>)
+  | Closure( fname: String, arity: Int, isVarArg: Bool )
 	| Register(r: Int)
   | Invoke(fname: String, args: Ints)
+  | IndirectInvoke(r: Int, args: Ints)
   | Load(r: Int)
 
   fun toString(): String {
@@ -112,9 +114,11 @@ base class Expr uses Show {
     | LitS(s) -> `"${s}"`
     | LitL(regs) -> "[" + regs.map(r -> r.toString()).join(", ") + "]"
     | LitC(ch) -> `'${ch}'`
+    | Closure(fname, arity, isVarArg) -> `<closure:${fname}, arity=${arity}${if (isVarArg) "+" else ""}>`
     | Register(r) -> `%${r}`
     | Load(r) -> `@${r}`
     | Invoke(n, regs) -> `${n}(` + regs.map( r -> `%${r}` ).join(" ") + ")"
+    | IndirectInvoke(reg, regs) -> `<indirect:${reg}>(` + regs.map( r -> `%${r}` ).join(" ") + ")"
     }
   }
 }
@@ -151,9 +155,11 @@ mutable class Linearize(mutable cntr: Int) {
       | Reader.VString(s)    -> LitS(s)
       | Reader.VChar(ch)     -> LitC(ch)
       | Reader.VList(regs)   -> LitL(regs.map( r -> Register(r.id) ))
+      | Reader.VClosure(fname, arity, isVarArg) -> Closure(fname, arity, isVarArg)
       | Reader.Register(r)   -> Register(r)
       | Reader.Load(r)       -> Load(r)
       | Reader.Invoke(name, args) -> Invoke(name, args.map(r -> r.id))
+      | Reader.IndirectInvoke(reg, args) -> IndirectInvoke(reg.id, args.map(r -> r.id))
     }
   }
 
@@ -229,6 +235,7 @@ base class Val() uses Show, Equality {
   | S(String)
   | L(Vals)
   | A(Vals) // Array
+  | Cl(fname: String, arity: Int, isVarArg: Bool ) // Closure of a function
   | Null()
 
   fun toString(): String {
@@ -239,6 +246,7 @@ base class Val() uses Show, Equality {
       | S(str) -> `S(${str})`
       | L(vals) -> `list(${vals.reduce((s, v) -> `${s}, ${v.toString()}`, "")})`
       | A(vals) -> `array(${vals.reduce((s, v) -> `${s}, ${v.toString()}`, "")})`
+      | Cl(fname, arity, isVarArg) -> `<closure:${fname}, argc=${arity}${if(isVarArg)"+" else ""}>`
       | Null() -> `Null`
     }
   }
@@ -251,6 +259,7 @@ base class Val() uses Show, Equality {
       | L(vals) -> `[${vals.reduce((s, v) -> `${s}, ${v.toOut()}`, "")}]`
       | A(vals) -> `Arr[${vals.reduce((s, v) -> `${s}, ${v.toOut()}`, "")}]`
       | S(str) -> `${str}`
+      | Cl(_, _, _) -> `<closure>`
       | Null() -> `NULL`
     }
   }
@@ -433,6 +442,7 @@ mutable class .Interpreter(
       | LitS(v) -> S(v)
       | LitC(v) -> C(v)
       | LitL(regs) -> L(regs.map(this.expression))
+      | Closure(fname, arity, isVarArg) -> Cl(fname, arity, isVarArg)
       | Register(r) -> this.top().getLocal(r)
       | Load(r) -> this.top().getGlobal(r)
       | Invoke(fname, args) -> {
@@ -440,6 +450,29 @@ mutable class .Interpreter(
         argVals.extend(args.map(r -> this.top().getLocal(r))); // get the values of the arguments vector
         this.call(fname, argVals); // push a new frame on the stack
         Null() // placeholder value to be overwritten at return
+      }
+      | IndirectInvoke(r, args) -> {
+        closure = this.top().getLocal(r) match {
+          | cl@Cl _ -> cl
+          | _ -> this.fail( "Calling a non-closure variable" )
+        };
+
+        argVals = args.map( r -> this.top().getLocal(r) );
+
+        // Runtime check of correct arity,
+        // on vararg function -> move args to a list
+        closure match {
+          | Cl(_, arity, false) if (argVals.size() == arity) -> void
+          | Cl(_, arity, true)  if (argVals.size() >= arity) -> {
+            !argVals = Vector[L(argVals)]
+          }
+          | Cl(fname, _, _) -> {
+            this.fail( `Indirectly calling a function "${fname}" with incorrect number of arguments (${argVals.size()})` )
+          }
+        };
+
+        this.call(closure.fname, argVals.clone());
+        Null()
       }
     }
  }
