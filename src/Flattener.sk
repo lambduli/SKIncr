@@ -184,12 +184,12 @@ mutable class .Flattener(mutable v: Int = 0, funs: mutable Vector<ScopedFunction
       Exprs[Decl(f.tok,str, Call(f.tok, "drop", Exprs[LitInt(f.tok, f.params.size()), argVar]))]
     ).default(Exprs[]);
 
-    body = mutable Exprs[];
-    body.extend(unlistParams);
-    body.extend(unlistRest);
-    body.push(f.body);
+    body = Exprs[]
+      .concat(unlistParams)
+      .concat(unlistRest)
+      .cat(f.body);
 
-    bodyExpr = Block(f.tok, body.chill());
+    bodyExpr = Block(f.tok, body);
 
     (bodyExpr, 1)
   }
@@ -249,7 +249,8 @@ mutable class .Flattener(mutable v: Int = 0, funs: mutable Vector<ScopedFunction
     | LitString(_, s) -> this.literal( VString(s) )
     | Var(t, n) -> {
       this.findInScope(t, n, scope) match {
-        | LocalRegister(reg) -> (Statements[], Some(reg))
+        | LocalRegister(reg) ->
+          (Statements[], Some(reg))
         | GlobalRegister(reg) -> {
           localReg = this.nextReg();
           assign = Set(localReg, Load( reg.id ));
